@@ -58,19 +58,34 @@ jobs:
           sudo apt-get install --no-install-recommends -y \
             libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 xauth xvfb \
             libasound2 libgbm1 libsecret-1-0
-          deb=$(find apps/desktop/release -maxdepth 1 -type f -name '*_arm64.deb' | head -1)
-          echo "installing $deb"
+          # GITHUB_WORKSPACE is the absolute repo path, so this resolves to a
+          # real file path. apt-get treats an unprefixed relative path as a
+          # *package name* and fails with "Unable to locate package ...", which
+          # is what broke the previous run.
+          deb=$(find "$GITHUB_WORKSPACE/apps/desktop/release" -maxdepth 1 -type f -name '*_arm64.deb' | head -1)
+          echo "installing: $deb"
           sudo apt-get install --no-install-recommends -y "$deb"
+          echo "--- installed pi-desktop files ---"
+          dpkg -L pi-desktop 2>/dev/null | grep -E "pi-desktop" | head -20 || true
           echo "--- binary architecture ---"
-          file /opt/PI-Desktop/resources/bin/pi-desktop-host-core || true
+          bin=$(command -v pi-desktop || true)
+          [ -z "$bin" ] && bin=$(dpkg -L pi-desktop 2>/dev/null | grep -E "/pi-desktop$" | head -1)
+          echo "launch binary: ${bin:-<not found>}"
+          file "$bin" || true
           echo "--- launch under xvfb (25s) ---"
           set +e
-          timeout 25 xvfb-run -a pi-desktop --no-sandbox --disable-gpu > /tmp/pi.log 2>&1
+          timeout 25 xvfb-run -a "$bin" --no-sandbox --disable-gpu > /tmp/pi.log 2>&1
           code=$?
           set -e
-          echo "exit code: $code (124 = still running when the timeout fired)"
+          echo "exit code: $code (124 = still running when the timeout fired => launched OK)"
           echo "--- log tail ---"
-          tail -25 /tmp/pi.log || true
+          tail -30 /tmp/pi.log || true
+          if [ "$code" -eq 124 ] || [ "$code" -eq 0 ]; then
+            echo "SMOKE TEST PASS: app launched and ran"
+          else
+            echo "SMOKE TEST FAIL: app exited with code $code"
+            exit 1
+          fi
 
       - name: Upload arm64 packages
         uses: actions/upload-artifact@v4

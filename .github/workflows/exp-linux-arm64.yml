@@ -39,20 +39,38 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build Linux packages (arm64 only)
-        # The package.json target list is x64-only, so the arch is pinned here
-        # through a CLI override. Without it electron-builder unions the CLI arch
-        # with the configured arch and also emits x64 packages containing an
-        # aarch64 sidecar.
-        run: |
-          set -euo pipefail
-          pnpm --filter @pi-desktop/desktop run dist:linux -- --arm64 \
-            -c.linux.target='[{"target":"AppImage","arch":["arm64"]},{"target":"deb","arch":["arm64"]},{"target":"rpm","arch":["arm64"]}]'
+        # The per-target "arch" arrays are removed from the linux config, so the
+        # arch now comes from the CLI, mirroring how the macOS matrix passes
+        # --arm64 / --x64. Keeping the arrays made electron-builder union the
+        # configured arch with the CLI arch and emit both.
+        run: pnpm --filter @pi-desktop/desktop run dist:linux -- --arm64
 
       - name: Verify Linux host glibc floor
         run: node scripts/check-linux-host-glibc.mjs target/release/pi-desktop-host-core
 
       - name: List produced artifacts
         run: ls -la apps/desktop/release/
+
+      - name: Smoke test the arm64 .deb on the arm64 runner
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 xauth xvfb \
+            libasound2 libgbm1 libsecret-1-0
+          deb=$(find apps/desktop/release -maxdepth 1 -type f -name '*_arm64.deb' | head -1)
+          echo "installing $deb"
+          sudo apt-get install --no-install-recommends -y "$deb"
+          echo "--- binary architecture ---"
+          file /opt/PI-Desktop/resources/bin/pi-desktop-host-core || true
+          echo "--- launch under xvfb (25s) ---"
+          set +e
+          timeout 25 xvfb-run -a pi-desktop --no-sandbox --disable-gpu > /tmp/pi.log 2>&1
+          code=$?
+          set -e
+          echo "exit code: $code (124 = still running when the timeout fired)"
+          echo "--- log tail ---"
+          tail -25 /tmp/pi.log || true
 
       - name: Upload arm64 packages
         uses: actions/upload-artifact@v4

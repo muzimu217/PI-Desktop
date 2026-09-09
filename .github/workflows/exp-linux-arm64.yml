@@ -57,7 +57,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
             libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 xauth xvfb \
-            libasound2 libgbm1 libsecret-1-0
+            libasound2 libgbm1 libsecret-1-0 imagemagick
           # GITHUB_WORKSPACE is the absolute repo path, so this resolves to a
           # real file path. apt-get treats an unprefixed relative path as a
           # *package name* and fails with "Unable to locate package ...", which
@@ -72,12 +72,35 @@ jobs:
           [ -z "$bin" ] && bin=$(dpkg -L pi-desktop 2>/dev/null | grep -E "/pi-desktop$" | head -1)
           echo "launch binary: ${bin:-<not found>}"
           file "$bin" || true
-          echo "--- launch under xvfb (25s) ---"
+          echo "--- launch under xvfb (40s) ---"
           set +e
-          timeout 25 xvfb-run -a "$bin" --no-sandbox --disable-gpu > /tmp/pi.log 2>&1
+          timeout 40 xvfb-run -a "$bin" --no-sandbox --disable-gpu > /tmp/pi.log 2>&1 &
+          app_pid=$!
+          # Give the app time to boot the host-core backend and render, then
+          # screenshot the real Xvfb root window while it is still running.
+          sleep 30
+          echo "--- capture screenshot ---"
+          # xvfb-run allocated a display; find it from the running Xvfb process
+          # so ImageMagick can talk to the same server the app is drawing on.
+          disp=$(ps -o args= -C Xvfb | grep -oE ':[0-9]+' | head -1 || true)
+          echo "xvfb display: ${disp:-<none>}"
+          if [ -n "$disp" ]; then
+            DISPLAY="$disp" XAUTHORITY=$(find /tmp -maxdepth 1 -name '.X*-auth' 2>/dev/null | head -1) \
+              import -window root /tmp/pi_shot.png || true
+            ls -la /tmp/pi_shot.png 2>/dev/null || true
+          fi
+          wait $app_pid || true
           code=$?
           set -e
           echo "exit code: $code (124 = still running when the timeout fired => launched OK)"
+          echo "--- handshake check (host-core backend must boot) ---"
+          if grep -q "host-core handshake ok" /tmp/pi.log; then
+            echo "HANDSHAKE OK: host-core backend booted on arm64"
+          else
+            echo "HANDSHAKE MISSING: host-core backend never completed handshake"
+            grep -E "backend boot failed|GLIBC|host" /tmp/pi.log | head -10 || true
+            exit 1
+          fi
           echo "--- log tail ---"
           tail -30 /tmp/pi.log || true
           if [ "$code" -eq 124 ] || [ "$code" -eq 0 ]; then
@@ -97,3 +120,11 @@ jobs:
             apps/desktop/release/*.rpm
             apps/desktop/release/*.deb
             apps/desktop/release/*.AppImage
+
+      - name: Upload boot screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: pi-desktop-arm64-boot-screenshot
+          if-no-files-found: warn
+          retention-days: 7
+          path: /tmp/pi_shot.png

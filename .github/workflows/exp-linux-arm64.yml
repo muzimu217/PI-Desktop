@@ -1,0 +1,59 @@
+name: Linux ARM64 package experiment
+
+# Fork-only experiment: prove a Linux arm64 build is feasible before proposing
+# anything upstream. Manual dispatch only; never runs on pushes or tags.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Linux arm64 packages
+    runs-on: ubuntu-22.04-arm
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Report runner architecture
+        run: |
+          uname -m
+          cat /etc/os-release | head -2
+          ldd --version | head -1
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Linux packages (arm64)
+        run: pnpm --filter @pi-desktop/desktop run dist:linux -- --arm64
+
+      - name: Verify Linux host glibc floor
+        run: node scripts/check-linux-host-glibc.mjs target/release/pi-desktop-host-core
+
+      - name: List produced artifacts
+        run: ls -la apps/desktop/release/
+
+      - name: Upload arm64 packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: pi-desktop-linux-arm64-experiment
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            apps/desktop/release/*.rpm
+            apps/desktop/release/*.deb
+            apps/desktop/release/*.AppImage

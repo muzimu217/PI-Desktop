@@ -38,8 +38,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build Linux packages (arm64)
-        run: pnpm --filter @pi-desktop/desktop run dist:linux -- --arm64
+      - name: Build Linux packages (arm64 only)
+        # The package.json target list is x64-only, so the arch is pinned here
+        # through a CLI override. Without it electron-builder unions the CLI arch
+        # with the configured arch and also emits x64 packages containing an
+        # aarch64 sidecar.
+        run: |
+          set -euo pipefail
+          pnpm --filter @pi-desktop/desktop run dist:linux -- --arm64 \
+            -c.linux.target='[{"target":"AppImage","arch":["arm64"]},{"target":"deb","arch":["arm64"]},{"target":"rpm","arch":["arm64"]}]'
 
       - name: Verify Linux host glibc floor
         run: node scripts/check-linux-host-glibc.mjs target/release/pi-desktop-host-core

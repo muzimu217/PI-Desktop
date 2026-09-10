@@ -10,6 +10,64 @@ permissions:
   contents: read
 
 jobs:
+  # Low-baseline host-core: build the Rust backend against glibc 2.28
+  # (openEuler 20.03 / Kylin V10 baseline) so domestic ARM distros can run it.
+  # The Electron shell only needs GLIBC_2.25, so only host-core is rebuilt.
+  host-core-lowbaseline:
+    name: host-core (glibc 2.28 baseline)
+    runs-on: ubuntu-22.04-arm
+    timeout-minutes: 40
+    container:
+      image: openeuler/openeuler:20.03-LTS-SP4
+      # systemd-free image: plain bash works, no need for extra options
+      options: --rm
+    steps:
+      - name: Bootstrap toolchain in openEuler 20.03 (glibc 2.28)
+        run: |
+          cat /etc/os-release | head -2
+          ldd --version | head -1
+          # openEuler 20.03 needs the repo enabled before dnf works in CI
+          sed -i 's|^enabled=0|enabled=1|g' /etc/yum.repos.d/*.repo 2>/dev/null || true
+          dnf -y install gcc gcc-c++ make tar gzip python3 perl findutils which || \
+            yum -y install gcc gcc-c++ make tar gzip python3 perl findutils which
+          curl -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/checkout@v4
+
+      - name: Build host-core against glibc 2.28
+        run: |
+          source "$HOME/.cargo/env"
+          cargo build --release -p host-core --manifest-path Cargo.toml
+
+      - name: Verify symbol floor (must be <= GLIBC_2.28)
+        run: |
+          bin=target/release/pi-desktop-host-core
+          file "$bin"
+          maxsym=$(strings -a "$bin" | grep -oE 'GLIBC_2\.[0-9]+' | sort -V | tail -1)
+          echo "max glibc symbol: $maxsym"
+          case "$maxsym" in
+            GLIBC_2.2[0-8]|GLIBC_2.1*|GLIBC_2.0*) echo "FLOOR OK" ;;
+            *) echo "FLOOR TOO HIGH: $maxsym" && exit 1 ;;
+          esac
+          ldd --version | head -1
+
+      - name: Smoke run on the 2.28 baseline itself
+        run: |
+          timeout 8 ./target/release/pi-desktop-host-core > /tmp/hc.log 2>&1
+          code=$?
+          echo "exit=$code (124=still running => booted OK on glibc 2.28)"
+          grep -m1 'host-core starting' /tmp/hc.log || { echo 'no startup log'; exit 1; }
+          [ "$code" -eq 124 ] || exit 1
+
+      - name: Upload low-baseline host-core
+        uses: actions/upload-artifact@v4
+        with:
+          name: pi-desktop-host-core-glibc228-arm64
+          if-no-files-found: error
+          retention-days: 14
+          path: target/release/pi-desktop-host-core
+
   build:
     name: Linux arm64 packages
     runs-on: ubuntu-22.04-arm

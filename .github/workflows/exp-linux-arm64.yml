@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-22.04-arm
     timeout-minutes: 40
     container:
-      image: openeuler/openeuler:20.03-LTS-SP4
+      image: openeuler/openeuler:20.03-lts-sp4
       # systemd-free image: plain bash works, no need for extra options
       options: --rm
     steps:

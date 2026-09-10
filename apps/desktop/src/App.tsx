@@ -40,6 +40,8 @@ import { browserPluginTab } from "./lib/work-panel-tabs";
 import {
   clampSidebarWidth,
   loadSidebarWidth,
+  normalizeProjectPath,
+  projectWorkspaceFromPath,
   saveSidebarWidth,
 } from "./lib/sidebar-preferences";
 import { StartupSplash } from "./components/StartupSplash";
@@ -459,6 +461,51 @@ function AppShell() {
     if (!ready) return;
     void useAppStore.getState().refreshPlugins();
     return api.onPluginChanged(() => void useAppStore.getState().refreshPlugins());
+  }, [ready]);
+
+  // Sessions imported by a plugin must reach the sidebar the same way the
+  // built-in importers do. The sidebar only renders a project group for tabs
+  // the user opened (openProjectPaths) plus the active workspace, so a folder
+  // that was never opened gets a tab here and is expanded, leaving the new
+  // conversations visible immediately. See vastsa/PI-Desktop#134.
+  useEffect(() => {
+    if (!ready) return;
+    return api.onSessionsChanged((event) => {
+      void (async () => {
+        const incoming = (event?.projectPaths ?? []).filter((path) => path && path.trim());
+        if (incoming.length === 0) {
+          await useAppStore.getState().refreshSessions();
+          return;
+        }
+        const state = useAppStore.getState();
+        const missing = incoming.filter((path) => {
+          const key = normalizeProjectPath(path);
+          return (
+            key &&
+            !state.openProjects.some((p) => normalizeProjectPath(p.path) === key) &&
+            !state.openProjectPaths.some((p) => normalizeProjectPath(p) === key)
+          );
+        });
+        if (missing.length > 0) {
+          useAppStore.setState((s) => ({
+            openProjectPaths: [...s.openProjectPaths, ...missing],
+            openProjects: [
+              ...s.openProjects,
+              ...missing.map((path) => {
+                const key = normalizeProjectPath(path);
+                const name = key ? s.projectMeta[key]?.name : undefined;
+                const workspace = projectWorkspaceFromPath(path);
+                return name ? { ...workspace, name } : workspace;
+              }),
+            ],
+          }));
+        }
+        await useAppStore.getState().refreshSessions();
+        for (const path of incoming) {
+          useAppStore.getState().setProjectCollapsed(path, false);
+        }
+      })();
+    });
   }, [ready]);
 
   // Work panel views are filtered by activation scope, so opening a different

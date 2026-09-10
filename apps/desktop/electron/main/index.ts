@@ -597,10 +597,35 @@ const callPluginSessionHost = async (
     (method === "plugin.session.delete" &&
       (result as { deleted?: unknown })?.deleted === true);
   if (changed) {
-    sendToRenderer(IPC.event.sessionsChanged, { reason: method, pluginId });
+    // Carry the affected project paths so the renderer can surface the
+    // receiving projects in the sidebar: a project tab is only rendered for
+    // projects the user has opened (or the active workspace), so sessions
+    // imported into a folder that was never opened would otherwise be
+    // invisible in the sidebar (see vastsa/PI-Desktop#134).
+    sendToRenderer(IPC.event.sessionsChanged, {
+      reason: method,
+      pluginId,
+      projectPaths: collectImportedProjectPaths(input),
+    });
   }
   return result;
 };
+
+/** Distinct projectPath values touched by a plugin session import. */
+function collectImportedProjectPaths(input: unknown): string[] {
+  const source = (input ?? {}) as { sessions?: unknown; session?: unknown };
+  const rows = Array.isArray(source.sessions)
+    ? source.sessions
+    : source.session
+      ? [source.session]
+      : [];
+  const paths = new Set<string>();
+  for (const row of rows) {
+    const path = (row as { projectPath?: unknown })?.projectPath;
+    if (typeof path === "string" && path.trim()) paths.add(path.trim());
+  }
+  return [...paths];
+}
 const callPluginProjectHost = async (
   pluginId: string,
   input: Record<string, unknown>,
@@ -4637,7 +4662,6 @@ function wireHost(h: HostProcess) {
               errorCode: code === "PERMISSION_DENIED" ? "PERMISSION_DENIED" : "TOOL_FAILED",
               content: { error: e instanceof Error ? e.message : String(e) },
             };
-          }
           }
         }
         logger.app("plugin", "info", "plugin tool executed", {

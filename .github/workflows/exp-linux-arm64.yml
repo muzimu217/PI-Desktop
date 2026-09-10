@@ -54,11 +54,12 @@ jobs:
 
       - name: Smoke run on the 2.28 baseline itself
         run: |
-          timeout 8 ./target/release/pi-desktop-host-core > /tmp/hc.log 2>&1
+          timeout 8 ./target/release/pi-desktop-host-core > /tmp/hc.log 2>&1 < /dev/null
           code=$?
-          echo "exit=$code (124=still running => booted OK on glibc 2.28)"
+          echo "exit=$code (0=clean exit on EOF, 124=still running; both mean it booted)"
+          # The startup banner is the hard proof the binary runs on glibc 2.28.
           grep -m1 'host-core starting' /tmp/hc.log || { echo 'no startup log'; exit 1; }
-          [ "$code" -eq 124 ] || exit 1
+          [ "$code" -eq 124 ] || [ "$code" -eq 0 ] || exit 1
 
       - name: Upload low-baseline host-core
         uses: actions/upload-artifact@v4

@@ -331,6 +331,24 @@ fn rpc_err(code: i64, message: impl Into<String>, error_code: &str) -> JsonRpcEr
     }
 }
 
+fn checked_index_root(
+    requested: Option<PathBuf>,
+    current: PathBuf,
+) -> Result<PathBuf, JsonRpcError> {
+    let current = crate::index::normalize_root(&current);
+    let requested = requested
+        .map(|root| crate::index::normalize_root(&root))
+        .unwrap_or_else(|| current.clone());
+    if requested != current {
+        return Err(rpc_err(
+            1002,
+            "rootPath must match the active workspace",
+            "INDEX_ROOT_OUTSIDE_WORKSPACE",
+        ));
+    }
+    Ok(current)
+}
+
 /// Parse the optional session thinking selector at the RPC boundary.  A
 /// missing/null value keeps the backwards-compatible default; present values
 /// must be strings from the host's allowlist rather than being silently
@@ -1013,6 +1031,78 @@ async fn handle_request(
                 .list_projects()
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "projects": projects }))
+        }
+        "index.status" => {
+            let requested_root = params
+                .get("rootPath")
+                .and_then(Value::as_str)
+                .map(PathBuf::from);
+            let (index, current_root) = {
+                let st = state.lock().await;
+                (
+                    st.index.clone(),
+                    st.workspace
+                        .get()
+                        .map(|workspace| PathBuf::from(workspace.path)),
+                )
+            };
+            let Some(current_root) = current_root else {
+                return Ok(json!({ "roots": [] }));
+            };
+            let root = checked_index_root(requested_root, current_root)?;
+            let roots = tokio::task::spawn_blocking(move || index.status(Some(&root)))
+                .await
+                .map_err(|e| rpc_err(1000, e.to_string(), "INDEX_UNAVAILABLE"))?
+                .map_err(|e| rpc_err(1000, e.to_string(), "INDEX_UNAVAILABLE"))?;
+            Ok(json!({ "roots": roots }))
+        }
+        "index.rebuild" => {
+            let requested_root = params
+                .get("rootPath")
+                .and_then(Value::as_str)
+                .map(PathBuf::from);
+            let (index, current_root) = {
+                let st = state.lock().await;
+                (
+                    st.index.clone(),
+                    st.workspace
+                        .get()
+                        .map(|workspace| PathBuf::from(workspace.path)),
+                )
+            };
+            let current_root = current_root
+                .ok_or_else(|| rpc_err(1002, "active workspace required", "INVALID_PARAMS"))?;
+            let root = checked_index_root(requested_root, current_root)?;
+            let status = tokio::task::spawn_blocking(move || {
+                index.rebuild(&root, crate::index::IndexLimits::default())
+            })
+            .await
+            .map_err(|e| rpc_err(1000, e.to_string(), "INDEX_REBUILD_FAILED"))?
+            .map_err(|e| rpc_err(1000, e.to_string(), "INDEX_REBUILD_FAILED"))?;
+            Ok(json!({ "root": status }))
+        }
+        "index.clear" => {
+            let requested_root = params
+                .get("rootPath")
+                .and_then(Value::as_str)
+                .map(PathBuf::from);
+            let (index, current_root) = {
+                let st = state.lock().await;
+                (
+                    st.index.clone(),
+                    st.workspace
+                        .get()
+                        .map(|workspace| PathBuf::from(workspace.path)),
+                )
+            };
+            let current_root = current_root
+                .ok_or_else(|| rpc_err(1002, "active workspace required", "INVALID_PARAMS"))?;
+            let root = checked_index_root(requested_root, current_root)?;
+            let cleared = tokio::task::spawn_blocking(move || index.clear(Some(&root)))
+                .await
+                .map_err(|e| rpc_err(1000, e.to_string(), "INDEX_UNAVAILABLE"))?
+                .map_err(|e| rpc_err(1000, e.to_string(), "INDEX_UNAVAILABLE"))?;
+            Ok(json!({ "ok": true, "cleared": cleared }))
         }
         "workspace.set" => {
             let path = params

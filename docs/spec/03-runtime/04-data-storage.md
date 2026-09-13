@@ -53,6 +53,9 @@ schema v7, v8, and v11:
  ├── plugins/             # code + data + registry.json (unchanged, spec 07-11)
  ├── logs/                # NDJSON app/<category>, host/<category>, agent/<category> logs
  ├── cache/               # disposable caches
+ ├── index/               # rebuildable workspace-search cache (host-core only)
+ │    ├── index.db        # root metadata + file metadata + FTS5 text
+ │    └── index.db.corrupt-<timestamp> # quarantined cache after integrity/schema failure
  ├── review-changes/<sessionId>/<snapshotId>/
  │    ├── before          # bounded pre-tool bytes, when reversible
  │    └── meta.json       # path, hashes, diff state, and ownership
@@ -68,6 +71,16 @@ turn + artifact in one commit). The DB stores **no large payloads**: message
 content lives in `sessions/`, attachments and tool outputs beyond the limits
 of [16-tool-result-limits](16-tool-result-limits.md) live on disk, referenced
 by path/hash.
+
+`index/index.db` is deliberately separate from `pi.sqlite`. It is a disposable,
+rebuildable optimization cache and never filesystem truth. It stores normalized
+root and relative paths, file size and modification time, lifecycle/error
+metadata, and indexed text in FTS5. It stores no credentials, message history,
+project entity records, or file hashes. It is excluded from application backup,
+export, and sync surfaces; corruption or an unsupported index schema quarantines
+the old cache and creates a new empty index without touching `pi.sqlite`.
+P2-A exposes only lifecycle RPCs. Grep does not read this cache until the
+separate P2-B equivalence and fallback work lands.
 
 ### 2.0 Message-owned review snapshots (ADR 0043)
 

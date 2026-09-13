@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 
 use crate::db::Database;
+use crate::index::IndexStore;
 use crate::mcp_servers::McpServerRegistry;
 use crate::permissions::PermissionManager;
 use crate::plans::PlanManager;
@@ -22,6 +23,7 @@ const MAX_BASH_ABORT_TOMBSTONES: usize = 1024;
 pub struct AppState {
     pub data_dir: std::path::PathBuf,
     pub db: Database,
+    pub index: IndexStore,
     pub secrets: SecretStore,
     pub workspace: WorkspaceState,
     pub permissions: PermissionManager,
@@ -79,6 +81,7 @@ impl AppState {
             Err(error) => tracing::warn!(%error, "in-flight reply sweep failed"),
         }
         let secrets = SecretStore::open(data_dir)?;
+        let index = IndexStore::open(data_dir)?;
         // The marketplace source is read before the manager builds its first
         // catalog, so a mirror configured for networks without GitHub access
         // applies on launch instead of only after a manual refresh.
@@ -94,6 +97,7 @@ impl AppState {
         Ok(Self {
             data_dir: data_dir.to_path_buf(),
             db,
+            index,
             secrets,
             workspace: WorkspaceState::default(),
             permissions: PermissionManager::default(),

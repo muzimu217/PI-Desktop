@@ -1383,7 +1383,10 @@ Desktop-only skill market channels (not host RPC) live on Electron IPC:
 - `pi-desktop/skill/market/fetch` — `{ entry }` → `{ name?, description?, body, resources? }`.
   Main fetches the document over the same policy, splits frontmatter, and may
   attach sibling `.md` files from a jsDelivr listing. The renderer installs
-  through existing `skills.create`. Catalog ids are sanitized to host
+  through existing `skills.create`. That policy is the main-process
+  public-network client: syntactic URL guard, DNS classification, per-hop
+  redirect revalidation, and bounded responses — the renderer never reaches
+  the network directly. Catalog ids are sanitized to host
   `valid_capability_id` (`[a-z0-9][a-z0-9-]{0,63}`).
 
 Desktop-only MCP market channels (not host RPC) live on Electron IPC:

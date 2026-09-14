@@ -336,7 +336,6 @@ system while preserving their different data ownership:
   **Copy as mine** (opens the create sheet pre-filled from that definition, with
   the matching template chip selected); they have no enablement switch, reveal,
   or delete because they are not files.
-  are not files.
 - The level filter narrows which groups the panel renders; it never hides the
   toolbar or moves the actions. New capabilities are created at the level the
   filter points at — Global under All or Global, Project under Project — and

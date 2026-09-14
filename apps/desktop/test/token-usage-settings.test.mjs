@@ -23,7 +23,7 @@ test("settings hosts the usage destination inside the data group", () => {
     search.indexOf('id: "index"'),
   );
   assert.match(entry, /group: "data"/);
-  assert.match(settingsPage, /tab === "usage" && settings && \(\n\s*<StatsPage \/>\n\s*\)/);
+  assert.match(settingsPage, /tab === "usage" && <StatsPage \/>/);
   assert.match(api, /getTokenUsageHistory/);
   assert.match(api, /statsSummary: \(rangeDays: 7 \| 30/);
 });

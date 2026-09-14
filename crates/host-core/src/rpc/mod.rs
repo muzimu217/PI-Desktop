@@ -1070,7 +1070,8 @@ async fn handle_request(
             let project_id = params.get("projectId").and_then(Value::as_i64);
             let (summary_value, key) = {
                 let st = state.lock().await;
-                let key = crate::stats::cache_key(&st.db, range_days, project_id)?;
+                let key = crate::stats::cache_key(&st.db, range_days, project_id)
+                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
                 let now = chrono::Utc::now().timestamp_millis();
                 if let Some(cached) = st.stats_cache.get(key, now) {
                     return Ok(cached);

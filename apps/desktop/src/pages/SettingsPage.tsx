@@ -1478,9 +1478,7 @@ export function SettingsPage() {
           {tab === "import" && <ImportSection />}
 
           {tab === "projects" && <ProjectsPage />}
-          {tab === "usage" && settings && (
-            <StatsPage />
-          )}
+          {tab === "usage" && <StatsPage />}
           {tab === "index" && settings && (
             <IndexPage settings={settings} saveSettings={saveSettings} />
           )}

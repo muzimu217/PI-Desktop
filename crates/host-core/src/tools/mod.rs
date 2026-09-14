@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Result};
-use ignore::WalkBuilder;
 use regex::RegexBuilder;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -20,6 +19,7 @@ use crate::index::IndexStore;
 use crate::workspace::{resolve_tool_path_with_external, ToolRoot};
 
 mod grep_rg;
+pub mod ignore_rules;
 pub mod shell;
 
 /// Ceiling on what the streaming capture retains per stream.
@@ -1517,16 +1517,20 @@ fn candidate_files(
         return (vec![search_root.to_path_buf()], false);
     }
 
-    let mut walker = WalkBuilder::new(search_root);
-    walker.hidden(false).git_ignore(true);
-    if scoped {
-        walker.parents(false);
-    }
     let mut candidates: Vec<(PathBuf, SystemTime)> = Vec::new();
     let mut capped = false;
-    for entry in walker.build().flatten() {
+    for entry in ignore_rules::visible_walker(search_root, scoped)
+        .build()
+        .flatten()
+    {
         let path = entry.path();
         if !path.is_file() {
+            continue;
+        }
+        // Whole-workspace searches prune vendor/tooling directories; a path the
+        // caller named explicitly stays reachable (the shared walker already
+        // dropped the parent-scoping rule for that case).
+        if !scoped && ignore_rules::is_vendor_path(search_root, path) {
             continue;
         }
         let relative = path.strip_prefix(search_root).unwrap_or(path);
@@ -3448,6 +3452,86 @@ mod tests {
         .await;
         assert_eq!(limited.content["count"].as_u64(), Some(5));
         assert_eq!(limited.content["truncated"].as_bool(), Some(true));
+    }
+
+    #[test]
+    fn grep_candidates_match_the_index_visible_set() {
+        use crate::index::{IndexLimits, IndexStore};
+
+        // Fixture exercises every visibility rule the shared walker owns:
+        // hidden files, `.pi-desktopignore`, `.gitignore`/`.ignore` (inside a
+        // git repo), vendor directories, and plain content — plus the
+        // content-filter boundaries (binary extension, over-size text) that
+        // must stay visible even though the index never ingests them.
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("src")).unwrap();
+        std::fs::create_dir_all(root.path().join("node_modules/pkg")).unwrap();
+        std::fs::create_dir_all(root.path().join("ignored_dir")).unwrap();
+        std::fs::create_dir_all(root.path().join(".git")).unwrap();
+        std::fs::create_dir_all(root.path().join("build")).unwrap();
+        std::fs::write(root.path().join(".pi-desktopignore"), "private.txt\n").unwrap();
+        std::fs::write(root.path().join(".gitignore"), "build/\n").unwrap();
+        std::fs::write(root.path().join(".ignore"), "ignored_dir/\n").unwrap();
+        std::fs::write(root.path().join("README.md"), "readme\n").unwrap();
+        std::fs::write(root.path().join("src/main.rs"), "fn main() {}\n").unwrap();
+        std::fs::write(root.path().join("private.txt"), "secret\n").unwrap();
+        std::fs::write(root.path().join(".env"), "KEY=1\n").unwrap();
+        std::fs::write(root.path().join("ignored_dir/skipped.txt"), "skipped\n").unwrap();
+        std::fs::write(root.path().join("node_modules/pkg/a.js"), "x\n").unwrap();
+        std::fs::write(root.path().join(".git/config"), "[core]\n").unwrap();
+        std::fs::write(root.path().join("build/out.js"), "x\n").unwrap();
+        // Visible but never ingested: a binary extension and an over-size text
+        // file. Grep still searches both, so both sets below must still contain
+        // them. This is the boundary the P2-B contract lives or dies on: if the
+        // index dropped them, the fast path would silently report fewer hits.
+        std::fs::write(root.path().join("image.png"), [0_u8, 1, 2, 3]).unwrap();
+        std::fs::write(
+            root.path().join("big.txt"),
+            "b".repeat(crate::index::MAX_FILE_BYTES as usize + 1),
+        )
+        .unwrap();
+
+        let data = tempfile::tempdir().unwrap();
+        let store = IndexStore::open(data.path()).unwrap();
+        store.rebuild(root.path(), IndexLimits::default()).unwrap();
+        let mut indexed = store.indexed_rel_paths(root.path()).unwrap();
+        indexed.sort();
+
+        let (candidates, _capped) = candidate_files(root.path(), false, None, 20_000);
+        let mut candidate_rel: Vec<String> = candidates
+            .iter()
+            .map(|path| {
+                path.strip_prefix(root.path())
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            })
+            .collect();
+        candidate_rel.sort();
+
+        // The index crawler and Grep's candidate walk must agree exactly.
+        // This is the P2-B invariant: the fast path may only narrow the
+        // candidate set, never change which files a search can reach.
+        assert_eq!(indexed, candidate_rel);
+        assert_eq!(
+            indexed,
+            vec![
+                ".env".to_string(),
+                // Dotfiles are visible on both sides: the walker runs with
+                // `hidden(false)`, matching the `--hidden` flag Grep passes to
+                // system rg. `.gitignore`/`.ignore` are therefore reachable
+                // content, not tooling metadata, even though they *drive* the
+                // ignore rules.
+                ".gitignore".to_string(),
+                ".ignore".to_string(),
+                "README.md".to_string(),
+                // Never ingested, still searchable: the index records these so
+                // the fast path cannot drop them.
+                "big.txt".to_string(),
+                "image.png".to_string(),
+                "src/main.rs".to_string()
+            ]
+        );
     }
 
     #[tokio::test]

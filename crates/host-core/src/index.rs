@@ -5,7 +5,6 @@
 //! the result-equivalence contract has executable coverage.
 
 use anyhow::{Context, Result};
-use ignore::WalkBuilder;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -17,7 +16,10 @@ pub mod fast_path;
 pub const MAX_FILES: usize = 50_000;
 pub const MAX_FILE_BYTES: u64 = 1024 * 1024;
 pub const MAX_INDEXED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
-const INDEX_SCHEMA_VERSION: i64 = 1;
+// v2 stores the whole *visible* file set, not just the ingested subset: the
+// `files` table gained `content_indexed`. The index is a rebuildable cache, so
+// `open` quarantines a v1 database and re-crawls rather than migrating.
+const INDEX_SCHEMA_VERSION: i64 = 2;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,7 +82,10 @@ struct IndexedFile {
     rel_path: String,
     size: u64,
     mtime_ms: i64,
-    body: String,
+    /// `None` when the file is visible but was never ingested (binary
+    /// extension, over-size text, unreadable). Such files are still stored so
+    /// the persisted set stays equal to the set Grep can reach.
+    body: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -194,7 +199,14 @@ impl IndexStore {
                     &root,
                     RootUpdate {
                         status,
-                        file_count: result.files.len() as i64,
+                        // The health card's "files indexed" figure stays about
+                        // ingested content. The visible-but-unindexed rows
+                        // exist for search completeness, not for display.
+                        file_count: result
+                            .files
+                            .iter()
+                            .filter(|file| file.body.is_some())
+                            .count() as i64,
                         indexed_bytes: result.indexed_bytes as i64,
                         error_count: result.error_count,
                         last_error: message.as_deref(),
@@ -248,6 +260,24 @@ impl IndexStore {
         };
         transaction.commit()?;
         Ok(count)
+    }
+
+    /// Test-only: the relative paths currently stored for `root`. With schema
+    /// v2 this is the whole *visible* set (ingested or not), which is exactly
+    /// what the Grep-vs-index diff test needs to compare.
+    #[cfg(test)]
+    pub fn indexed_rel_paths(&self, root: &Path) -> Result<Vec<String>> {
+        let normalized = normalize_root(root).to_string_lossy().into_owned();
+        let connection = self.connection()?;
+        let mut statement = connection.prepare(
+            "SELECT f.rel_path FROM files AS f
+             JOIN indexed_roots AS r ON r.root_id = f.root_id
+             WHERE r.root_path = ?1
+             ORDER BY f.rel_path",
+        )?;
+        let rows = statement.query_map([normalized], |row| row.get::<_, String>(0))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     fn connection(&self) -> Result<Connection> {
@@ -310,6 +340,7 @@ mod fts {
             rel_path TEXT NOT NULL,
             size INTEGER NOT NULL,
             mtime_ms INTEGER NOT NULL,
+            content_indexed INTEGER NOT NULL DEFAULT 1,
             PRIMARY KEY (root_id, rel_path)
         );
         CREATE VIRTUAL TABLE IF NOT EXISTS file_content_fts USING fts5(
@@ -330,29 +361,10 @@ mod fts {
 
 fn scan_root(root: &Path, limits: IndexLimits) -> Result<ScanResult> {
     let mut result = ScanResult::default();
-    let mut walker = WalkBuilder::new(root);
-    walker
-        .hidden(false)
-        .git_ignore(true)
-        .git_global(false)
-        .git_exclude(true)
-        .add_custom_ignore_filename(".pi-desktopignore");
-    // `add_custom_ignore_filename` applies to ignore files found in walked
-    // subdirectories only; the workspace root's own `.pi-desktopignore` is
-    // loaded as an override so its rules constrain the whole scan, matching
-    // the Grep tool's ignore semantics.
-    let mut overrides = ignore::overrides::OverrideBuilder::new(root);
-    if let Ok(rules) = std::fs::read_to_string(root.join(".pi-desktopignore")) {
-        for line in rules.lines().map(str::trim) {
-            if !line.is_empty() && !line.starts_with('#') {
-                let _ = overrides.add(&format!("!{line}"));
-            }
-        }
-    }
-    if let Ok(overrides) = overrides.build() {
-        walker.overrides(overrides);
-    }
-    for entry in walker.build() {
+    // The crawler and Grep share one visible-set definition; see
+    // `crate::tools::ignore_rules`. The crawler always covers the whole root,
+    // so it uses the unscoped walk.
+    for entry in crate::tools::ignore_rules::visible_walker(root, false).build() {
         let entry = match entry {
             Ok(entry) => entry,
             Err(_) => {
@@ -363,7 +375,7 @@ fn scan_root(root: &Path, limits: IndexLimits) -> Result<ScanResult> {
         if !entry
             .file_type()
             .is_some_and(|file_type| file_type.is_file())
-            || is_ignored_path(root, entry.path())
+            || crate::tools::ignore_rules::is_vendor_path(root, entry.path())
         {
             continue;
         }
@@ -379,26 +391,33 @@ fn scan_root(root: &Path, limits: IndexLimits) -> Result<ScanResult> {
             }
         };
         let size = metadata.len();
-        if size > limits.max_file_bytes {
-            continue;
-        }
-        if result.indexed_bytes.saturating_add(size) > limits.max_indexed_bytes {
-            result.over_limit = true;
-            break;
-        }
-        let body = match std::fs::read_to_string(entry.path()) {
-            Ok(body) => body,
-            Err(_) => {
-                result.error_count += 1;
-                continue;
+        // The content filters below decide whether a *visible* file is worth
+        // ingesting — not whether it exists. A filtered file still gets a row
+        // (with `content_indexed = 0`) so the stored set keeps matching the set
+        // Grep can reach; the fast path then re-scans it instead of losing it.
+        let body = if size <= limits.max_file_bytes && !is_binary_extension(entry.path()) {
+            match std::fs::read_to_string(entry.path()) {
+                Ok(body) => Some(body),
+                Err(_) => {
+                    result.error_count += 1;
+                    None
+                }
             }
+        } else {
+            None
         };
+        if body.is_some() {
+            if result.indexed_bytes.saturating_add(size) > limits.max_indexed_bytes {
+                result.over_limit = true;
+                break;
+            }
+            result.indexed_bytes = result.indexed_bytes.saturating_add(size);
+        }
         let rel_path = entry
             .path()
             .strip_prefix(root)
             .map(normalize_rel_path)
             .unwrap_or_else(|_| normalize_rel_path(entry.path()));
-        result.indexed_bytes = result.indexed_bytes.saturating_add(size);
         result.files.push(IndexedFile {
             rel_path,
             size,
@@ -414,17 +433,12 @@ fn scan_root(root: &Path, limits: IndexLimits) -> Result<ScanResult> {
     Ok(result)
 }
 
-fn is_ignored_path(root: &Path, path: &Path) -> bool {
-    let relative = path.strip_prefix(root).unwrap_or(path);
-    relative.components().any(|component| {
-        let name = component.as_os_str().to_string_lossy();
-        // `.pi-desktopignore` is scan configuration, not workspace content.
-        matches!(
-            name.as_ref(),
-            ".git" | ".pi-desktopignore" | "node_modules" | "target"
-        )
-    }) || path
-        .extension()
+/// Binary/archival extensions the index never ingests. This is a *content*
+/// filter, not a visibility rule: such files stay visible to Grep and are
+/// simply not worth indexing. Vendor/ignore visibility lives in
+/// `crate::tools::ignore_rules`.
+fn is_binary_extension(path: &Path) -> bool {
+    path.extension()
         .and_then(|extension| extension.to_str())
         .is_some_and(|extension| {
             matches!(
@@ -464,13 +478,23 @@ fn replace_root_files(connection: &Connection, root_id: &str, files: &[IndexedFi
     transaction.execute("DELETE FROM file_content_fts WHERE root_id = ?1", [root_id])?;
     for file in files {
         transaction.execute(
-            "INSERT INTO files (root_id, rel_path, size, mtime_ms) VALUES (?1, ?2, ?3, ?4)",
-            params![root_id, file.rel_path, file.size as i64, file.mtime_ms],
+            "INSERT INTO files (root_id, rel_path, size, mtime_ms, content_indexed) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                root_id,
+                file.rel_path,
+                file.size as i64,
+                file.mtime_ms,
+                if file.body.is_some() { 1_i64 } else { 0_i64 }
+            ],
         )?;
-        transaction.execute(
-            "INSERT INTO file_content_fts (root_id, rel_path, body) VALUES (?1, ?2, ?3)",
-            params![root_id, file.rel_path, file.body],
-        )?;
+        // Only ingested files reach the full-text table, so an FTS hit always
+        // implies a readable body behind it.
+        if let Some(body) = &file.body {
+            transaction.execute(
+                "INSERT INTO file_content_fts (root_id, rel_path, body) VALUES (?1, ?2, ?3)",
+                params![root_id, file.rel_path, body],
+            )?;
+        }
     }
     transaction.commit()?;
     Ok(())
@@ -567,6 +591,17 @@ mod tests {
         assert_eq!(status.status, "fresh");
         assert_eq!(status.file_count, 2);
         assert!(status.indexed_bytes > 0);
+        // The binary file is visible but not ingested. Both halves matter: it
+        // must be recorded (so the fast path still searches it) yet must not
+        // count as indexed content.
+        assert_eq!(
+            store.indexed_rel_paths(root.path()).unwrap(),
+            vec![
+                "README.md".to_string(),
+                "image.png".to_string(),
+                "notes.md".to_string()
+            ]
+        );
     }
 
     #[test]

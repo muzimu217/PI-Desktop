@@ -9,10 +9,18 @@
 //! ## Safety precondition (do not relax without a diff test)
 //!
 //! Correctness of the fast path rests on the index visible set equalling the
-//! Grep visible set — the "same ignore rules" invariant from the P2 plan. That
-//! parity is *not* yet proven in this tree, so the caller MUST keep the fast
-//! path behind the opt-in `indexGrepBoost` switch (default off). Enabling it
-//! before the visible-set diff test passes would silently change Grep results.
+//! Grep visible set. Two mechanisms hold that up, and both are covered by
+//! tests — remove either and Grep silently changes its answer:
+//!
+//! 1. `crate::tools::ignore_rules` is the single definition of the visible set,
+//!    shared by this module's crawler and by Grep's candidate walk
+//!    (`grep_candidates_match_the_index_visible_set` asserts equality).
+//! 2. Files that are visible but not ingested (binary extension, over-size
+//!    text) are appended to every candidate set, so "not indexed" can never
+//!    silently become "not searched".
+//!
+//! The fast path still stays behind the opt-in `indexGrepBoost` switch for the
+//! remaining P2-B work (settings wiring, E2E coverage).
 
 use anyhow::Result;
 use rusqlite::{params, OptionalExtension};
@@ -138,6 +146,32 @@ fn select_candidates_inner(
         // Too wide to be a cheap narrowing; let the fallback search handle it.
         return Ok(None);
     }
+
+    // Files the crawler saw but never ingested — binary extensions, over-size
+    // text — are still visible to Grep, so they must still be searched. They
+    // can never appear in the FTS hits, so they are appended unconditionally
+    // and handed to the caller's line scanner exactly like a fallback candidate.
+    // Dropping them would turn "not indexed" into "not searched": a silent
+    // false negative that no drift check can detect.
+    let mut unindexed = connection.prepare(
+        "SELECT rel_path, size, mtime_ms
+         FROM files
+         WHERE root_id = ?1 AND content_indexed = 0
+         ORDER BY mtime_ms DESC, rel_path ASC",
+    )?;
+    let rows = unindexed.query_map([&root_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, i64>(1)?,
+            row.get::<_, i64>(2)?,
+        ))
+    })?;
+    for row in rows {
+        candidates.push(row?);
+    }
+    if candidates.len() > cap {
+        return Ok(None);
+    }
     if candidates.is_empty() {
         return Ok(Some(Vec::new()));
     }
@@ -216,6 +250,41 @@ mod tests {
         match select_candidates(&store, root.path(), "absent", 20_000) {
             CandidateSelection::Ready(files) => assert!(files.is_empty()),
             CandidateSelection::Fallback => panic!("empty match set is still served"),
+        }
+    }
+
+    #[test]
+    fn content_filtered_visible_files_stay_candidates() {
+        let data = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("hit.txt"), "the literal needle is here\n").unwrap();
+        fs::write(root.path().join("miss.txt"), "nothing to see\n").unwrap();
+        // Never ingested: binary extension, and text past the size cap. Both
+        // are still visible to Grep, so both must survive as candidates —
+        // otherwise a hit inside them would be reported as no hit at all.
+        fs::write(root.path().join("image.png"), [0_u8, 1, 2, 3]).unwrap();
+        fs::write(
+            root.path().join("big.txt"),
+            "b".repeat(crate::index::MAX_FILE_BYTES as usize + 1),
+        )
+        .unwrap();
+        let store = IndexStore::open(data.path()).unwrap();
+        let status = store.rebuild(root.path(), IndexLimits::default()).unwrap();
+        assert_eq!(status.status, "fresh");
+        assert_eq!(status.file_count, 2, "only hit.txt/miss.txt are ingested");
+
+        match select_candidates(&store, root.path(), "needle", 20_000) {
+            CandidateSelection::Ready(files) => {
+                let mut names: Vec<String> = files
+                    .iter()
+                    .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
+                    .collect();
+                names.sort();
+                // FTS hit + both unindexed files. `miss.txt` is ingested and
+                // does not match, so narrowing still happens.
+                assert_eq!(names, vec!["big.txt", "hit.txt", "image.png"]);
+            }
+            CandidateSelection::Fallback => panic!("fresh index must serve"),
         }
     }
 

@@ -1062,6 +1062,41 @@ async fn handle_request(
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "projects": projects }))
         }
+        "stats.summary" => {
+            let range_days = match params.get("rangeDays").and_then(Value::as_i64) {
+                Some(days @ 7) | Some(days @ 30) => days,
+                _ => 30,
+            };
+            let project_id = params.get("projectId").and_then(Value::as_i64);
+            let (summary_value, key) = {
+                let st = state.lock().await;
+                let key = crate::stats::cache_key(&st.db, range_days, project_id)?;
+                let now = chrono::Utc::now().timestamp_millis();
+                if let Some(cached) = st.stats_cache.get(key, now) {
+                    return Ok(cached);
+                }
+                let summary = crate::stats::summary(&st.db, range_days, project_id)
+                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+                let value = serde_json::to_value(&summary)
+                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+                (value, key)
+            };
+            let now = chrono::Utc::now().timestamp_millis();
+            state.lock().await.stats_cache.put(key, now, summary_value.clone());
+            Ok(summary_value)
+        }
+        "stats.topSessions" => {
+            let range_days = match params.get("rangeDays").and_then(Value::as_i64) {
+                Some(days @ 7) | Some(days @ 30) => days,
+                _ => 30,
+            };
+            let project_id = params.get("projectId").and_then(Value::as_i64);
+            let limit = params.get("limit").and_then(Value::as_i64).unwrap_or(5);
+            let st = state.lock().await;
+            let sessions = crate::stats::top_sessions(&st.db, range_days, project_id, limit)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            Ok(json!({ "sessions": sessions }))
+        }
         "index.status" => {
             let requested_root = params
                 .get("rootPath")

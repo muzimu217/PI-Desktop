@@ -1206,6 +1206,23 @@ Each scenario is documented in this format:
 - **Status**: Automated at the RPC boundary in host-core
   (`workspace_set_auto_indexes_only_when_a_switch_is_on`)
 
+#### E2E-STATS-summary-cards-range: usage summary renders host aggregation
+
+- **Preconditions**: Completed turns exist in the host database (fixture);
+  the Usage destination is available under Data & Statistics.
+- **Steps**: 1) Open Settings → Usage. 2) Switch the range between 7 and 30
+  days. 3) Refresh. 4) Export CSV and JSON.
+- **Expected**: Cards, heatmap, trend, model donut, insights, and top
+  sessions reflect `stats.summary` / `stats.topSessions` values for the
+  selected range; the page states the numbers are computed locally. Export
+  produces CSV/JSON of the current view. Range switching never mutates data.
+- **Specs linked**: `04-ux/06-settings-ia.md`,
+  `03-runtime/06-host-rpc-protocol.md`
+- **Acceptance**: B (model config adjacent), Quality (data correctness)
+- **Milestone**: M6+
+- **Status**: Aggregation covered by host-core unit tests
+  (`stats::tests`); UI journey pending
+
 ### Workspace Open
 
 #### E2E-012: Open a project directory

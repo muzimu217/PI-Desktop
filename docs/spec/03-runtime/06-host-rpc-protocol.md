@@ -192,6 +192,14 @@ type ToolBudgetHealth = {
 - `workspace.set`
 - `workspace.clear`
 
+### Usage statistics
+- `stats.summary({rangeDays: 7|30, projectId?})` — cards, diagnostics, daily
+  totals, per-model series, model/project usage shares, and the 365-day
+  heatmap, aggregated from completed turns of non-deleted sessions. TTL-cached
+  per (range, project, timezone, metric version, last turn end).
+- `stats.topSessions({rangeDays, projectId?, limit?})` — highest-spend
+  sessions for the jump card.
+
 ### Workspace index (P2-A foundation)
 - `index.status({rootPath?})` returns lifecycle status for the host-owned,
   disposable workspace index. It never exposes file contents.

@@ -16,6 +16,7 @@ export type SettingsTabId =
   | "subagents"
   | "import"
   | "projects"
+  | "usage"
   | "index"
   | "about";
 
@@ -209,6 +210,19 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "project.searchPlaceholder",
       "project.archive",
       "project.restore",
+    ],
+  },
+  {
+    id: "usage",
+    labelKey: "settings.nav.usage",
+    titleKey: "settings.usage",
+    group: "data",
+    keywordKeys: [
+      "stats.totalTokens",
+      "stats.activity",
+      "stats.modelUsage",
+      "stats.insights",
+      "stats.topSessions",
     ],
   },
   {

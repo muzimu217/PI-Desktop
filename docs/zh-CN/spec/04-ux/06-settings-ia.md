@@ -89,9 +89,15 @@
   会话；记录显示每次压缩发生的位置以及上下文
   使用检查器显示是否安装了检查点。
 
-Token 用量**不是设置目的地**（D335 / ADR 0173）。已完成回合历史仍由宿主
-持久化（`session.endTurn.usage`、`stats.getTokenUsageHistory`）。面向用户的
-仪表盘是市场插件 `pi.token-insights`，从命令面板打开（`usage`、`用量`）。
+### 使用统计（`usage` 选项卡，`数据与统计` 分组）
+
+修订 D335 / ADR 0173（ADR 0181）：Usage 目的地回归设置页，提供宿主自有口径。
+页面读取 `stats.summary` / `stats.topSessions`——范围切换（7/30 天）、指标卡
+（累计 Token、峰值日、最长纯对话时长、当前连续天数）、365 天热力图、每日趋势、
+模型环形图、诊断（缓存杠杆率/大上下文占比/Top 5 集中度）、高消耗会话、CSV/JSON
+导出，以及「统计由本地计算」的数据来源声明。`pi.token-insights` 插件继续承担
+跨工具仪表盘；已完成回合历史仍由宿主持有（`session.endTurn.usage`、
+`stats.getTokenUsageHistory`）。
 设置搜索不索引用量页。
 
 ### 快捷方式（`shortcuts` 选项卡）

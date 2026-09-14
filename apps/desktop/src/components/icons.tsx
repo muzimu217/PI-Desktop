@@ -3,6 +3,7 @@ import {
   Activity,
   AppWindow,
   Archive,
+  BarChart3,
   ArchiveRestore,
   ArrowDown,
   ArrowUp,
@@ -141,6 +142,7 @@ export const IconBookOpen = icon(BookOpen);
 export const IconClipboard = icon(ClipboardPaste);
 export const IconArchive = icon(Archive);
 export const IconDatabase = icon(Database);
+export const IconBarChart = icon(BarChart3);
 export const IconArchiveRestore = icon(ArchiveRestore);
 export const IconActivity = icon(Activity);
 export const IconArrowUpDown = icon(ArrowUpDown);

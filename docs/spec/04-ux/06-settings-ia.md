@@ -135,11 +135,17 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   session; the transcript shows where each compaction happened and the context
   usage inspector shows whether a checkpoint is installed.
 
-Token usage is **not a Settings destination** (D335 / ADR 0173). Completed-turn
-history stays host-owned (`session.endTurn.usage`, `stats.getTokenUsageHistory`).
-The user-facing dashboard is marketplace plugin `pi.token-insights`, opened from
-the command palette (`usage`, `tokens`, `用量`). Settings search does not index
-a usage tab.
+### Usage statistics (`usage` tab, `Data & Statistics` group)
+
+Amends D335 / ADR 0173 (ADR 0181): the Usage destination returns to Settings
+for the host-owned view. The page reads `stats.summary` /
+`stats.topSessions` — range switch (7/30 days), cards (total tokens,
+peak day, longest pure-chat time, current streak), 365-day heatmap, daily
+trend, model donut, insights (cache leverage, large-context share, top-5
+session share), top sessions, CSV/JSON export, and a provenance note stating
+the numbers are computed locally. The `pi.token-insights` plugin remains the
+cross-tool dashboard; completed-turn history stays host-owned
+(`session.endTurn.usage`, `stats.getTokenUsageHistory`).
 
 ### Shortcuts (`shortcuts` tab)
 - **Keyboard shortcuts** card:

@@ -827,6 +827,16 @@ export const api = {
       IPC.invoke.statsGetTokenUsageHistory,
       query,
     ),
+  statsSummary: (rangeDays: 7 | 30, projectId?: number) =>
+    invoke<import("@pi-desktop/shared").StatsSummary>(IPC.invoke.statsSummary, {
+      rangeDays,
+      projectId,
+    }),
+  statsTopSessions: (rangeDays: 7 | 30, projectId?: number, limit = 5) =>
+    invoke<{ sessions: import("@pi-desktop/shared").StatsTopSession[] }>(
+      IPC.invoke.statsTopSessions,
+      { rangeDays, projectId, limit },
+    ),
   indexStatus: (rootPath?: string) =>
     invoke<{ roots: import("@pi-desktop/shared").WorkspaceIndexRoot[] }>(
       IPC.invoke.indexStatus,

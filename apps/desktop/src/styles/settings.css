@@ -2149,3 +2149,83 @@
   font-size: var(--text-sm);
   line-height: var(--leading-normal);
 }
+
+/* Usage statistics page */
+.stats-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+}
+
+.stats-heatmap {
+  width: 100%;
+  height: auto;
+  margin-bottom: var(--space-3, 12px);
+}
+
+.stats-heat-cell {
+  fill: color-mix(in oklab, var(--ds-text) 8%, transparent);
+  rx: 2;
+}
+
+.stats-heat-1 { fill: color-mix(in oklab, var(--ds-accent) 25%, transparent); }
+.stats-heat-2 { fill: color-mix(in oklab, var(--ds-accent) 45%, transparent); }
+.stats-heat-3 { fill: color-mix(in oklab, var(--ds-accent) 65%, transparent); }
+.stats-heat-4 { fill: var(--ds-accent); }
+
+.stats-trend {
+  width: 100%;
+  height: 120px;
+}
+
+.stats-trend-line {
+  stroke: var(--ds-accent);
+  stroke-width: 2;
+}
+
+.stats-donut-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 12px);
+}
+
+.stats-donut {
+  width: 120px;
+  height: 120px;
+  transform: rotate(-90deg);
+}
+
+.stats-donut-seg { stroke-width: 6; }
+.stats-seg-0 { stroke: var(--ds-accent); }
+.stats-seg-1 { stroke: var(--ds-success); }
+.stats-seg-2 { stroke: var(--ds-warning); }
+.stats-seg-3 { stroke: var(--ds-info, var(--ds-accent)); }
+.stats-seg-4 { stroke: var(--ds-text-secondary); }
+.stats-seg-5 { stroke: var(--ds-error); }
+
+.stats-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--text-sm);
+  color: var(--ds-text-secondary);
+}
+
+.stats-legend li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3, 12px);
+}
+
+.stats-insights {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  font-size: var(--text-sm);
+}
+
+.stats-insights li {
+  display: flex;
+  justify-content: space-between;
+  color: var(--ds-text-secondary);
+}

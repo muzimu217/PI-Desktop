@@ -326,6 +326,7 @@ test("settings nav keeps a flat searchable index with titled visual groups", () 
     "agent",
     "import",
     "projects",
+    "usage",
     "index",
     "about",
   ].map((id) => settingsSearchSource.indexOf(`id: "${id}"`));
@@ -336,7 +337,6 @@ test("settings nav keeps a flat searchable index with titled visual groups", () 
   const shortcutsStart = settingsSearchSource.indexOf('id: "shortcuts"');
   const generalEntry = settingsSearchSource.slice(generalStart, aiStart);
   const aiEntry = settingsSearchSource.slice(aiStart, shortcutsStart);
-  assert.equal(settingsSearchSource.indexOf('id: "usage"'), -1);
   assert.doesNotMatch(generalEntry, /settings\.defaultsTitle/);
   assert.match(aiEntry, /settings\.defaultsTitle/);
   assert.match(aiEntry, /settings\.commandShell/);

@@ -19,6 +19,7 @@ mod scratch;
 mod secrets;
 mod sessions;
 mod state;
+mod stats;
 mod tool_budget;
 mod tools;
 mod transcripts;

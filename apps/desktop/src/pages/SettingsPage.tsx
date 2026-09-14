@@ -33,6 +33,7 @@ import {
 import {
   IconArchive,
   IconBookOpen,
+  IconBarChart,
   IconDatabase,
   IconBot,
   IconChevronLeft,
@@ -58,6 +59,7 @@ import { AgentSkillsPage } from "../components/settings/AgentSkillsPage";
 import { AgentMcpPage } from "../components/settings/AgentMcpPage";
 import { AgentSubagentsPage } from "../components/settings/AgentSubagentsPage";
 import { IndexPage } from "../components/settings/IndexPage";
+import { StatsPage } from "../components/settings/StatsPage";
 
 type SettingsTab = ReturnType<typeof useAppStore.getState>["settingsTab"];
 
@@ -1240,6 +1242,7 @@ export function SettingsPage() {
       subagents: <IconBot size={14} />,
       import: <IconDownload size={14} />,
       projects: <IconArchive size={14} />,
+      usage: <IconBarChart size={14} />,
       index: <IconDatabase size={14} />,
       about: <IconInfo size={14} />,
     };
@@ -1475,6 +1478,9 @@ export function SettingsPage() {
           {tab === "import" && <ImportSection />}
 
           {tab === "projects" && <ProjectsPage />}
+          {tab === "usage" && settings && (
+            <StatsPage />
+          )}
           {tab === "index" && settings && (
             <IndexPage settings={settings} saveSettings={saveSettings} />
           )}

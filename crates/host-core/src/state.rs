@@ -10,6 +10,7 @@ use crate::permissions::PermissionManager;
 use crate::plans::PlanManager;
 use crate::plugins::PluginManager;
 use crate::secrets::SecretStore;
+use crate::stats;
 use crate::tool_budget::ToolBudget;
 use crate::user_skills::UserSkillRegistry;
 use crate::user_subagents::UserSubagentRegistry;
@@ -24,6 +25,7 @@ pub struct AppState {
     pub data_dir: std::path::PathBuf,
     pub db: Database,
     pub index: IndexStore,
+    pub stats_cache: stats::SummaryCache,
     pub secrets: SecretStore,
     pub workspace: WorkspaceState,
     pub permissions: PermissionManager,
@@ -98,6 +100,7 @@ impl AppState {
             data_dir: data_dir.to_path_buf(),
             db,
             index,
+            stats_cache: stats::SummaryCache::default(),
             secrets,
             workspace: WorkspaceState::default(),
             permissions: PermissionManager::default(),

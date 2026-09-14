@@ -6996,6 +6996,19 @@ function registerIpc() {
     },
   );
 
+  handle(IPC.invoke.statsSummary, async (input?: { rangeDays?: number; projectId?: number }) => {
+    if (!host) throw new Error("host unavailable");
+    return host.call("stats.summary", input ?? {});
+  });
+
+  handle(
+    IPC.invoke.statsTopSessions,
+    async (input?: { rangeDays?: number; projectId?: number; limit?: number }) => {
+      if (!host) throw new Error("host unavailable");
+      return host.call("stats.topSessions", input ?? {});
+    },
+  );
+
   handle(IPC.invoke.indexStatus, async (input?: { rootPath?: string }) => {
     if (!host) throw new Error("host unavailable");
     return host.call("index.status", input ?? {});

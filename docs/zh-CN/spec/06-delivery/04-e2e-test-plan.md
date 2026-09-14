@@ -732,6 +732,18 @@ M5。
 - **状态**：host-core RPC 边界已自动化
   （`workspace_set_auto_indexes_only_when_a_switch_is_on`）
 
+#### E2E-STATS-summary-cards-range：使用统计页渲染宿主聚合
+
+- **前置条件**：宿主数据库存在已完成回合（fixture）；「数据与统计」分组下可用「使用统计」。
+- **步骤**：1）打开 设置 → 使用统计。2）在 7/30 天间切换范围。3）刷新。4）导出 CSV 与 JSON。
+- **预期**：指标卡、热力图、趋势、模型环形图、诊断与高消耗会话反映所选范围的
+  `stats.summary` / `stats.topSessions` 数值；页面声明统计由本地计算。导出生成当前视图的
+  CSV/JSON。范围切换不改动任何数据。
+- **关联规格**：`04-ux/06-settings-ia.md`、`03-runtime/06-host-rpc-protocol.md`
+- **验收**：质量（数据正确性）
+- **里程碑**：M6+
+- **状态**：聚合由 host-core 单测覆盖（`stats::tests`）；UI 旅程待补
+
 ### 工作区打开
 
 #### E2E-012：打开项目目录

@@ -1923,6 +1923,48 @@ export type TokenUsageHistoryResult = {
   };
 };
 
+export type StatsDayTotal = { date: string; tokens: number };
+export type StatsDayModel = { date: string; modelId: string; tokens: number };
+export type StatsModelUsage = { modelId: string; tokens: number; share: number };
+export type StatsProjectUsage = {
+  projectId: number | null;
+  projectName: string | null;
+  tokens: number;
+  share: number;
+};
+export type StatsSummary = {
+  range: { startMs: number; endMs: number };
+  scope: { projectId: number | null };
+  cards: {
+    totalTokens: number;
+    peakDayTokens: number;
+    longestChatMs: number;
+    currentStreakDays: number;
+    longestStreakDays: number;
+    sessionCount: number;
+    turnCount: number;
+  };
+  diagnostics: {
+    cacheLeverage: number;
+    cacheReadTokens: number;
+    largeContextTurnShare: number;
+    top5SessionShare: number;
+  };
+  dailyTotals: StatsDayTotal[];
+  dailyByModel: StatsDayModel[];
+  modelUsage: StatsModelUsage[];
+  projectUsage: StatsProjectUsage[];
+  heatmap: StatsDayTotal[];
+  generatedAt: number;
+};
+export type StatsTopSession = {
+  sessionId: string;
+  title: string | null;
+  tokens: number;
+  turnCount: number;
+  lastActiveMs: number;
+};
+
 export type WorkspaceIndexRootStatus =
   | "fresh"
   | "building"

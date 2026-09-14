@@ -2,8 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { WorkspaceIndexRoot } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
-import { Button } from "../ui";
-import { IconDatabase } from "../icons";
+import { Button, cx } from "../ui";
+import {
+  IconActivity,
+  IconDatabase,
+  IconFileText,
+  IconRefresh,
+} from "../icons";
 
 type LoadState =
   | { kind: "loading" }
@@ -31,14 +36,44 @@ function formatRelative(updatedAt: number): string {
 }
 
 const STATUS_TONE: Record<WorkspaceIndexRoot["status"], string> = {
-  fresh: "settings-index-status ok",
-  building: "settings-index-status busy",
-  stale: "settings-index-status warn",
-  failed: "settings-index-status error",
-  partial: "settings-index-status warn",
-  disabled: "settings-index-status",
-  skipped_over_limit: "settings-index-status warn",
+  fresh: "ok",
+  building: "busy",
+  stale: "warn",
+  failed: "error",
+  partial: "warn",
+  disabled: "",
+  skipped_over_limit: "warn",
 };
+
+function MetricTile({
+  icon,
+  tone,
+  label,
+  value,
+  caption,
+  badge,
+}: {
+  icon: React.ReactNode;
+  tone: "accent" | "success" | "warning" | "danger";
+  label: string;
+  value: React.ReactNode;
+  caption?: string;
+  badge?: React.ReactNode;
+}) {
+  return (
+    <div className="idx-tile">
+      <div className="idx-tile-head">
+        <span className={cx("idx-chip", `idx-chip-${tone}`)} aria-hidden="true">
+          {icon}
+        </span>
+        <span className="idx-tile-label">{label}</span>
+        {badge}
+      </div>
+      <div className="idx-tile-value">{value}</div>
+      {caption ? <div className="idx-tile-caption">{caption}</div> : null}
+    </div>
+  );
+}
 
 export function IndexPage() {
   const { t } = useTranslation();
@@ -95,7 +130,7 @@ export function IndexPage() {
   if (state.kind === "loading") {
     return (
       <div className="settings-stack" role="status">
-        <span className="settings-index-state">{t("index.loading")}</span>
+        <span className="idx-state">{t("index.loading")}</span>
       </div>
     );
   }
@@ -127,58 +162,44 @@ export function IndexPage() {
         <h3 className="settings-card-heading">{t("index.card.health")}</h3>
         <div className="settings-panel">
           {root ? (
-            <>
-              <div className="settings-row">
-                <div className="settings-row-copy">
-                  <div className="settings-row-title">{t("index.card.status")}</div>
-                  <div className="settings-row-desc">{t("index.statusDesc")}</div>
-                </div>
-                <div className="settings-row-control">
-                  <span className={STATUS_TONE[root.status]}>
+            <div className="idx-grid">
+              <MetricTile
+                icon={<IconActivity size={14} />}
+                tone={root.status === "fresh" ? "success" : root.status === "failed" ? "danger" : "warning"}
+                label={t("index.card.status")}
+                value={
+                  <span className={cx("idx-status", STATUS_TONE[root.status])}>
                     {t(`index.status.${root.status}`)}
                   </span>
-                </div>
-              </div>
-              <div className="settings-row">
-                <div className="settings-row-copy">
-                  <div className="settings-row-title">{t("index.card.files")}</div>
-                </div>
-                <div className="settings-row-control">
-                  <span className="settings-index-metric">{root.fileCount}</span>
-                </div>
-              </div>
-              <div className="settings-row">
-                <div className="settings-row-copy">
-                  <div className="settings-row-title">{t("index.card.size")}</div>
-                </div>
-                <div className="settings-row-control">
-                  <span className="settings-index-metric">{formatBytes(root.indexedBytes)}</span>
-                </div>
-              </div>
-              {root.errorCount > 0 ? (
-                <div className="settings-row">
-                  <div className="settings-row-copy">
-                    <div className="settings-row-title">{t("index.card.errors")}</div>
-                    {root.lastError ? (
-                      <div className="settings-row-desc">{root.lastError}</div>
-                    ) : null}
-                  </div>
-                  <div className="settings-row-control">
-                    <span className="settings-index-status warn">{root.errorCount}</span>
-                  </div>
-                </div>
-              ) : null}
-              <div className="settings-row">
-                <div className="settings-row-copy">
-                  <div className="settings-row-title">{t("index.card.updated")}</div>
-                </div>
-                <div className="settings-row-control">
-                  <span className="settings-index-metric">
-                    {formatRelative(root.updatedAt)}
-                  </span>
-                </div>
-              </div>
-            </>
+                }
+                caption={t("index.statusDesc")}
+              />
+              <MetricTile
+                icon={<IconFileText size={14} />}
+                tone="accent"
+                label={t("index.card.files")}
+                value={root.fileCount.toLocaleString()}
+                badge={
+                  root.errorCount > 0 ? (
+                    <span className="idx-badge idx-badge-warn">
+                      {t("index.card.errors")}: {root.errorCount}
+                    </span>
+                  ) : undefined
+                }
+              />
+              <MetricTile
+                icon={<IconDatabase size={14} />}
+                tone="accent"
+                label={t("index.card.size")}
+                value={formatBytes(root.indexedBytes)}
+              />
+              <MetricTile
+                icon={<IconRefresh size={14} />}
+                tone="accent"
+                label={t("index.card.updated")}
+                value={formatRelative(root.updatedAt)}
+              />
+            </div>
           ) : (
             <div className="settings-row">
               <div className="settings-row-copy">
@@ -187,13 +208,19 @@ export function IndexPage() {
               </div>
             </div>
           )}
+          {root && root.errorCount > 0 && root.lastError ? (
+            <div className="idx-error-line" role="status">
+              {root.lastError}
+            </div>
+          ) : null}
           <div className="settings-row">
             <div className="settings-row-copy">
               <div className="settings-row-title">{t("index.actions")}</div>
               <div className="settings-row-desc">{t("index.localOnly")}</div>
             </div>
-            <div className="settings-row-control settings-index-actions">
+            <div className="settings-row-control idx-actions">
               <Button
+                variant="primary"
                 disabled={busy !== null}
                 aria-busy={busy === "rebuild"}
                 onClick={() => void rebuild()}
@@ -202,7 +229,6 @@ export function IndexPage() {
                 {busy === "rebuild" ? t("index.rebuilding") : root ? t("index.action.rebuild") : t("index.action.build")}
               </Button>
               <Button
-                variant="secondary"
                 disabled={busy !== null || !root}
                 onClick={() => void clear()}
               >
@@ -211,12 +237,8 @@ export function IndexPage() {
             </div>
           </div>
           {actionError ? (
-            <div className="settings-row">
-              <div className="settings-row-copy">
-                <div className="settings-row-title settings-index-error">
-                  {t("index.actionError")}
-                </div>
-              </div>
+            <div className="idx-error-line" role="status">
+              {t("index.actionError")}
             </div>
           ) : null}
         </div>

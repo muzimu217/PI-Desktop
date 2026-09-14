@@ -681,7 +681,7 @@ export const ko = {
     git: "Git",
     import: "가져오기",
     projectArchive: "프로젝트 보관함",
-    index: "워크스페이스 인덱스",
+    index: "인덱스 라이브러리",
     importTitle: "다른 도구에서 가져오기",
     importScan: "스캔",
     importScanDesc: "로컬 세션을 찾아 가져옵니다.",

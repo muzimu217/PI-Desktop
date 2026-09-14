@@ -669,7 +669,7 @@ export const es = {
     "git": "Git",
     "import": "Importar",
     "projectArchive": "Archivo de proyecto",
-    "index": "Índice del espacio de trabajo",
+    "index": "Biblioteca de índices",
     "importTitle": "Importar desde otras herramientas",
     "importScan": "Escanear",
     "importScanDesc": "Buscar e importar sesiones locales.",

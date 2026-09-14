@@ -681,7 +681,7 @@ export const tr = {
     git: "Git",
     import: "İçe aktar",
     projectArchive: "Proje arşivi",
-    index: "Çalışma alanı dizini",
+    index: "Dizin kitaplığı",
     importTitle: "Diğer araçlardan içe aktar",
     importScan: "Tara",
     importScanDesc: "Yerel oturumları bulun ve içe aktarın.",

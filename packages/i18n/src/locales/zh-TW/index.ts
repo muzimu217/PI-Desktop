@@ -677,7 +677,7 @@ export const zhTW = {
     git: "Git",
     import: "匯入",
     projectArchive: "專案歸檔",
-    index: "工作區索引",
+    index: "索引庫",
     importTitle: "從其他工具匯入",
     importScan: "掃描",
     importScanDesc: "查詢並匯入本地會話。",

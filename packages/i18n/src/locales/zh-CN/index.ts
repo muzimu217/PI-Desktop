@@ -677,7 +677,7 @@ export const zhCN = {
     git: "Git",
     import: "导入",
     projectArchive: "项目归档",
-    index: "工作区索引",
+    index: "索引库",
     importTitle: "从其他工具导入",
     importScan: "扫描",
     importScanDesc: "查找并导入本地会话。",

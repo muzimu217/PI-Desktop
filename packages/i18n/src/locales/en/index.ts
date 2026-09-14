@@ -679,7 +679,7 @@ export const en = {
     git: "Git",
     import: "Import",
     projectArchive: "Project archive",
-    index: "Workspace index",
+    index: "Index library",
     importTitle: "Import from other tools",
     importScan: "Scan",
     importScanDesc: "Find and import local sessions.",

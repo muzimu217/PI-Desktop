@@ -540,6 +540,7 @@ export const de = {
       "subagents": "Subagenten",
       "import": "Importieren Sie",
       "projects": "Projekte",
+      "index": "Index",
       "info": "Informationen"
     },
     "general": "Allgemein",
@@ -667,6 +668,7 @@ export const de = {
     "git": "Git",
     "import": "Importieren",
     "projectArchive": "Projektarchiv",
+    "index": "Arbeitsbereich-Index",
     "importTitle": "Import aus anderen Tools",
     "importScan": "Scannen",
     "importScanDesc": "Suchen und importieren Sie lokale Sitzungen.",
@@ -1795,6 +1797,42 @@ export const de = {
       "continue": "Weiter",
       "dismiss": "Verwerfen"
     }
+  },
+  "index": {
+    "loading": "Index-Status wird geladen…",
+    "loadErrorTitle": "Index-Status nicht verfügbar",
+    "loadErrorDesc": "Der Host hat nicht geantwortet. Grep funktioniert auch ohne Index.",
+    "retry": "Erneut versuchen",
+    "statusDesc": "Der Index ist ein wiederaufbaubarer lokaler Cache; Grep-Ergebnisse hängen nie von ihm ab.",
+    "emptyTitle": "Kein Index für den aktuellen Arbeitsbereich",
+    "emptyDesc": "Nach dem Aufbau sehen Sie Dateianzahl und Größe. Der Index bleibt auf diesem Rechner.",
+    "actions": "Index-Aktionen",
+    "localOnly": "Alles wird lokal gespeichert und nie hochgeladen.",
+    "rebuilding": "Wird indiziert…",
+    "clearing": "Wird gelöscht…",
+    "actionError": "Die Index-Aktion ist fehlgeschlagen. Erneut versuchen; Grep bleibt unbeeinflusst.",
+    "card": {
+      "health": "Index-Status",
+      "status": "Status",
+      "files": "Indizierte Dateien",
+      "size": "Indexgröße",
+      "errors": "Unlesbare Dateien",
+      "updated": "Zuletzt aktualisiert",
+    },
+    "action": {
+      "rebuild": "Index neu aufbauen",
+      "build": "Index aufbauen",
+      "clear": "Index löschen",
+    },
+    "status": {
+      "fresh": "Bereit",
+      "building": "Wird aufgebaut",
+      "stale": "Aktualisiert",
+      "failed": "Fehlgeschlagen",
+      "partial": "Teilweise",
+      "disabled": "Aus",
+      "skipped_over_limit": "Budget überschritten",
+    },
   }
 } as const;
 

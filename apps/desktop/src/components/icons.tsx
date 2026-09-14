@@ -25,6 +25,7 @@ import {
   Clock,
   CloudDownload,
   Code2,
+  Database,
   Download,
   Copy,
   Dot,
@@ -139,6 +140,7 @@ export const IconBookOpen = icon(BookOpen);
 /** Paste-from-clipboard actions (MCP config import). */
 export const IconClipboard = icon(ClipboardPaste);
 export const IconArchive = icon(Archive);
+export const IconDatabase = icon(Database);
 export const IconArchiveRestore = icon(ArchiveRestore);
 export const IconActivity = icon(Activity);
 export const IconArrowUpDown = icon(ArrowUpDown);

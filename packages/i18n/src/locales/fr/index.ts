@@ -540,6 +540,7 @@ export const fr = {
       "subagents": "Sous-agents",
       "import": "Importation",
       "projects": "Projets",
+      "index": "Index",
       "info": "Informations"
     },
     "general": "Général",
@@ -667,6 +668,7 @@ export const fr = {
     "git": "Git",
     "import": "Importation",
     "projectArchive": "Archive du projet",
+    "index": "Index de l'espace de travail",
     "importTitle": "Importer à partir d'autres outils",
     "importScan": "Scanner",
     "importScanDesc": "Rechercher et importer des sessions locales.",
@@ -1795,6 +1797,42 @@ export const fr = {
       "continue": "Continuer",
       "dismiss": "Ignorer"
     }
+  },
+  "index": {
+    "loading": "Chargement de l'état de l'index…",
+    "loadErrorTitle": "État de l'index indisponible",
+    "loadErrorDesc": "L'hôte n'a pas répondu. Grep fonctionne sans index.",
+    "retry": "Réessayer",
+    "statusDesc": "L'index est un cache local reconstruisible ; les résultats de Grep n'en dépendent jamais.",
+    "emptyTitle": "Aucun index pour l'espace actuel",
+    "emptyDesc": "Créez-en un pour voir le nombre et la taille des fichiers. L'index reste sur cette machine.",
+    "actions": "Actions de l'index",
+    "localOnly": "Tout est stocké localement et jamais envoyé.",
+    "rebuilding": "Indexation…",
+    "clearing": "Effacement…",
+    "actionError": "L'action a échoué. Réessayez ; Grep reste inchangé.",
+    "card": {
+      "health": "État de l'index",
+      "status": "État",
+      "files": "Fichiers indexés",
+      "size": "Taille indexée",
+      "errors": "Fichiers illisibles",
+      "updated": "Dernière mise à jour",
+    },
+    "action": {
+      "rebuild": "Reconstruire l'index",
+      "build": "Créer l'index",
+      "clear": "Effacer l'index",
+    },
+    "status": {
+      "fresh": "Prêt",
+      "building": "Construction",
+      "stale": "Mise à jour",
+      "failed": "Échec",
+      "partial": "Partiel",
+      "disabled": "Désactivé",
+      "skipped_over_limit": "Budget dépassé",
+    },
   }
 } as const;
 

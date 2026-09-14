@@ -1814,7 +1814,7 @@ export const zhCN = {
   },
   index: {
     loading: "正在读取索引状态…",
-    "grepBoost": "索引加速 Grep",
+    "grepBoost": "索引加速 Grep（测试版）",
     "grepBoostDesc": "对符合条件的字面量查询使用本地索引；其他查询自动回退 rg。",
     "newFolders": "索引新文件夹",
     "newFoldersDesc": "在后台自动索引新打开的工作区。所有数据均保存在本机。",

@@ -198,7 +198,9 @@ type ToolBudgetHealth = {
 - `index.rebuild({rootPath?})` scans the selected workspace into the isolated
   `<data-dir>/index/index.db` cache. When `rootPath` is omitted, the current
   workspace is used. The operation enforces fixed file-count and byte budgets.
-- `index.clear({rootPath?})` removes the active workspace root namespace.
+- `workspace.set` triggers a background `ensure_index` + rebuild for a changed
+workspace when either `indexNewFolders` or `indexGrepBoost` is on; with both
+off, switching workspaces never touches the index. `index.clear({rootPath?})` removes the active workspace root namespace.
   When `rootPath` is present it must equal the active workspace; omission selects
   that same workspace.
 

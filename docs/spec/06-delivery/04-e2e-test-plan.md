@@ -1188,6 +1188,24 @@ Each scenario is documented in this format:
 - **Status**: Automated at the RPC boundary in host-core
   (`index_grep_boost` RPC tests); UI journey pending
 
+#### E2E-INDEX-auto-index: switching workspaces builds the index only when switched on
+
+- **Preconditions**: Host RPC available; two temporary workspaces; switches at
+  defaults.
+- **Steps**: 1) `workspace.set` to workspace A with both switches off and read
+  `index.status`. 2) Turn `indexNewFolders` on. 3) `workspace.set` to
+  workspace B and poll `index.status`.
+- **Expected**: With switches off, status stays empty. With the switch on,
+  the changed workspace is marked `building` immediately and a background
+  rebuild lands it at `fresh` with the fixture file counted; `workspace.set`
+  returns promptly without waiting for the scan.
+- **Specs linked**: `03-runtime/06-host-rpc-protocol.md`,
+  `04-ux/06-settings-ia.md`
+- **Acceptance**: D (workspace), Quality (responsiveness)
+- **Milestone**: M6+
+- **Status**: Automated at the RPC boundary in host-core
+  (`workspace_set_auto_indexes_only_when_a_switch_is_on`)
+
 ### Workspace Open
 
 #### E2E-012: Open a project directory

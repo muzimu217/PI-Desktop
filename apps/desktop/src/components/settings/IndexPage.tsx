@@ -86,6 +86,8 @@ export function IndexPage({ settings, saveSettings }: IndexPageProps) {
   const [busy, setBusy] = useState<"rebuild" | "clear" | null>(null);
   const [actionError, setActionError] = useState(false);
   const grepBoost = settings.indexGrepBoost === true;
+  const newFolders = settings.indexNewFolders === true;
+  const building = state.kind === "ready" && state.root?.status === "building";
 
   const refresh = useCallback(async () => {
     setState((current) =>
@@ -102,6 +104,21 @@ export function IndexPage({ settings, saveSettings }: IndexPageProps) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // While a background rebuild is in flight, poll once a second — paused
+  // whenever the window is hidden, and torn down with the page.
+  useEffect(() => {
+    if (!building) return;
+    const poll = () => {
+      if (document.visibilityState !== "visible") return;
+      void api.indexStatus().then((result) => {
+        const next = result.roots[0];
+        if (next) setState({ kind: "ready", root: next });
+      });
+    };
+    const timer = setInterval(poll, 1000);
+    return () => clearInterval(timer);
+  }, [building]);
 
   const rebuild = async () => {
     if (busy) return;
@@ -180,6 +197,24 @@ export function IndexPage({ settings, saveSettings }: IndexPageProps) {
                 aria-checked={grepBoost}
                 aria-label={t("index.grepBoost")}
                 onClick={() => void saveSettings({ indexGrepBoost: !grepBoost })}
+              >
+                <span className="settings-toggle-thumb" />
+              </button>
+            </div>
+          </div>
+          <div className="settings-row">
+            <div className="settings-row-copy">
+              <div className="settings-row-title">{t("index.newFolders")}</div>
+              <div className="settings-row-desc">{t("index.newFoldersDesc")}</div>
+            </div>
+            <div className="settings-row-control">
+              <button
+                type="button"
+                className={cx("settings-toggle", newFolders && "on")}
+                role="switch"
+                aria-checked={newFolders}
+                aria-label={t("index.newFolders")}
+                onClick={() => void saveSettings({ indexNewFolders: !newFolders })}
               >
                 <span className="settings-toggle-thumb" />
               </button>

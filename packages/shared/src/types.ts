@@ -1174,6 +1174,12 @@ export type AppSettings = {
    * suite are green.
    */
   indexGrepBoost?: boolean;
+  /**
+   * Automatically build the workspace index for newly opened workspaces.
+   * Absent/false is the shipping default; the scan runs in the background
+   * and `index.status` reports `building` until it lands.
+   */
+  indexNewFolders?: boolean;
   onboardingDismissed: boolean;
 };
 

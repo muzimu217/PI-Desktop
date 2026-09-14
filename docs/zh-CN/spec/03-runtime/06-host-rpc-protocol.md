@@ -182,7 +182,9 @@ type ToolBudgetHealth = {
 - `index.status({rootPath?})` 返回 host 所有、可丢弃的工作区索引生命周期状态，不暴露文件内容。
 - `index.rebuild({rootPath?})` 将所选工作区扫描进独立的
   `<data-dir>/index/index.db` 缓存。省略 `rootPath` 时使用当前工作区；操作受固定文件数和字节预算限制。
-- `index.clear({rootPath?})` 删除当前工作区的 root namespace；提供 `rootPath` 时必须与当前工作区一致，省略时也选择当前工作区。
+- 当 `indexNewFolders` 或 `indexGrepBoost` 任一开启时，`workspace.set` 会对变更的
+工作区触发后台 `ensure_index` + 重建；两个开关都关闭时，切换工作区绝不触碰索引。
+`index.clear({rootPath?})` 删除当前工作区的 root namespace；提供 `rootPath` 时必须与当前工作区一致，省略时也选择当前工作区。
 
 索引数据库是可重建的优化缓存，不是文件系统事实来源。P2-A 不修改
 `tools.execute` 或 Grep 的公开结果形状；索引快路径属于独立的 P2-B 变更。

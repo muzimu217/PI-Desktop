@@ -483,6 +483,15 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
             ));
         }
     }
+    if let Some(flag) = object.get("indexNewFolders") {
+        if !flag.is_boolean() {
+            return Err(rpc_err(
+                1002,
+                "indexNewFolders must be a boolean",
+                "INVALID_PARAMS",
+            ));
+        }
+    }
     let Some(shell_value) = object.get("defaultCommandShell") else {
         return Ok(());
     };
@@ -1131,6 +1140,7 @@ async fn handle_request(
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| rpc_err(1002, "path required", "INVALID_PARAMS"))?;
             let mut st = state.lock().await;
+            let previous = st.workspace.get().map(|workspace| workspace.path);
             let ws = st.workspace.set(PathBuf::from(path));
             let pid = st
                 .db
@@ -1139,6 +1149,36 @@ async fn handle_request(
             st.db
                 .kv_set("app", "currentProjectId", &json!(pid))
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            // P2-B: auto-index a changed workspace when either switch is on.
+            // The scan runs on the blocking pool, so workspace.set stays fast
+            // and `index.status` reports `building` until it lands.
+            let settings = st.db.get_setting("app").ok().flatten();
+            let auto_on = settings
+                .as_ref()
+                .and_then(|value| value.get("indexNewFolders"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let changed = previous.as_deref() != Some(ws.path.as_str());
+            if changed && (auto_on || index_grep_boost_enabled(settings.as_ref())) {
+                let index = st.index.clone();
+                let root = PathBuf::from(ws.path.clone());
+                drop(st);
+                match index.ensure_index(&root) {
+                    Ok(crate::index::EnsureOutcome::Triggered) => {
+                        tokio::task::spawn_blocking(move || {
+                            if let Err(error) = index.rebuild(&root, crate::index::IndexLimits::default()) {
+                                tracing::warn!(error = %error, "background index rebuild failed");
+                            }
+                        });
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        tracing::warn!(error = %error, "auto index ensure failed");
+                    }
+                }
+            } else {
+                drop(st);
+            }
             Ok(json!({ "workspace": ws }))
         }
         "workspace.clear" => {
@@ -4480,6 +4520,70 @@ mod tests {
         // A truthy string must not be able to switch the fast path on.
         assert!(validate_settings_value(&json!({ "indexGrepBoost": "true" })).is_err());
         assert!(validate_settings_value(&json!({ "indexGrepBoost": 1 })).is_err());
+        assert!(validate_settings_value(&json!({ "indexNewFolders": true })).is_ok());
+        assert!(validate_settings_value(&json!({ "indexNewFolders": "yes" })).is_err());
+    }
+
+    #[tokio::test]
+    async fn workspace_set_auto_indexes_only_when_a_switch_is_on() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        std::fs::write(workspace.path().join("auto.txt"), "auto index target\n").unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        // Switches off (the default): no index rows are created for the root.
+        handle_request(
+            state.clone(),
+            "workspace.set",
+            json!({ "path": workspace.path().display().to_string() }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let off = handle_request(state.clone(), "index.status", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert_eq!(off["roots"].as_array().unwrap().len(), 0);
+
+        // Turn auto-index on, then switch to a different workspace: the
+        // background rebuild must land at a fresh root.
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "indexNewFolders": true }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let other = tempfile::tempdir().unwrap();
+        std::fs::write(other.path().join("other.txt"), "other workspace\n").unwrap();
+        handle_request(
+            state.clone(),
+            "workspace.set",
+            json!({ "path": other.path().display().to_string() }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let mut fresh = false;
+        for _ in 0..50 {
+            let status = handle_request(state.clone(), "index.status", json!({}), tx.clone())
+                .await
+                .unwrap();
+            let roots = status["roots"].as_array().unwrap();
+            if roots
+                .first()
+                .is_some_and(|root| root["status"] == "fresh" && root["fileCount"] == 1)
+            {
+                fresh = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        assert!(fresh, "background rebuild did not reach fresh in time");
     }
 
     #[tokio::test]

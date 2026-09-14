@@ -421,6 +421,11 @@ system while preserving their different data ownership:
 - One health card for the host-owned workspace index cache: an opt-in toggle,
   then status, indexed file count, indexed size, unreadable-file count, and
   last-update time
+- A second opt-in toggle, `Index new folders` (`indexNewFolders`, default
+  off): when on, opening a different workspace marks its index `building`
+  and rebuilds it on the blocking pool, so `workspace.set` stays fast and
+  the health card polls `index.status` once a second while building,
+  pausing when the window is hidden
 - The single opt-in toggle, `Grep index boost` (`indexGrepBoost`, default
   off): when on, case-sensitive literal Grep searches may be served from the
   index; every other query keeps walking. The copy promises speed for

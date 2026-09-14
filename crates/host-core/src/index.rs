@@ -96,6 +96,18 @@ struct ScanResult {
     over_limit: bool,
 }
 
+/// Result of [`IndexStore::ensure_index`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnsureOutcome {
+    /// The root already had a fresh index; nothing to do.
+    Fresh,
+    /// A background rebuild is already in flight.
+    InProgress,
+    /// The root was marked `building`; the caller must run `rebuild` in the
+    /// background to finish it.
+    Triggered,
+}
+
 #[derive(Debug)]
 struct RootUpdate<'a> {
     status: IndexStatus,
@@ -232,6 +244,39 @@ impl IndexStore {
             .into_iter()
             .next()
             .context("index status missing after rebuild")
+    }
+
+    /// Mark an unindexed/stale workspace as `building` without scanning, so a
+    /// caller can run [`IndexStore::rebuild`] off the hot path. Idempotent:
+    /// a fresh root stays fresh and a building root is not re-marked.
+    pub fn ensure_index(&self, root: &Path) -> Result<EnsureOutcome> {
+        let root = normalize_root(root);
+        if !root.is_dir() {
+            anyhow::bail!("INDEX_ROOT_NOT_FOUND: {}", root.display());
+        }
+        let root_id = root_id(&root);
+        match self.status(Some(&root))?.into_iter().next() {
+            Some(status) if status.status == IndexStatus::Fresh.as_str() => {
+                Ok(EnsureOutcome::Fresh)
+            }
+            Some(status) if status.status == IndexStatus::Building.as_str() => {
+                Ok(EnsureOutcome::InProgress)
+            }
+            _ => {
+                self.set_root_status(
+                    &root_id,
+                    &root,
+                    RootUpdate {
+                        status: IndexStatus::Building,
+                        file_count: 0,
+                        indexed_bytes: 0,
+                        error_count: 0,
+                        last_error: None,
+                    },
+                )?;
+                Ok(EnsureOutcome::Triggered)
+            }
+        }
     }
 
     pub fn clear(&self, root: Option<&Path>) -> Result<usize> {
@@ -662,7 +707,9 @@ mod tests {
         // row would silently keep workspace content readable after "clear".
         let connection = fts::open(&store.path).unwrap();
         let orphaned: i64 = connection
-            .query_row("SELECT COUNT(*) FROM file_content_fts", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM file_content_fts", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(orphaned, 1);
         let files_left: i64 = connection

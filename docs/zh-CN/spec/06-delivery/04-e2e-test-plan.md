@@ -719,6 +719,19 @@ M5。
 - **里程碑**：M6+
 - **状态**：host-core RPC 边界已自动化（`index_grep_boost` RPC 测试）；UI 旅程待补
 
+#### E2E-INDEX-auto-index：仅在开关开启时随工作区切换建立索引
+
+- **前置条件**：host RPC 可用；两个临时工作区；开关为默认值。
+- **步骤**：1）开关全关时 `workspace.set` 到工作区 A 并读取 `index.status`。
+  2）开启 `indexNewFolders`。3）`workspace.set` 到工作区 B 并轮询 `index.status`。
+- **预期**：开关全关时状态保持为空。开关开启后，变更的工作区立即标记 `building`，
+  后台重建最终落到 `fresh` 并统计到 fixture 文件；`workspace.set` 立即返回、不等待扫描。
+- **关联规格**：`03-runtime/06-host-rpc-protocol.md`、`04-ux/06-settings-ia.md`
+- **验收**：D（工作区）、质量（响应性）
+- **里程碑**：M6+
+- **状态**：host-core RPC 边界已自动化
+  （`workspace_set_auto_indexes_only_when_a_switch_is_on`）
+
 ### 工作区打开
 
 #### E2E-012：打开项目目录

@@ -1908,3 +1908,23 @@ export type TokenUsageHistoryResult = {
     turnCount: number;
   };
 };
+
+export type WorkspaceIndexRootStatus =
+  | "fresh"
+  | "building"
+  | "stale"
+  | "failed"
+  | "partial"
+  | "disabled"
+  | "skipped_over_limit";
+
+export type WorkspaceIndexRoot = {
+  rootId: string;
+  rootPath: string;
+  status: WorkspaceIndexRootStatus;
+  fileCount: number;
+  indexedBytes: number;
+  errorCount: number;
+  lastError: string | null;
+  updatedAt: number;
+};

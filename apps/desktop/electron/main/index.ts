@@ -6996,6 +6996,21 @@ function registerIpc() {
     },
   );
 
+  handle(IPC.invoke.indexStatus, async (input?: { rootPath?: string }) => {
+    if (!host) throw new Error("host unavailable");
+    return host.call("index.status", input ?? {});
+  });
+
+  handle(IPC.invoke.indexRebuild, async (input?: { rootPath?: string }) => {
+    if (!host) throw new Error("host unavailable");
+    return host.call("index.rebuild", input ?? {});
+  });
+
+  handle(IPC.invoke.indexClear, async (input?: { rootPath?: string }) => {
+    if (!host) throw new Error("host unavailable");
+    return host.call("index.clear", input ?? {});
+  });
+
   handle(
     IPC.invoke.browserNavigate,
     async (input: { url?: string; sessionId?: string } = {}) => {

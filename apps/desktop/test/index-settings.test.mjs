@@ -26,7 +26,7 @@ test("workspace index is a workspace-group settings destination", () => {
   );
   assert.match(entry, /group: "data"/);
   assert.match(entry, /"index\.card\.health"/);
-  assert.match(settingsPage, /tab === "index" && <IndexPage \/>/);
+  assert.match(settingsPage, /tab === "index" && settings && \(\n\s*<IndexPage settings=\{settings\} saveSettings=\{saveSettings\} \/>\n\s*\)/);
   assert.match(settingsPage, /import \{ IndexPage \}/);
 });
 
@@ -39,6 +39,9 @@ test("index page renders host lifecycle state without promising Grep changes", a
   assert.match(page, /api\.indexRebuild\(/);
   assert.match(page, /api\.indexClear\(/);
   assert.match(page, /index\.card\.health/);
+  assert.match(page, /settings\.indexGrepBoost === true/);
+  assert.match(page, /saveSettings\(\{ indexGrepBoost: !grepBoost \}\)/);
+  assert.match(enLocale, /grepBoost: "Grep index boost"/);
   assert.match(page, /index\.status\.\$\{root\.status\}/);
   // The page must not claim the fast path is active: P2-A only builds the
   // cache, so the copy has to describe the index as a rebuildable cache.

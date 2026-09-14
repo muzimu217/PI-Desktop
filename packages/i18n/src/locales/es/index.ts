@@ -1801,6 +1801,8 @@ export const es = {
   },
   "index": {
     "loading": "Cargando estado del índice…",
+    "grepBoost": "Aceleración de Grep por índice",
+    "grepBoostDesc": "Las búsquedas literales sensibles a mayúsculas usan el índice local; todo lo demás vuelve a rg.",
     "loadErrorTitle": "Estado del índice no disponible",
     "loadErrorDesc": "El host no respondió. Grep funciona sin índice.",
     "retry": "Reintentar",

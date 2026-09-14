@@ -1841,6 +1841,8 @@ export const en = {
   },
   index: {
     loading: "Loading index status…",
+    grepBoost: "Grep index boost",
+    grepBoostDesc: "Serve case-sensitive literal searches from the local index; everything else falls back to rg.",
     loadErrorTitle: "Index status unavailable",
     loadErrorDesc: "The host did not answer. Grep works without the index.",
     retry: "Retry",

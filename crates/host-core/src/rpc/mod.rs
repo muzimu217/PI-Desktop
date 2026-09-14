@@ -437,6 +437,16 @@ fn effective_command_shell_id(settings: Option<&Value>) -> Option<String> {
         .map(|shell| shell.id)
 }
 
+/// P2-B: whether Grep may serve literal searches from the workspace index.
+/// Absent or `false` leaves the fast path inert, which is the shipping
+/// default until the spec/E2E work for the opt-in lands.
+fn index_grep_boost_enabled(settings: Option<&Value>) -> bool {
+    settings
+        .and_then(|value| value.get("indexGrepBoost"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
 fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
     let Some(object) = value.as_object() else {
         return Ok(());
@@ -461,6 +471,17 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
     }
     if let Err(message) = crate::network_proxy::validate_network_proxy(value) {
         return Err(rpc_err(1002, message, "INVALID_PARAMS"));
+    }
+    // P2-B: the Grep fast path is opt-in. Reject non-booleans so a malformed
+    // patch cannot switch it on through JSON truthiness.
+    if let Some(flag) = object.get("indexGrepBoost") {
+        if !flag.is_boolean() {
+            return Err(rpc_err(
+                1002,
+                "indexGrepBoost must be a boolean",
+                "INVALID_PARAMS",
+            ));
+        }
     }
     let Some(shell_value) = object.get("defaultCommandShell") else {
         return Ok(());
@@ -2794,12 +2815,30 @@ async fn handle_request(
                     });
                 }
 
+                // P2-B: only Grep consults the index, so the settings read and
+                // the store clone stay off every other tool's path. With the
+                // switch absent the fast path is inert and this is exactly the
+                // walk-everything behaviour Grep has always had.
+                let (index_store, index_grep_boost) = if p.tool_name == "Grep" {
+                    let st = state.lock().await;
+                    let settings = st
+                        .db
+                        .get_setting("app")
+                        .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+                    (
+                        Some(st.index.clone()),
+                        index_grep_boost_enabled(settings.as_ref()),
+                    )
+                } else {
+                    (None, false)
+                };
+
                 let mut result = if tools::is_desktop_dispatched(&p.tool_name) {
                     // Plugin dispatch keeps its existing bounded default timeout;
                     // command-shell timeout semantics apply only to Bash.
                     execute_plugin_tool(&state, &tx, &p, p.timeout_ms.unwrap_or(60_000)).await
                 } else {
-                    tools::execute_tool_with_path_access(
+                    tools::execute_tool_with_index(
                         ws_path.as_deref(),
                         scratch_path.as_deref(),
                         &p.tool_name,
@@ -2807,6 +2846,8 @@ async fn handle_request(
                         execution_timeout_ms,
                         bash_options,
                         external_path_permission,
+                        index_store.as_ref(),
+                        index_grep_boost,
                     )
                     .await
                 };
@@ -3606,8 +3647,9 @@ mod tests {
     use tokio::sync::{mpsc, Mutex};
 
     use super::{
-        capability_err, handle_request, parse_capability_query, resolve_plan_workspace,
-        resolve_tool_workspace, scope_err, skill_err,
+        capability_err, handle_request, index_grep_boost_enabled, parse_capability_query,
+        resolve_plan_workspace, resolve_tool_workspace, scope_err, skill_err,
+        validate_settings_value,
     };
     use crate::plans::{PlanResolveParams, PlanSubmitParams};
     use crate::scheduled;
@@ -4343,6 +4385,101 @@ mod tests {
         )
         .await
         .unwrap();
+    }
+
+    /// Drives one literal Grep through the real RPC dispatch, so the
+    /// `indexGrepBoost` switch is exercised end to end and not just at the
+    /// tool boundary.
+    async fn execute_literal_grep_through_rpc(
+        state: Arc<Mutex<AppState>>,
+        session_id: &str,
+        tool_call_id: &str,
+        tx: mpsc::UnboundedSender<String>,
+    ) -> Value {
+        handle_request(
+            state,
+            "tools.execute",
+            json!({
+                "sessionId": session_id,
+                "toolCallId": tool_call_id,
+                "toolName": "Grep",
+                "args": { "pattern": "needle" },
+                "mode": "agent"
+            }),
+            tx,
+        )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn grep_literal_fast_path_is_opt_in_and_keeps_results_identical() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let project = data_dir.path().join("project");
+        fs::create_dir_all(project.join("src")).unwrap();
+        fs::write(project.join("src/main.rs"), "let needle = 1;\n").unwrap();
+        fs::write(project.join("other.txt"), "no match here\n").unwrap();
+
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        // A `fresh` index is the fast path's only precondition; everything else
+        // is the setting.
+        let status = app_state
+            .index
+            .rebuild(&project, crate::index::IndexLimits::default())
+            .unwrap();
+        assert_eq!(status.status, "fresh");
+        let session = sessions::create_session(
+            &app_state.db,
+            Some("Index boost".into()),
+            Some("agent".into()),
+            None,
+            None,
+            Some(project.to_string_lossy().into_owned()),
+        )
+        .unwrap();
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        // Shipping default: the switch is absent, so Grep walks the tree.
+        let walked =
+            execute_literal_grep_through_rpc(state.clone(), &session.id, "grep-default", tx.clone())
+                .await;
+        assert_eq!(walked["content"]["count"].as_u64(), Some(1));
+
+        handle_request(
+            state.clone(),
+            "settings.set",
+            json!({ "indexGrepBoost": true }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+
+        // Same query, now served from the index. The candidate *source*
+        // changed, so the reported result must not.
+        let boosted =
+            execute_literal_grep_through_rpc(state.clone(), &session.id, "grep-boosted", tx.clone())
+                .await;
+        assert_eq!(boosted["content"], walked["content"]);
+    }
+
+    #[test]
+    fn index_grep_boost_defaults_off_and_rejects_non_booleans() {
+        assert!(!index_grep_boost_enabled(None));
+        assert!(!index_grep_boost_enabled(Some(&json!({}))));
+        assert!(!index_grep_boost_enabled(Some(
+            &json!({ "indexGrepBoost": false })
+        )));
+        assert!(index_grep_boost_enabled(Some(
+            &json!({ "indexGrepBoost": true })
+        )));
+
+        assert!(validate_settings_value(&json!({ "indexGrepBoost": true })).is_ok());
+        assert!(validate_settings_value(&json!({ "theme": "light" })).is_ok());
+        // A truthy string must not be able to switch the fast path on.
+        assert!(validate_settings_value(&json!({ "indexGrepBoost": "true" })).is_err());
+        assert!(validate_settings_value(&json!({ "indexGrepBoost": 1 })).is_err());
     }
 
     #[tokio::test]

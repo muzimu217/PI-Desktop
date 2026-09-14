@@ -1168,6 +1168,26 @@ Each scenario is documented in this format:
 - **Status**: Documented; the RPC lifecycle is covered by
   `pnpm test:e2e:index`, UI automation is pending
 
+#### E2E-INDEX-grep-boost-opt-in: the fast path stays inert until switched on
+
+- **Preconditions**: A workspace index has been built (`fresh` root); the
+  `indexGrepBoost` setting is absent or false by default.
+- **Steps**: 1) Run a case-sensitive literal Grep and confirm results come
+  from the normal walk. 2) Set `indexGrepBoost: true` through
+  `settings.set`. 3) Run the same literal Grep and a regex Grep. 4) Set the
+  flag back to false.
+- **Expected**: With the flag off, Grep behavior is byte-identical to before
+  the index existed. With the flag on, literal searches may be served from
+  index candidates while regex/short/case-insensitive queries still walk;
+  result shapes stay identical either way. A malformed non-boolean
+  `indexGrepBoost` patch is rejected with `INVALID_PARAMS`.
+- **Specs linked**: `04-ux/06-settings-ia.md`,
+  `03-runtime/03-tools-and-permissions.md`
+- **Acceptance**: E (tools), Quality (behavior preservation)
+- **Milestone**: M6+
+- **Status**: Automated at the RPC boundary in host-core
+  (`index_grep_boost` RPC tests); UI journey pending
+
 ### Workspace Open
 
 #### E2E-012: Open a project directory

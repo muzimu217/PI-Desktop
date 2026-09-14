@@ -417,6 +417,22 @@ system while preserving their different data ownership:
 - Activating a project or project session returns to chat; archive and close
   actions keep Project archive open even when the active workspace changes
 
+### Index library (`index` tab, `Data & Statistics` group)
+- One health card for the host-owned workspace index cache: an opt-in toggle,
+  then status, indexed file count, indexed size, unreadable-file count, and
+  last-update time
+- The single opt-in toggle, `Grep index boost` (`indexGrepBoost`, default
+  off): when on, case-sensitive literal Grep searches may be served from the
+  index; every other query keeps walking. The copy promises speed for
+  eligible searches, never changed results
+- Actions are Rebuild index and Clear index; both call the host lifecycle
+  RPCs and refresh the card from the returned status
+- The copy states that the index is a rebuildable local cache whose data
+  never leaves the machine, and that Grep results never depend on it while
+  the toggle is off
+- Empty state: no root yet for the active workspace, with Build index as the
+  single action. Load failure shows a retry instead of a blank card
+
 ### Info
 - app/host/protocol versions + open logs
 - **Report a problem** row: one action opens the GitHub bug issue form in

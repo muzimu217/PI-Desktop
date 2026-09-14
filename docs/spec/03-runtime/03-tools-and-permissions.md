@@ -42,6 +42,18 @@ Let the agent get things done, but stay under control by default.
 
 > Names may be fine-tuned during implementation, but semantics stay consistent.
 
+### 2.2 Grep workspace-index fast path (opt-in, default off)
+
+When `indexGrepBoost` is false or absent, Grep behavior is byte-identical to
+the pre-index walk. When the user enables it, a case-sensitive literal
+pattern (no regex metacharacters, at least three code points) on a `fresh`
+index root may be served from the index: the index narrows the candidate
+file list, and the same per-line scanner and result budget produce the
+output, so the result shape is unchanged. Regex, short, and
+case-insensitive queries always walk. A per-candidate freshness check falls
+back to the normal walk on drift. The index visible set is held equal to
+Grep's visible set by `tools/ignore_rules` and a diff property test.
+
 ### 2.1 Deferred ancillary tools (D185, ADR 0048)
 
 Following pi's coding-agent default, the first Agent request activates only

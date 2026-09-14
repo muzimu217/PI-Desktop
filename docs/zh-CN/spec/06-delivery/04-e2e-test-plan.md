@@ -705,6 +705,20 @@ M5。
 - **里程碑**：M6+
 - **状态**：已记录；RPC 生命周期由 `pnpm test:e2e:index` 覆盖，UI 自动化待补
 
+#### E2E-INDEX-grep-boost-opt-in：开关未开时快路径保持惰性
+
+- **前置条件**：工作区索引已建立（`fresh` root）；`indexGrepBoost` 缺省或为 false。
+- **步骤**：1）执行区分大小写的字面量 Grep，确认结果来自常规走查。2）通过
+  `settings.set` 将 `indexGrepBoost` 设为 true。3）重复同一字面量 Grep，并执行正则 Grep。
+  4）把开关设回 false。
+- **预期**：开关关闭时，Grep 行为与索引存在之前完全一致。开关开启后，字面量查询
+  可由索引候选服务，正则/短模式/大小写不敏感查询仍走全量；两种情况下结果形状一致。
+  非布尔的 `indexGrepBoost` 补丁被拒绝并返回 `INVALID_PARAMS`。
+- **关联规格**：`04-ux/06-settings-ia.md`、`03-runtime/03-tools-and-permissions.md`
+- **验收**：E（工具）、质量（行为保持）
+- **里程碑**：M6+
+- **状态**：host-core RPC 边界已自动化（`index_grep_boost` RPC 测试）；UI 旅程待补
+
 ### 工作区打开
 
 #### E2E-012：打开项目目录

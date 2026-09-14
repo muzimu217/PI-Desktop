@@ -1843,6 +1843,8 @@ export const ko = {
   },
   index: {
     loading: "인덱스 상태 불러오는 중…",
+    "grepBoost": "Grep 인덱스 가속",
+    "grepBoostDesc": "조건에 맞는 리터럴 검색은 로컬 인덱스를 사용하고, 나머지는 rg로 자동 폴백합니다.",
     loadErrorTitle: "인덱스 상태를 사용할 수 없음",
     loadErrorDesc: "호스트가 응답하지 않습니다. 인덱스 없이도 Grep은 정상 동작합니다.",
     retry: "다시 시도",

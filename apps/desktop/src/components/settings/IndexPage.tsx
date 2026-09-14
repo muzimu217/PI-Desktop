@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { WorkspaceIndexRoot } from "@pi-desktop/shared";
+import type { AppSettings, WorkspaceIndexRoot } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { Button, cx } from "../ui";
 import {
@@ -9,6 +9,11 @@ import {
   IconFileText,
   IconRefresh,
 } from "../icons";
+
+type IndexPageProps = {
+  settings: AppSettings;
+  saveSettings: (patch: Partial<AppSettings>) => Promise<void>;
+};
 
 type LoadState =
   | { kind: "loading" }
@@ -75,11 +80,12 @@ function MetricTile({
   );
 }
 
-export function IndexPage() {
+export function IndexPage({ settings, saveSettings }: IndexPageProps) {
   const { t } = useTranslation();
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [busy, setBusy] = useState<"rebuild" | "clear" | null>(null);
   const [actionError, setActionError] = useState(false);
+  const grepBoost = settings.indexGrepBoost === true;
 
   const refresh = useCallback(async () => {
     setState((current) =>
@@ -161,6 +167,24 @@ export function IndexPage() {
       <section className="settings-card-block">
         <h3 className="settings-card-heading">{t("index.card.health")}</h3>
         <div className="settings-panel">
+          <div className="settings-row">
+            <div className="settings-row-copy">
+              <div className="settings-row-title">{t("index.grepBoost")}</div>
+              <div className="settings-row-desc">{t("index.grepBoostDesc")}</div>
+            </div>
+            <div className="settings-row-control">
+              <button
+                type="button"
+                className={cx("settings-toggle", grepBoost && "on")}
+                role="switch"
+                aria-checked={grepBoost}
+                aria-label={t("index.grepBoost")}
+                onClick={() => void saveSettings({ indexGrepBoost: !grepBoost })}
+              >
+                <span className="settings-toggle-thumb" />
+              </button>
+            </div>
+          </div>
           {root ? (
             <div className="idx-grid">
               <MetricTile

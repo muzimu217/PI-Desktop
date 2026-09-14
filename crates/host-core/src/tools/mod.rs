@@ -997,12 +997,12 @@ pub async fn execute_tool_with_options(
     .await
 }
 
-/// Execute a builtin tool after the host permission gate has decided whether
-/// an explicit outside-workspace path is allowed for this call.
+/// Execute a builtin tool with no workspace index in scope.
 ///
-/// The workspace content index is not consulted here; callers that hold one
-/// (the RPC dispatch, once the `indexGrepBoost` setting exists) use
-/// [`execute_tool_with_index`] instead.
+/// The RPC dispatch always goes through [`execute_tool_with_index`] so the
+/// `indexGrepBoost` setting can take effect. This index-less form is what the
+/// in-crate tests call, which keeps them pinned to the walk-everything path.
+#[cfg(test)]
 pub async fn execute_tool_with_path_access(
     workspace: Option<&Path>,
     scratch: Option<&Path>,

@@ -1814,6 +1814,8 @@ export const zhCN = {
   },
   index: {
     loading: "正在读取索引状态…",
+    "grepBoost": "索引加速 Grep",
+    "grepBoostDesc": "对符合条件的字面量查询使用本地索引；其他查询自动回退 rg。",
     loadErrorTitle: "索引状态不可用",
     loadErrorDesc: "主机未响应。没有索引时 Grep 仍正常工作。",
     retry: "重试",

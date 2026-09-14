@@ -1814,6 +1814,8 @@ export const zhTW = {
   },
   index: {
     loading: "正在讀取索引狀態…",
+    "grepBoost": "索引加速 Grep",
+    "grepBoostDesc": "對符合條件的字面量查詢使用本地索引；其他查詢自動回退 rg。",
     loadErrorTitle: "索引狀態不可用",
     loadErrorDesc: "主機未回應。沒有索引時 Grep 仍正常運作。",
     retry: "重試",

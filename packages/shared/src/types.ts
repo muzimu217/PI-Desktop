@@ -1166,6 +1166,14 @@ export type AppSettings = {
    * `external`: Open directly in the system's default web browser.
    */
   linkOpenTarget?: LinkOpenTarget;
+  /**
+   * Let Grep serve case-sensitive literal searches from the workspace index
+   * instead of walking the tree. Absent/false is the shipping default: the
+   * fast path only ever narrows the candidate file list, and it is held
+   * behind this switch until the visible-set parity test and the `E2E-INDEX-*`
+   * suite are green.
+   */
+  indexGrepBoost?: boolean;
   onboardingDismissed: boolean;
 };
 

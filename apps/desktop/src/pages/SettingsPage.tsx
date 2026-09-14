@@ -1475,7 +1475,9 @@ export function SettingsPage() {
           {tab === "import" && <ImportSection />}
 
           {tab === "projects" && <ProjectsPage />}
-          {tab === "index" && <IndexPage />}
+          {tab === "index" && settings && (
+            <IndexPage settings={settings} saveSettings={saveSettings} />
+          )}
 
           {tab === "about" && (
             <div className="settings-stack">

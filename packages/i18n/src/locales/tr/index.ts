@@ -1843,6 +1843,8 @@ export const tr = {
   },
   index: {
     loading: "Dizin durumu yükleniyor…",
+    "grepBoost": "Grep dizin hızlandırma",
+    "grepBoostDesc": "Koşula uyan hazır değer aramaları yerel dizini kullanır; diğerleri rg'ye geri döner.",
     loadErrorTitle: "Dizin durumu kullanılamıyor",
     loadErrorDesc: "Ana makine yanıt vermedi. Dizin olmadan da Grep çalışır.",
     retry: "Yeniden dene",

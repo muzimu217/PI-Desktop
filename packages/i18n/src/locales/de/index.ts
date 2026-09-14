@@ -1801,6 +1801,8 @@ export const de = {
   },
   "index": {
     "loading": "Index-Status wird geladen…",
+    "grepBoost": "Grep-Indexbeschleunigung",
+    "grepBoostDesc": "Case-sensitive literale Suchen über den lokalen Index; alles andere fällt auf rg zurück.",
     "loadErrorTitle": "Index-Status nicht verfügbar",
     "loadErrorDesc": "Der Host hat nicht geantwortet. Grep funktioniert auch ohne Index.",
     "retry": "Erneut versuchen",

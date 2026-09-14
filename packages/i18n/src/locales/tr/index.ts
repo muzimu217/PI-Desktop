@@ -540,6 +540,7 @@ export const tr = {
     groupPreferences: "Tercihler",
     groupAgent: "Ajan",
     groupWorkspace: "Çalışma alanı",
+    groupData: "Veri ve istatistikler",
     groupSystem: "Sistem",
     nav: {
       general: "Genel",

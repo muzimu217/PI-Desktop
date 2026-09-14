@@ -528,6 +528,7 @@ export const fr = {
     "groupPreferences": "Préférences",
     "groupAgent": "Agent",
     "groupWorkspace": "Espace de travail",
+    "groupData": "Données et statistiques",
     "groupSystem": "Système",
     "nav": {
       "general": "Général",

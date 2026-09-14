@@ -540,6 +540,7 @@ export const ko = {
     groupPreferences: "환경설정",
     groupAgent: "에이전트",
     groupWorkspace: "작업 공간",
+    groupData: "데이터 및 통계",
     groupSystem: "시스템",
     nav: {
       general: "일반",

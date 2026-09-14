@@ -536,6 +536,7 @@ export const zhTW = {
     groupPreferences: "偏好",
     groupAgent: "智慧體",
     groupWorkspace: "工作區",
+    groupData: "資料與統計",
     groupSystem: "系統",
     nav: {
       general: "常規",

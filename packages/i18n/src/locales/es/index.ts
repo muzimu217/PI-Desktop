@@ -528,6 +528,7 @@ export const es = {
     "groupPreferences": "Preferencias",
     "groupAgent": "Agente",
     "groupWorkspace": "Espacio de trabajo",
+    "groupData": "Datos y estadísticas",
     "groupSystem": "Sistema",
     "nav": {
       "general": "General",

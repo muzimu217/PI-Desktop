@@ -18,12 +18,13 @@ const [search, settingsPage, api, protocol, main, page, enLocale] = await Promis
 test("workspace index is a workspace-group settings destination", () => {
   assert.match(search, /id: "index"/);
   assert.match(search, /labelKey: "settings\.nav\.index"/);
+  assert.match(search, /data: "settings\.groupData"/);
   assert.match(search, /titleKey: "settings\.index"/);
   const entry = search.slice(
     search.indexOf('id: "index"'),
     search.indexOf('id: "about"'),
   );
-  assert.match(entry, /group: "workspace"/);
+  assert.match(entry, /group: "data"/);
   assert.match(entry, /"index\.card\.health"/);
   assert.match(settingsPage, /tab === "index" && <IndexPage \/>/);
   assert.match(settingsPage, /import \{ IndexPage \}/);

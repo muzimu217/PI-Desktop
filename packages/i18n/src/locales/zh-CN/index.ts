@@ -536,6 +536,7 @@ export const zhCN = {
     groupPreferences: "偏好",
     groupAgent: "智能体",
     groupWorkspace: "工作区",
+    groupData: "数据与统计",
     groupSystem: "系统",
     nav: {
       general: "常规",

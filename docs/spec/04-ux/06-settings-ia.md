@@ -38,7 +38,8 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   scanability, the destinations are shown in four titled visual clusters:
   `Preferences` / `偏好` (General, AI, Shortcuts), `Agent` / `智能体`
   (Instructions, Models, Skills, MCP, Subagents), `Workspace` / `工作区`
-  (Import, Projects, Index), and `System` / `系统` (Info). Headings are muted,
+  (Import, Projects), `Data & Statistics` / `数据与统计` (Index), and
+  `System` / `系统` (Info). Headings are muted,
   non-interactive labels and use whitespace for separation; no divider lines are
   rendered. These are visual landmarks only, not a second navigation level.
   When search filters the directory, empty clusters and their headings disappear.

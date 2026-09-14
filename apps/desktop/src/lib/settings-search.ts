@@ -23,12 +23,14 @@ export type SettingsNavGroupId =
   | "preferences"
   | "agent"
   | "workspace"
+  | "data"
   | "system";
 
 export const SETTINGS_NAV_GROUP_LABELS: Record<SettingsNavGroupId, string> = {
   preferences: "settings.groupPreferences",
   agent: "settings.groupAgent",
   workspace: "settings.groupWorkspace",
+  data: "settings.groupData",
   system: "settings.groupSystem",
 };
 
@@ -213,7 +215,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     id: "index",
     labelKey: "settings.nav.index",
     titleKey: "settings.index",
-    group: "workspace",
+    group: "data",
     keywordKeys: [
       "index.card.health",
       "index.card.files",

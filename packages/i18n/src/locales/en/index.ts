@@ -538,6 +538,7 @@ export const en = {
     groupPreferences: "Preferences",
     groupAgent: "Agent",
     groupWorkspace: "Workspace",
+    groupData: "Data & Statistics",
     groupSystem: "System",
     nav: {
       general: "General",

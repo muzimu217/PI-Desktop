@@ -12,6 +12,8 @@ use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+pub mod fast_path;
+
 pub const MAX_FILES: usize = 50_000;
 pub const MAX_FILE_BYTES: u64 = 1024 * 1024;
 pub const MAX_INDEXED_BYTES: u64 = 2 * 1024 * 1024 * 1024;

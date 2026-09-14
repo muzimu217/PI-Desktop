@@ -1,0 +1,286 @@
+//! P2-B Grep literal fast path: FTS candidate selection with hit verification.
+//!
+//! The fast path never decides a match by itself. It only *narrows* the set of
+//! files worth reading; the caller re-scans each candidate with the exact same
+//! line scanner the Grep tool already uses, so the public result shape stays
+//! byte-for-byte identical to the fallback path (same budgets, same newest-first
+//! order, same `grep_output` exit).
+//!
+//! ## Safety precondition (do not relax without a diff test)
+//!
+//! Correctness of the fast path rests on the index visible set equalling the
+//! Grep visible set — the "same ignore rules" invariant from the P2 plan. That
+//! parity is *not* yet proven in this tree, so the caller MUST keep the fast
+//! path behind the opt-in `indexGrepBoost` switch (default off). Enabling it
+//! before the visible-set diff test passes would silently change Grep results.
+
+use anyhow::Result;
+use rusqlite::{params, OptionalExtension};
+use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
+
+use super::{normalize_root, root_id, IndexStore};
+
+/// Trigram tokenizer lower bound: a pattern shorter than this has no 3-gram,
+/// so the FTS index can never be a superset of its matches.
+pub const MIN_LITERAL_LEN: usize = 3;
+
+/// Fraction of candidates whose on-disk size/mtime disagree with the index
+/// above which the whole query falls back. Small drift is tolerated because the
+/// caller re-reads file content anyway; large drift means the index is far too
+/// stale to trust as a candidate source.
+const MAX_DRIFT_RATIO: f64 = 0.10;
+
+/// Admission gate. Returns `Some(literal)` only when the fast path may serve
+/// `pattern`: a case-sensitive literal of at least [`MIN_LITERAL_LEN`] code
+/// points with no regex metacharacters.
+pub fn admitted_literal(pattern: &str, case_insensitive: bool) -> Option<&str> {
+    if case_insensitive {
+        return None;
+    }
+    if pattern.chars().count() < MIN_LITERAL_LEN {
+        return None;
+    }
+    if pattern.chars().any(is_regex_meta) {
+        return None;
+    }
+    Some(pattern)
+}
+
+fn is_regex_meta(c: char) -> bool {
+    matches!(
+        c,
+        '.' | '*' | '+' | '?' | '[' | ']' | '(' | ')' | '{' | '}' | '|' | '^' | '$' | '\\'
+    )
+}
+
+/// Quote a user literal as an FTS5 phrase. Internal double quotes are doubled,
+/// so a pattern such as `a"b OR c` becomes the single phrase `"a""b OR c"` and
+/// can never smuggle MATCH operators into the query.
+pub fn fts_phrase(literal: &str) -> String {
+    format!("\"{}\"", literal.replace('"', "\"\""))
+}
+
+/// Outcome of asking the index for candidate files.
+pub enum CandidateSelection {
+    /// Candidate files (absolute paths, newest-first). The caller re-scans them.
+    Ready(Vec<PathBuf>),
+    /// Cannot serve this query (index missing/stale/unknown root, or drift):
+    /// the caller must use the normal fallback search.
+    Fallback,
+}
+
+/// Select candidate files for `literal` under `root` from a `fresh` index.
+///
+/// Any internal error degrades to [`CandidateSelection::Fallback`]; the fast
+/// path must never change Grep's public shape.
+pub fn select_candidates(
+    index: &IndexStore,
+    root: &Path,
+    literal: &str,
+    cap: usize,
+) -> CandidateSelection {
+    match select_candidates_inner(index, root, literal, cap) {
+        Ok(Some(files)) => CandidateSelection::Ready(files),
+        Ok(None) | Err(_) => CandidateSelection::Fallback,
+    }
+}
+
+fn select_candidates_inner(
+    index: &IndexStore,
+    root: &Path,
+    literal: &str,
+    cap: usize,
+) -> Result<Option<Vec<PathBuf>>> {
+    let root = normalize_root(root);
+    let root_id = root_id(&root);
+    let connection = index.connection()?;
+
+    // Only a `fresh` root may serve the fast path. `building`/`stale`/
+    // `partial`/`failed`/`skipped_over_limit`/`disabled` all fall back.
+    let status: Option<String> = connection
+        .query_row(
+            "SELECT status FROM indexed_roots WHERE root_id = ?1",
+            [&root_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if status.as_deref() != Some("fresh") {
+        return Ok(None);
+    }
+
+    let phrase = fts_phrase(literal);
+    // FTS5's MATCH operator needs the real table name on the left, so the FTS
+    // table is not aliased here.
+    let mut statement = connection.prepare(
+        "SELECT f.rel_path, f.size, f.mtime_ms
+         FROM file_content_fts
+         JOIN files AS f
+           ON f.root_id = file_content_fts.root_id
+          AND f.rel_path = file_content_fts.rel_path
+         WHERE file_content_fts.root_id = ?1
+           AND file_content_fts MATCH ?2
+         ORDER BY f.mtime_ms DESC, f.rel_path ASC
+         LIMIT ?3",
+    )?;
+    let rows = statement.query_map(params![root_id, phrase, (cap as i64) + 1], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, i64>(1)?,
+            row.get::<_, i64>(2)?,
+        ))
+    })?;
+    let mut candidates: Vec<(String, i64, i64)> = Vec::new();
+    for row in rows {
+        candidates.push(row?);
+    }
+    if candidates.len() > cap {
+        // Too wide to be a cheap narrowing; let the fallback search handle it.
+        return Ok(None);
+    }
+    if candidates.is_empty() {
+        return Ok(Some(Vec::new()));
+    }
+
+    // Hit verification: stat every candidate. A vanished candidate means the
+    // index is already a stale superset; too much drift means it is not a
+    // trustworthy candidate source. Either way, fall back.
+    let mut drifted = 0_usize;
+    let mut files = Vec::with_capacity(candidates.len());
+    for (rel_path, size, mtime_ms) in candidates {
+        let absolute = root.join(&rel_path);
+        let Ok(metadata) = std::fs::metadata(&absolute) else {
+            return Ok(None);
+        };
+        let on_disk_mtime = metadata
+            .modified()
+            .ok()
+            .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+            .map(|duration| duration.as_millis() as i64)
+            .unwrap_or(0);
+        if metadata.len() as i64 != size || on_disk_mtime != mtime_ms {
+            drifted += 1;
+        }
+        files.push(absolute);
+    }
+    if drifted as f64 / files.len() as f64 > MAX_DRIFT_RATIO {
+        return Ok(None);
+    }
+    Ok(Some(files))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{index::IndexLimits, index::IndexStore};
+    use std::fs;
+
+    #[test]
+    fn admission_refuses_regex_short_and_case_insensitive_patterns() {
+        assert_eq!(admitted_literal("needle", false), Some("needle"));
+        assert_eq!(admitted_literal("n.needle", false), None);
+        assert_eq!(admitted_literal("a|b", false), None);
+        assert_eq!(admitted_literal("ab", false), None);
+        assert_eq!(admitted_literal("", false), None);
+        assert_eq!(admitted_literal("needle", true), None);
+        // CJK literals are >= 3 code points and are admitted.
+        assert_eq!(admitted_literal("索引库", false), Some("索引库"));
+    }
+
+    #[test]
+    fn phrase_quoting_doubles_internal_quotes() {
+        assert_eq!(fts_phrase("plain"), "\"plain\"");
+        assert_eq!(fts_phrase("a\"b"), "\"a\"\"b\"");
+        // A would-be operator stays inside one phrase.
+        assert_eq!(fts_phrase("a OR b"), "\"a OR b\"");
+    }
+
+    #[test]
+    fn fresh_index_serves_only_literal_matching_files() {
+        let data = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("hit.txt"), "the literal needle is here\n").unwrap();
+        fs::write(root.path().join("miss.txt"), "nothing to see\n").unwrap();
+        let store = IndexStore::open(data.path()).unwrap();
+        let status = store.rebuild(root.path(), IndexLimits::default()).unwrap();
+        assert_eq!(status.status, "fresh");
+
+        match select_candidates(&store, root.path(), "needle", 20_000) {
+            CandidateSelection::Ready(files) => {
+                assert_eq!(files.len(), 1);
+                assert_eq!(files[0].file_name().unwrap(), "hit.txt");
+            }
+            CandidateSelection::Fallback => panic!("fresh index must serve"),
+        }
+        // A literal that is not present yields an empty (not fallback) set.
+        match select_candidates(&store, root.path(), "absent", 20_000) {
+            CandidateSelection::Ready(files) => assert!(files.is_empty()),
+            CandidateSelection::Fallback => panic!("empty match set is still served"),
+        }
+    }
+
+    #[test]
+    fn unknown_or_unindexed_root_falls_back() {
+        let data = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("a.txt"), "needle\n").unwrap();
+        let store = IndexStore::open(data.path()).unwrap();
+        // No rebuild yet: the root is unknown, so nothing may be served.
+        assert!(matches!(
+            select_candidates(&store, root.path(), "needle", 20_000),
+            CandidateSelection::Fallback
+        ));
+    }
+
+    #[test]
+    fn heavy_drift_falls_back_and_vanished_candidate_falls_back() {
+        let data = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("a.txt"), "needle one\n").unwrap();
+        fs::write(root.path().join("b.txt"), "needle two\n").unwrap();
+        let store = IndexStore::open(data.path()).unwrap();
+        store.rebuild(root.path(), IndexLimits::default()).unwrap();
+
+        // Touch both files so 100% of candidates drift past the threshold.
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        fs::write(root.path().join("a.txt"), "needle one changed\n").unwrap();
+        fs::write(root.path().join("b.txt"), "needle two changed\n").unwrap();
+        assert!(matches!(
+            select_candidates(&store, root.path(), "needle", 20_000),
+            CandidateSelection::Fallback
+        ));
+
+        // A candidate that disappeared also falls back.
+        let data2 = tempfile::tempdir().unwrap();
+        let root2 = tempfile::tempdir().unwrap();
+        fs::write(root2.path().join("a.txt"), "needle\n").unwrap();
+        let store2 = IndexStore::open(data2.path()).unwrap();
+        store2
+            .rebuild(root2.path(), IndexLimits::default())
+            .unwrap();
+        fs::remove_file(root2.path().join("a.txt")).unwrap();
+        assert!(matches!(
+            select_candidates(&store2, root2.path(), "needle", 20_000),
+            CandidateSelection::Fallback
+        ));
+    }
+
+    #[test]
+    fn over_cap_candidate_sets_fall_back() {
+        let data = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        for index in 0..5 {
+            fs::write(
+                root.path().join(format!("f{index}.txt")),
+                "common substring marker\n",
+            )
+            .unwrap();
+        }
+        let store = IndexStore::open(data.path()).unwrap();
+        store.rebuild(root.path(), IndexLimits::default()).unwrap();
+        assert!(matches!(
+            select_candidates(&store, root.path(), "marker", 3),
+            CandidateSelection::Fallback
+        ));
+    }
+}

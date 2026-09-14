@@ -16,6 +16,7 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::{ChildStderr, ChildStdin, ChildStdout, Command};
 use tokio::sync::{mpsc, watch};
 
+use crate::index::IndexStore;
 use crate::workspace::{resolve_tool_path_with_external, ToolRoot};
 
 mod grep_rg;
@@ -998,6 +999,10 @@ pub async fn execute_tool_with_options(
 
 /// Execute a builtin tool after the host permission gate has decided whether
 /// an explicit outside-workspace path is allowed for this call.
+///
+/// The workspace content index is not consulted here; callers that hold one
+/// (the RPC dispatch, once the `indexGrepBoost` setting exists) use
+/// [`execute_tool_with_index`] instead.
 pub async fn execute_tool_with_path_access(
     workspace: Option<&Path>,
     scratch: Option<&Path>,
@@ -1006,6 +1011,36 @@ pub async fn execute_tool_with_path_access(
     timeout_ms: Option<u64>,
     bash_options: Option<BashExecutionOptions>,
     allow_external_paths: bool,
+) -> ToolsExecuteResult {
+    execute_tool_with_index(
+        workspace,
+        scratch,
+        tool_name,
+        args,
+        timeout_ms,
+        bash_options,
+        allow_external_paths,
+        None,
+        false,
+    )
+    .await
+}
+
+/// Like [`execute_tool_with_path_access`], but able to consult the workspace
+/// content index for the Grep literal fast path (P2-B). `index_grep_boost`
+/// mirrors the opt-in `indexGrepBoost` setting and defaults off, so the fast
+/// path stays inert until the visible-set parity test lands.
+#[allow(clippy::too_many_arguments)]
+pub async fn execute_tool_with_index(
+    workspace: Option<&Path>,
+    scratch: Option<&Path>,
+    tool_name: &str,
+    args: &Value,
+    timeout_ms: Option<u64>,
+    bash_options: Option<BashExecutionOptions>,
+    allow_external_paths: bool,
+    index: Option<&IndexStore>,
+    index_grep_boost: bool,
 ) -> ToolsExecuteResult {
     let started = Instant::now();
     let timeout_ms = effective_timeout_ms(tool_name, timeout_ms);
@@ -1027,7 +1062,14 @@ pub async fn execute_tool_with_path_access(
     let result = match tool_name {
         "Read" => tool_read(workspace, scratch, args, allow_external_paths),
         "Glob" => tool_glob(workspace, scratch, args, allow_external_paths),
-        "Grep" => tool_grep(workspace, scratch, args, allow_external_paths),
+        "Grep" => tool_grep(
+            workspace,
+            scratch,
+            args,
+            allow_external_paths,
+            index,
+            index_grep_boost,
+        ),
         "Write" => tool_write(workspace, scratch, args, allow_external_paths),
         "Edit" => tool_edit(workspace, scratch, args, allow_external_paths),
         "Bash" => {
@@ -1576,6 +1618,8 @@ fn tool_grep(
     scratch: Option<&Path>,
     args: &Value,
     allow_external_paths: bool,
+    index: Option<&IndexStore>,
+    index_grep_boost: bool,
 ) -> Result<Value, (String, String)> {
     let root = require_workspace(workspace)?;
     let pattern = args
@@ -1631,29 +1675,57 @@ fn tool_grep(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
+    // P2-B literal fast path. Only the whole-workspace, unfiltered, literal,
+    // case-sensitive case is eligible. The index narrows the candidate file
+    // list; the shared scanner below still decides every hit, so when the fast
+    // path serves we skip the `rg` backend entirely instead of racing it.
+    let mut fast_candidates: Option<Vec<PathBuf>> = None;
+    if index_grep_boost && !scoped && include_pattern.is_none() && search_dir.as_path() == root {
+        if let (Some(index), Some(literal)) = (
+            index,
+            crate::index::fast_path::admitted_literal(pattern, case_insensitive),
+        ) {
+            if let crate::index::fast_path::CandidateSelection::Ready(files) =
+                crate::index::fast_path::select_candidates(
+                    index,
+                    root,
+                    literal,
+                    GREP_MAX_CANDIDATE_FILES,
+                )
+            {
+                fast_candidates = Some(files);
+            }
+        }
+    }
+
     // Prefer a system `rg` when one is installed (Codex's search default).
     // The result shape, budgets, newest-first order, and scoped-ignore rule
     // stay host-defined; a missing or failing binary falls through.
-    if let Some(value) = grep_rg::try_system_rg(grep_rg::SystemGrep {
-        pattern,
-        search_dir: &search_dir,
-        workspace_root: root,
-        root_kind,
-        scoped,
-        include: include_pattern,
-        mode,
-        case_insensitive,
-        head_limit,
-    }) {
-        return Ok(value);
+    if fast_candidates.is_none() {
+        if let Some(value) = grep_rg::try_system_rg(grep_rg::SystemGrep {
+            pattern,
+            search_dir: &search_dir,
+            workspace_root: root,
+            root_kind,
+            scoped,
+            include: include_pattern,
+            mode,
+            case_insensitive,
+            head_limit,
+        }) {
+            return Ok(value);
+        }
     }
 
-    let (files, mut truncated) = candidate_files(
-        &search_dir,
-        scoped,
-        include.as_ref(),
-        GREP_MAX_CANDIDATE_FILES,
-    );
+    let (files, mut truncated) = match fast_candidates {
+        Some(files) => (files, false),
+        None => candidate_files(
+            &search_dir,
+            scoped,
+            include.as_ref(),
+            GREP_MAX_CANDIDATE_FILES,
+        ),
+    };
 
     let mut hits: Vec<Value> = Vec::new();
     let mut counts: Vec<Value> = Vec::new();

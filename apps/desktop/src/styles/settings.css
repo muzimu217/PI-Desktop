@@ -2290,10 +2290,92 @@
   height: auto;
 }
 
-/* Chart panels own their inset: the base .settings-panel is padding-free and
-   clips overflow, which put axis labels and values against the tile edge. */
+/*
+  Chart panels own their inset: the base .settings-panel is padding-free and
+  clips overflow, which put axis labels and values against the tile edge. The
+  hover tooltips (`.stats-tooltip`) live inside these panels but must float
+  past the tile edge, so this variant opts out of the base `overflow: hidden`.
+*/
 .stats-chart-panel {
   padding: 14px 16px;
+  overflow: visible;
+}
+
+/*
+  Card head row: title on the left, chart-scoped segmented control (activity
+  granularity, trend range) on the right. Flex-wrap keeps the control under
+  the title once the column is narrower than both.
+*/
+.stats-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: 10px;
+}
+
+.stats-card-head .settings-card-heading {
+  margin-bottom: 0;
+}
+
+/* Positioned ancestors for the chart tooltips (viewBox → pixel anchoring). */
+.stats-heat-wrap,
+.stats-trend-plot {
+  position: relative;
+}
+
+/*
+  Rich hover bubble for the stats charts (heatmap day, trend day). It is meant
+  to read as "on top of everything here": raised opaque surface with an edge —
+  the token note reserves border tokens for floating layers exactly like this
+  — and `pointer-events: none` so the bubble can never steal the hover that
+  positions it. Clamped to 220px so a long date/model list cannot overflow.
+*/
+.stats-tooltip {
+  position: absolute;
+  z-index: 20;
+  max-width: 220px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--ds-raised);
+  box-shadow: var(--ds-raised-shadow);
+  pointer-events: none;
+  color: var(--ds-text-primary);
+  font-size: var(--text-xs);
+  line-height: var(--leading-compact);
+}
+
+.stats-tooltip-date {
+  margin-bottom: 2px;
+  color: var(--ds-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats-tooltip-value {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.stats-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.stats-tooltip-row > span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stats-tooltip-num {
+  margin-left: auto;
+  padding-left: var(--space-3);
+  font-variant-numeric: tabular-nums;
 }
 
 .stats-heat-cell {
@@ -2355,6 +2437,40 @@
 
 .stats-trend-area { fill: color-mix(in oklab, var(--chart-1) 16%, transparent); }
 
+/* Trend hover: dashed snap line plus one anchor dot per plotted series. */
+.stats-trend-crosshair {
+  stroke: color-mix(in oklab, var(--ds-text-primary) 28%, transparent);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.stats-trend-marker {
+  fill: var(--ds-raised);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.stats-trend-marker-total { stroke: var(--chart-1); }
+.stats-trend-marker-1 { stroke: var(--chart-2); }
+.stats-trend-marker-2 { stroke: var(--chart-3); }
+.stats-trend-marker-3 { stroke: var(--chart-4); }
+.stats-trend-marker-4 { stroke: var(--chart-5); }
+.stats-trend-marker-5 { stroke: var(--chart-6); }
+
+/* Weekly granularity: ISO-week bars on the same geometry as the day grid. */
+.stats-week-bar { fill: var(--chart-1); }
+
+/* Cumulative granularity: running-total area with its total line. */
+.stats-cumulative-area { fill: color-mix(in oklab, var(--chart-1) 16%, transparent); }
+
+.stats-cumulative-line {
+  fill: none;
+  stroke: var(--chart-1);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
 .stats-trend-axis {
   stroke: color-mix(in oklab, var(--ds-text-primary) 12%, transparent);
   stroke-width: 1;
@@ -2379,7 +2495,20 @@
   flex-direction: row;
   flex-wrap: wrap;
   gap: var(--space-3);
-  margin-top: var(--space-2);
+  /* Legend sits above the plot now, tight under the card head. */
+  margin: 0 0 var(--space-2);
+  min-width: 0;
+}
+
+/* One legend row that truncates instead of pushing the chart down. */
+.stats-trend-legend li {
+  max-width: 100%;
+}
+
+.stats-trend-legend li > span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .stats-trend-legend li,

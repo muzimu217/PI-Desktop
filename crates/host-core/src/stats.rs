@@ -64,7 +64,7 @@ pub struct Summary {
     pub daily_by_model: Vec<DayModel>,
     pub model_usage: Vec<ModelUsage>,
     pub project_usage: Vec<ProjectUsage>,
-    pub heatmap: Vec<DayTotal>,
+    pub heatmap: Vec<HeatDay>,
     pub generated_at: i64,
 }
 
@@ -108,6 +108,16 @@ pub struct Diagnostics {
 pub struct DayTotal {
     pub date: String,
     pub tokens: i64,
+}
+
+/// One heatmap cell: a local calendar day with its token total and the number
+/// of completed turns that produced it (the rich hover hint shows both).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeatDay {
+    pub date: String,
+    pub tokens: i64,
+    pub turns: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -260,6 +270,9 @@ pub fn summary(db: &Database, range_days: i64, project_id: Option<i64>) -> Resul
     // every in-range day.
     let mut daily_range: BTreeMap<String, i64> = BTreeMap::new();
     let mut daily_full: BTreeMap<String, i64> = BTreeMap::new();
+    // Completed turns per local day over the same 365-day window; the heatmap
+    // hover shows this next to the token total.
+    let mut daily_turns_full: BTreeMap<String, i64> = BTreeMap::new();
     let mut daily_model: BTreeMap<(String, String), i64> = BTreeMap::new();
     let mut models: BTreeMap<String, i64> = BTreeMap::new();
     let mut projects: BTreeMap<Option<i64>, i64> = BTreeMap::new();
@@ -308,7 +321,12 @@ pub fn summary(db: &Database, range_days: i64, project_id: Option<i64>) -> Resul
             }
         }
         // Heatmap covers the full 365-day window regardless of range/scope.
-        *daily_full.entry(date).or_default() += tokens;
+        // One row is one completed turn: count it exactly once per row,
+        // unconditionally — this pass also serves the in-range branch above,
+        // so the increment must live outside `if in_range` to stay correct for
+        // rows beyond the requested range while never double-counting.
+        *daily_full.entry(date.clone()).or_default() += tokens;
+        *daily_turns_full.entry(date).or_default() += 1;
         active_days.insert(local_date(row.started_at));
     }
 
@@ -406,9 +424,10 @@ pub fn summary(db: &Database, range_days: i64, project_id: Option<i64>) -> Resul
         project_usage,
         heatmap: daily_full
             .iter()
-            .map(|(date, tokens)| DayTotal {
+            .map(|(date, tokens)| HeatDay {
                 date: date.clone(),
                 tokens: *tokens,
+                turns: daily_turns_full.get(date).copied().unwrap_or(0),
             })
             .collect(),
         generated_at: now_ms(),
@@ -609,6 +628,45 @@ mod tests {
             .find(|day| day.date == today)
             .expect("today is in the range");
         assert_eq!(daily_today.tokens, 3_000);
+    }
+
+    #[test]
+    fn heatmap_counts_turns_per_day_unconditionally() {
+        let (_dir, db) = setup_db();
+        insert_session(&db, "s1");
+        let now = now_ms();
+        let day = |back: i64| now - back * 24 * 3600 * 1000;
+        // Two turns today, one yesterday, and one 10 days back — the last one
+        // sits outside the requested 7-day range but inside the 365-day
+        // heatmap window, so its turn must still be counted exactly once.
+        // Starts trail `now` because the scan is capped at summary()'s end.
+        insert_turn(&db, "t1", "s1", day(0) - 3_000, day(0) - 2_000, 100, 100, 0, "m");
+        insert_turn(&db, "t2", "s1", day(0) - 1_500, day(0) - 500, 200, 200, 0, "m");
+        insert_turn(&db, "t3", "s1", day(1), day(1) + 60_000, 300, 300, 0, "m");
+        insert_turn(&db, "t4", "s1", day(10), day(10) + 60_000, 400, 400, 0, "m");
+        let summary = summary(&db, 7, None).unwrap();
+        let turns_on = |back: i64| {
+            let key = local_date(day(back));
+            summary
+                .heatmap
+                .iter()
+                .find(|cell| cell.date == key)
+                .map(|cell| cell.turns)
+                .unwrap_or(-1)
+        };
+        assert_eq!(turns_on(0), 2);
+        assert_eq!(turns_on(1), 1);
+        assert_eq!(turns_on(10), 1);
+        // A day without rows is absent from the wire payload entirely — the
+        // renderer gap-fills the 365-cell grid with zero tokens and zero turns.
+        assert!(!summary
+            .heatmap
+            .iter()
+            .any(|cell| cell.date == local_date(day(2))));
+        assert_eq!(
+            summary.heatmap.iter().map(|day| day.turns).sum::<i64>(),
+            4
+        );
     }
 
     #[test]

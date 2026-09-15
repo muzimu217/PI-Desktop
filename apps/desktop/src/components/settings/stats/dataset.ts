@@ -36,6 +36,69 @@ function shiftDays(date: Date, days: number): Date {
   return next;
 }
 
+/**
+ * Parse `YYYY-MM-DD` into a local-midnight Date. `new Date(key)` would parse
+ * as UTC midnight and re-shift the string through the local zone — the same
+ * trap `localDateKey` exists to avoid, so decoding stays symmetric with it.
+ */
+export function parseDateKey(key: string): Date {
+  return new Date(
+    Number(key.slice(0, 4)),
+    Number(key.slice(5, 7)) - 1,
+    Number(key.slice(8, 10)),
+  );
+}
+
+/** Monday that starts the ISO week containing `date` (local calendar). */
+export function startOfIsoWeek(date: Date): Date {
+  const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  return monday;
+}
+
+/**
+ * Aggregate an ascending daily series into ISO-week buckets (Monday-anchored).
+ * The bucket `start` is the Monday even when the window begins mid-week, so
+ * consecutive buckets are always 7 days apart and a 365-day window maps to
+ * ~53 stable columns.
+ */
+export function weeklyBuckets(days: StatsDailyPoint[]): StatsWeeklyBucket[] {
+  const buckets: StatsWeeklyBucket[] = [];
+  for (const day of days) {
+    const start = localDateKey(startOfIsoWeek(parseDateKey(day.date)));
+    const last = buckets[buckets.length - 1];
+    if (last && last.start === start) {
+      last.tokens += day.tokens;
+      last.end = day.date;
+    } else {
+      buckets.push({ start, end: day.date, tokens: day.tokens });
+    }
+  }
+  return buckets;
+}
+
+/** Running total over an ascending daily series (cumulative-view input). */
+export function cumulativeSeries(days: StatsDailyPoint[]): StatsCumulativePoint[] {
+  let running = 0;
+  return days.map((day) => {
+    running += day.tokens;
+    return { date: day.date, tokens: running };
+  });
+}
+
+/**
+ * Keep only the most recent `days` distinct dates of a point list. Points may
+ * repeat a date (dailyByModel has one row per model per day), so the cut is
+ * computed on the sorted date set and applied as a filter — every series for a
+ * kept day survives together.
+ */
+export function sliceRecent<T extends { date: string }>(days: number, points: T[]): T[] {
+  if (days <= 0 || points.length === 0) return [];
+  const dates = [...new Set(points.map((point) => point.date))].sort();
+  const keep = new Set(dates.slice(-days));
+  return points.filter((point) => keep.has(point.date));
+}
+
 /** Round the axis top up to 1/2/2.5/5 × 10ⁿ so gridlines read as round numbers. */
 export function niceCeil(value: number): number {
   if (value <= 0) return 1;
@@ -49,7 +112,8 @@ export function niceCeil(value: number): number {
 /** Session-concentration watch threshold: top-5 share above this is flagged. */
 export const STATS_CONCENTRATION_THRESHOLD = 0.35;
 
-const MONTHS = [
+/** Short English month labels for the SVG month axes (kept locale-neutral). */
+export const MONTHS = [
   "Jan",
   "Feb",
   "Mar",
@@ -69,10 +133,18 @@ export type StatsDailyPoint = { date: string; tokens: number };
 export type StatsHeatCell = {
   date: string;
   tokens: number;
+  /** Completed turns that produced the day's tokens (0 when unreported). */
+  turns: number;
   /** 0 (empty) … 4 (peak), matching the `stats-heat-<level>` classes. */
   level: number;
   isToday: boolean;
 };
+
+/** One ISO-week (Monday-anchored) bucket of the 365-day heatmap window. */
+export type StatsWeeklyBucket = { start: string; end: string; tokens: number };
+
+/** One day of the running total over the heatmap window. */
+export type StatsCumulativePoint = { date: string; tokens: number };
 
 export type StatsHeatmap = {
   cells: StatsHeatCell[];
@@ -88,9 +160,42 @@ export type StatsTrend = {
   dates: string[];
   series: StatsTrendSeries[];
   totals: number[];
+  /** Peak of every plotted value (totals and series) — never negative. */
+  peak: number;
   /** Nice-ceil Y-axis top derived from the peak of every plotted value. */
   axisMax: number;
 };
+
+/**
+ * Derive the trend chart data from per-model daily rows: aligned ascending
+ * dates, top-5 model series by total, a totals overlay and a nice-ceil axis.
+ * Exported so the page can rebuild it from a time-sliced slice of the same
+ * rows (the trend card's 7/30-day switch) without a second RPC.
+ */
+export function buildTrend(dailyByModel: StatsDayModel[]): StatsTrend {
+  const byModel = new Map<string, Map<string, number>>();
+  const totalsByDate = new Map<string, number>();
+  const dateSet = new Set<string>();
+  for (const day of dailyByModel) {
+    dateSet.add(day.date);
+    const model = byModel.get(day.modelId) ?? new Map<string, number>();
+    model.set(day.date, (model.get(day.date) ?? 0) + day.tokens);
+    byModel.set(day.modelId, model);
+    totalsByDate.set(day.date, (totalsByDate.get(day.date) ?? 0) + day.tokens);
+  }
+  const dates = [...dateSet].sort();
+  const series: StatsTrendSeries[] = [...byModel.entries()]
+    .map(([modelId, values]) => ({
+      modelId,
+      values: dates.map((date) => values.get(date) ?? 0),
+      total: [...values.values()].reduce((sum, value) => sum + value, 0),
+    }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 5);
+  const totals = dates.map((date) => totalsByDate.get(date) ?? 0);
+  const peak = Math.max(0, ...totals, ...series.flatMap((entry) => entry.values));
+  return { dates, series, totals, peak, axisMax: niceCeil(peak) };
+}
 
 export type StatsModelSlice = { modelId: string; tokens: number; share: number };
 export type StatsProjectSlice = {
@@ -212,16 +317,18 @@ export function buildStatsDataset(
     }));
 
   // --- Heatmap: 365 local-date cells ending today. ------------------------
-  const heatByDate = new Map(summary.heatmap.map((day) => [day.date, day.tokens]));
+  const heatByDate = new Map(summary.heatmap.map((day) => [day.date, day]));
   const today = localDateKey(now);
   const max = Math.max(1, ...summary.heatmap.map((day) => day.tokens));
   const cells: StatsHeatCell[] = [];
   for (let offset = 364; offset >= 0; offset -= 1) {
     const date = localDateKey(shiftDays(now, -offset));
-    const tokens = heatByDate.get(date) ?? 0;
+    const observed = heatByDate.get(date);
+    const tokens = observed?.tokens ?? 0;
     cells.push({
       date,
       tokens,
+      turns: observed?.turns ?? 0,
       level: tokens === 0 ? 0 : Math.min(4, Math.ceil((tokens / max) * 4)),
       isToday: date === today,
     });
@@ -234,33 +341,7 @@ export function buildStatsDataset(
   });
 
   // --- Trend: top 5 models by total, values aligned to the observed dates. -
-  const byModel = new Map<string, Map<string, number>>();
-  const totalsByDate = new Map<string, number>();
-  const dateSet = new Set<string>();
-  for (const day of summary.dailyByModel) {
-    dateSet.add(day.date);
-    const model = byModel.get(day.modelId) ?? new Map<string, number>();
-    model.set(day.date, (model.get(day.date) ?? 0) + day.tokens);
-    byModel.set(day.modelId, model);
-    totalsByDate.set(day.date, (totalsByDate.get(day.date) ?? 0) + day.tokens);
-  }
-  const trendDates = [...dateSet].sort();
-  const series: StatsTrendSeries[] = [...byModel.entries()]
-    .map(([modelId, values]) => ({
-      modelId,
-      values: trendDates.map((date) => values.get(date) ?? 0),
-      total: [...values.values()].reduce((sum, value) => sum + value, 0),
-    }))
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 5);
-  const trendTotals = trendDates.map((date) => totalsByDate.get(date) ?? 0);
-  const trendPeak = Math.max(0, ...trendTotals, ...series.flatMap((entry) => entry.values));
-  const trend: StatsTrend = {
-    dates: trendDates,
-    series,
-    totals: trendTotals,
-    axisMax: niceCeil(trendPeak),
-  };
+  const trend = buildTrend(summary.dailyByModel);
 
   // --- Diagnostics: passthrough plus the concentration flag. --------------
   const diagnostics = {
@@ -341,7 +422,7 @@ export function buildStatsDataset(
       trend: {
         days: rangeDays,
         totalTokens: summary.cards.totalTokens,
-        peakTokens: trendPeak,
+        peakTokens: trend.peak,
         peakDate: peakDay.date,
       },
     },

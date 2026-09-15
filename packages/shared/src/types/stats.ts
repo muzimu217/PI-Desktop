@@ -3,6 +3,8 @@
  */
 export type StatsDayTotal = { date: string; tokens: number };
 export type StatsDayModel = { date: string; modelId: string; tokens: number };
+/** One heatmap cell: a local calendar day with its tokens and completed turns. */
+export type StatsHeatmapPoint = { date: string; tokens: number; turns: number };
 export type StatsModelUsage = { modelId: string; tokens: number; share: number };
 export type StatsProjectUsage = {
   projectId: number | null;
@@ -33,7 +35,7 @@ export type StatsSummary = {
   dailyByModel: StatsDayModel[];
   modelUsage: StatsModelUsage[];
   projectUsage: StatsProjectUsage[];
-  heatmap: StatsDayTotal[];
+  heatmap: StatsHeatmapPoint[];
   generatedAt: number;
 };
 export type StatsTopSession = {

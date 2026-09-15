@@ -17,8 +17,12 @@ import test from "node:test";
 import {
   STATS_CONCENTRATION_THRESHOLD,
   buildStatsDataset,
+  buildTrend,
+  cumulativeSeries,
   localDateKey,
   niceCeil,
+  sliceRecent,
+  weeklyBuckets,
 } from "../src/components/settings/stats/dataset.ts";
 
 const DAY_MS = 86_400_000;
@@ -71,8 +75,8 @@ function summary(overrides = {}) {
       { projectId: null, projectName: null, tokens: 200, share: 200 / 700 },
     ],
     heatmap: [
-      { date: keyAt(END, -1), tokens: 50 },
-      { date: keyAt(END), tokens: 200 },
+      { date: keyAt(END, -1), tokens: 50, turns: 2 },
+      { date: keyAt(END), tokens: 200, turns: 5 },
     ],
     generatedAt: END.getTime(),
   };
@@ -307,6 +311,128 @@ test("today's heatmap column carries the stats-heat-today hook class", () => {
   assert.match(page, /isToday && "stats-heat-today"/);
 });
 
+test("heatmap cells carry the per-day turn counts from the host", () => {
+  const dataset = buildStatsDataset(summary(), SESSIONS, NOW);
+  const { cells } = dataset.heatmap;
+  assert.equal(cells.find((cell) => cell.date === keyAt(NOW, -1))?.turns, 2);
+  assert.equal(cells.find((cell) => cell.date === keyAt(NOW, 0))?.turns, 5);
+  // Days the host did not report read zero turns, never undefined/NaN.
+  assert.equal(cells.find((cell) => cell.tokens === 0)?.turns, 0);
+  assert.ok(cells.every((cell) => Number.isInteger(cell.turns) && cell.turns >= 0));
+});
+
+test("weeklyBuckets returns no buckets for an empty series", () => {
+  assert.deepEqual(weeklyBuckets([]), []);
+});
+
+test("weeklyBuckets groups a single day into its ISO week (Monday start)", () => {
+  // 2026-03-10 is a Tuesday; its ISO week starts Monday 2026-03-09.
+  const buckets = weeklyBuckets([{ date: "2026-03-10", tokens: 400 }]);
+  assert.deepEqual(buckets, [{ start: "2026-03-09", end: "2026-03-10", tokens: 400 }]);
+});
+
+test("weeklyBuckets sums whole weeks and stays stable across a year boundary", () => {
+  // 2024-12-30 is a Monday, 2025-01-05 the Sunday of the same ISO week —
+  // the bucket spans New Year without splitting.
+  const buckets = weeklyBuckets([
+    { date: "2024-12-30", tokens: 10 },
+    { date: "2024-12-31", tokens: 20 },
+    { date: "2025-01-01", tokens: 30 },
+    { date: "2025-01-05", tokens: 40 },
+    { date: "2025-01-06", tokens: 50 },
+  ]);
+  assert.deepEqual(buckets, [
+    { start: "2024-12-30", end: "2025-01-05", tokens: 100 },
+    { start: "2025-01-06", end: "2025-01-06", tokens: 50 },
+  ]);
+});
+
+test("weeklyBuckets conserves the total across 365 days", () => {
+  const days = Array.from({ length: 365 }, (_, index) => {
+    const date = new Date(2026, 2, 10, 12);
+    date.setDate(date.getDate() - (364 - index));
+    return { date: localDateKey(date), tokens: index + 1 };
+  });
+  const buckets = weeklyBuckets(days);
+  assert.equal(
+    buckets.reduce((sum, bucket) => sum + bucket.tokens, 0),
+    days.reduce((sum, day) => sum + day.tokens, 0),
+  );
+  assert.ok(buckets.length > 50 && buckets.length <= 54, `${buckets.length} weekly buckets`);
+});
+
+test("cumulativeSeries returns an empty series for empty input", () => {
+  assert.deepEqual(cumulativeSeries([]), []);
+});
+
+test("cumulativeSeries accumulates a running total and preserves dates", () => {
+  assert.deepEqual(
+    cumulativeSeries([{ date: "2026-03-10", tokens: 5 }]),
+    [{ date: "2026-03-10", tokens: 5 }],
+  );
+  assert.deepEqual(
+    cumulativeSeries([
+      { date: "2026-03-08", tokens: 1 },
+      { date: "2026-03-09", tokens: 2 },
+      { date: "2026-03-10", tokens: 4 },
+    ]).map((point) => point.tokens),
+    [1, 3, 7],
+  );
+});
+
+test("sliceRecent keeps the last N distinct dates of a longer series", () => {
+  const points = Array.from({ length: 30 }, (_, index) => ({
+    date: `2026-01-${String(index + 1).padStart(2, "0")}`,
+    tokens: index,
+  }));
+  const recent = sliceRecent(7, points);
+  assert.equal(recent.length, 7);
+  assert.equal(recent[0].date, "2026-01-24");
+  assert.equal(recent[6].date, "2026-01-30");
+});
+
+test("sliceRecent keeps every row of a kept day (per-model rows stay aligned)", () => {
+  const byModel = [
+    { date: "2026-01-01", modelId: "a", tokens: 1 },
+    { date: "2026-01-02", modelId: "a", tokens: 2 },
+    { date: "2026-01-02", modelId: "b", tokens: 3 },
+    { date: "2026-01-03", modelId: "a", tokens: 4 },
+  ];
+  const recent = sliceRecent(2, byModel);
+  assert.deepEqual(recent, byModel.slice(1));
+});
+
+test("sliceRecent keeps everything when the series is shorter than the window", () => {
+  const points = [{ date: "2026-01-01", tokens: 1 }, { date: "2026-01-02", tokens: 2 }];
+  assert.deepEqual(sliceRecent(7, points), points);
+});
+
+test("sliceRecent returns empty for empty input or a non-positive window", () => {
+  assert.deepEqual(sliceRecent(7, []), []);
+  assert.deepEqual(sliceRecent(0, [{ date: "2026-01-01", tokens: 1 }]), []);
+});
+
+test("trend rebuilt from a sliced window scales its own axis", () => {
+  const full = buildTrend(
+    Array.from({ length: 30 }, (_, index) => ({
+      date: `2026-01-${String(index + 1).padStart(2, "0")}`,
+      modelId: "alpha",
+      tokens: (index + 1) * 100,
+    })),
+  );
+  assert.equal(full.dates.length, 30);
+  assert.equal(full.peak, 3000);
+  assert.equal(full.axisMax, niceCeil(3000));
+  const recent = buildTrend(sliceRecent(7, full.dates.map((date, index) => ({
+    date,
+    modelId: "alpha",
+    tokens: (index + 1) * 100,
+  }))));
+  assert.equal(recent.dates.length, 7);
+  assert.equal(recent.peak, 3000);
+  assert.equal(recent.totals.at(-1), 3000);
+});
+
 test("heatmap and trend expose sr-only data tables", () => {
   assert.match(page, /className="stats-sr-table sr-only"/);
   assert.match(page, /stats\.heatmapTableCaption/);
@@ -345,4 +471,53 @@ test("CSV export is sectioned with a metadata header", () => {
   ]) {
     assert.match(page, new RegExp(`\\["${section}", exportRows\\.${section}\\]`));
   }
+});
+
+test("heatmap hover uses the rich stats-tooltip, not a <title>", () => {
+  // The native <title> would stack with the styled bubble; it must be gone.
+  assert.doesNotMatch(page, /<title>/);
+  assert.match(page, /stats-tooltip/);
+  assert.match(page, /stats\.tooltipTurns/);
+  assert.match(page, /formatFullDate/);
+});
+
+test("activity card switches daily/weekly/cumulative granularity in the renderer", () => {
+  assert.match(page, /stats\.granularityDaily/);
+  assert.match(page, /stats\.granularityWeekly/);
+  assert.match(page, /stats\.granularityCumulative/);
+  assert.match(page, /setGranularity/);
+  // Both alternative shapes derive from the same dataset cells — no new RPC.
+  assert.match(page, /weeklyBuckets/);
+  assert.match(page, /cumulativeSeries/);
+});
+
+test("trend card owns a 7/30-day slice independent of the global range", () => {
+  assert.match(page, /buildTrend\(sliceRecent\(trendRange, dataset\.dailyByModel\)\)/);
+  assert.match(page, /setTrendRange\(days\)/);
+  assert.match(page, /setTrendRange\(range\)/);
+});
+
+test("trend legend sits above the plot with a hover crosshair readout", () => {
+  assert.match(page, /stats-trend-crosshair/);
+  assert.match(page, /stats-trend-marker/);
+  const legendAt = page.indexOf('"stats-trend-legend"');
+  const svgAt = page.indexOf('"stats-trend"');
+  assert.ok(legendAt !== -1 && svgAt !== -1 && legendAt < svgAt, "legend must render before the svg");
+});
+
+test("tooltip styles are token-based and cannot steal the hover", async () => {
+  const css = await readFile(
+    new URL("../src/styles/settings.css", import.meta.url),
+    "utf8",
+  );
+  const start = css.indexOf(".stats-tooltip {");
+  assert.ok(start !== -1, ".stats-tooltip rule missing");
+  const block = css.slice(start, css.indexOf("}", start));
+  assert.match(block, /position: absolute/);
+  assert.match(block, /pointer-events: none/);
+  assert.match(block, /var\(--radius-sm\)/);
+  assert.match(block, /var\(--ds-raised\)/);
+  assert.match(block, /var\(--text-/);
+  // The chart panel must let the bubble escape the tile edge.
+  assert.match(css, /\.stats-chart-panel \{[\s\S]*?overflow: visible/);
 });

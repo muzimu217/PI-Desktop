@@ -2047,7 +2047,12 @@
   padding: var(--space-3);
   border-radius: var(--radius-md-plus);
   background: var(--ds-tile);
-  border: 1px solid var(--ds-border-subtle);
+  /*
+    `--ds-border-default` rather than `--ds-border-subtle`: the tile fill sits
+    only ~1.09:1 over the page plate, so the hairline is what actually reads as
+    the card edge. The mockup's border carries similar weight.
+  */
+  border: 1px solid var(--ds-border-default);
 }
 
 .idx-tile-head {

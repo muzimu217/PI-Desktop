@@ -2111,8 +2111,9 @@
   color: var(--ds-text-secondary);
   font-size: var(--text-sm);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* A wrapped two-line label reads better than a truncated one when a badge
+     squeezes the head row (e.g. en "Current streak" at narrow widths). */
+  white-space: normal;
 }
 
 .idx-tile-value {
@@ -2498,7 +2499,7 @@
 }
 
 .agent-extension-diagnostic-message {
->  overflow: hidden;
+ overflow: hidden;
   text-overflow: ellipsis;
 }
 
@@ -2575,6 +2576,7 @@
   layer, not from here.
 */
 .stats-sr-table {
+  display: block;
   position: absolute;
   width: 1px;
   height: 1px;
@@ -2598,6 +2600,13 @@
   display: flex;
   justify-content: space-between;
   color: var(--ds-text-secondary);
+}
+
+/* Data-provenance footnote: informational, so muted ink rather than the
+   error tone the shared `.idx-error-line` carries. */
+.stats-provenance {
+  color: var(--ds-text-muted);
+  font-size: var(--text-xs);
 }
 
 .stats-insights-value {
@@ -3725,4 +3734,3 @@
 .sklm-page-jump::placeholder {
   color: var(--ds-text-muted);
 }
->

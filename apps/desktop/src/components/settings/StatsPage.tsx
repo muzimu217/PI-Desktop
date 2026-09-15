@@ -442,8 +442,17 @@ export function StatsPage() {
   );
 
   if (state.kind === "loading") {
+    // Spec §2.2: the four metric cards hold `--` placeholders while the
+    // aggregate computes, so the page frame never pops in from nothing.
     return (
-      <div className="settings-stack" role="status">
+      <div className="settings-stack" role="status" aria-label={t("stats.loading")}>
+        <div className="stats-cards">
+          {[t("stats.totalTokens"), t("stats.peakDay"), t("stats.longestChat"), t("stats.currentStreak")].map(
+            (label) => (
+              <MetricTile key={label} icon={null} label={label} value="--" />
+            ),
+          )}
+        </div>
         <span className="idx-state">{t("stats.loading")}</span>
       </div>
     );
@@ -675,7 +684,7 @@ export function StatsPage() {
         </div>
       </section>
 
-      <div className="idx-error-line" role="note">
+      <div className="stats-provenance" role="note">
         {t("stats.provenance")}
       </div>
     </div>

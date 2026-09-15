@@ -248,7 +248,7 @@ export function registerSessionIpc({
   handle(
     IPC.invoke.statsSummary,
     async (input?: { rangeDays?: number; projectId?: number }) => {
-      if (!host) throw new Error("host unavailable");
+      if (!host) throw Object.assign(new Error("host unavailable"), { errorCode: "HOST_UNAVAILABLE" });
       return host.call("stats.summary", input ?? {});
     },
   );
@@ -256,23 +256,23 @@ export function registerSessionIpc({
   handle(
     IPC.invoke.statsTopSessions,
     async (input?: { rangeDays?: number; projectId?: number; limit?: number }) => {
-      if (!host) throw new Error("host unavailable");
+      if (!host) throw Object.assign(new Error("host unavailable"), { errorCode: "HOST_UNAVAILABLE" });
       return host.call("stats.topSessions", input ?? {});
     },
   );
 
   handle(IPC.invoke.indexStatus, async (input?: { rootPath?: string }) => {
-    if (!host) throw new Error("host unavailable");
+    if (!host) throw Object.assign(new Error("host unavailable"), { errorCode: "HOST_UNAVAILABLE" });
     return host.call("index.status", input ?? {});
   });
 
   handle(IPC.invoke.indexRebuild, async (input?: { rootPath?: string }) => {
-    if (!host) throw new Error("host unavailable");
+    if (!host) throw Object.assign(new Error("host unavailable"), { errorCode: "HOST_UNAVAILABLE" });
     return host.call("index.rebuild", input ?? {});
   });
 
   handle(IPC.invoke.indexClear, async (input?: { rootPath?: string }) => {
-    if (!host) throw new Error("host unavailable");
+    if (!host) throw Object.assign(new Error("host unavailable"), { errorCode: "HOST_UNAVAILABLE" });
     return host.call("index.clear", input ?? {});
   });
 

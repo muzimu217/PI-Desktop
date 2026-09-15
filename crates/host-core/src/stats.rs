@@ -185,7 +185,8 @@ fn scan_window(
         "SELECT t.started_at, t.ended_at, t.input_tokens, t.output_tokens, t.usage_json,
                 t.model_id, t.session_id, s.project_id
          FROM turns t JOIN sessions s ON s.id = t.session_id
-         WHERE t.status = 'completed' AND t.ended_at IS NOT NULL
+         WHERE s.deleted_at IS NULL
+           AND t.status = 'completed' AND t.ended_at IS NOT NULL
            AND t.started_at >= ?1 AND t.started_at <= ?2
            AND (?3 IS NULL OR s.project_id = ?3)",
     )?;
@@ -770,6 +771,33 @@ mod tests {
         let s1 = top.iter().find(|s| s.session_id == "s1").unwrap();
         assert_eq!(s1.title.as_deref(), Some("Fix the widget"));
         assert_eq!(s1.last_active_ms, now - 2_000);
+    }
+
+    #[test]
+    fn soft_deleted_sessions_exit_summary_and_top_sessions() {
+        let (_dir, db) = setup_db();
+        insert_session(&db, "s1");
+        insert_session(&db, "s2");
+        let now = now_ms();
+        insert_turn(&db, "t1", "s1", now - 1_000, now, 1_000, 1_000, 0, "m");
+        insert_turn(&db, "t2", "s2", now - 1_000, now, 5_000, 5_000, 0, "m");
+        // `plugin.session.delete` (mode "trash") soft-deletes: the row survives
+        // but the session leaves every listing. Spec 03-runtime/06 scopes the
+        // summary to "completed turns of non-deleted sessions", so a trashed
+        // session's turns must vanish from the stats too.
+        db.conn()
+            .execute(
+                "UPDATE sessions SET deleted_at = ?1 WHERE id = 's2'",
+                params![now],
+            )
+            .unwrap();
+        let summary = summary(&db, 7, None).unwrap();
+        assert_eq!(summary.cards.total_tokens, 2_000);
+        assert_eq!(summary.cards.session_count, 1);
+        assert_eq!(summary.cards.turn_count, 1);
+        let top = top_sessions(&db, 7, None, 5).unwrap();
+        assert_eq!(top.len(), 1);
+        assert_eq!(top[0].session_id, "s1");
     }
 
     #[test]

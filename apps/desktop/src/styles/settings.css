@@ -2229,3 +2229,14 @@
   justify-content: space-between;
   color: var(--ds-text-secondary);
 }
+
+.stats-heat-month,
+.stats-heat-axis {
+  fill: var(--ds-text-secondary);
+  font-size: var(--text-2xs);
+}
+
+.idx-badge-ok {
+  background: color-mix(in oklab, var(--ds-success) 14%, transparent);
+  color: var(--ds-success);
+}

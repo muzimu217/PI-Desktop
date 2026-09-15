@@ -1855,6 +1855,11 @@ export const zhTW = {
     },
   },
   stats: {
+    badgeHighest: "最高",
+    badgeRecord: "紀錄",
+    badgeOnTrack: "進行中",
+    heatLow: "少",
+    heatHigh: "多",
     loading: "正在讀取本機會話歷史…",
     loadError: "使用統計暫不可用",
     range: "範圍",

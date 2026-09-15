@@ -1884,6 +1884,11 @@ export const ko = {
     },
   },
   stats: {
+    badgeHighest: "최고",
+    badgeRecord: "기록",
+    badgeOnTrack: "진행 중",
+    heatLow: "적음",
+    heatHigh: "많음",
     loading: "로컬 세션 기록을 읽는 중…",
     loadError: "사용 통계를 사용할 수 없음",
     range: "범위",

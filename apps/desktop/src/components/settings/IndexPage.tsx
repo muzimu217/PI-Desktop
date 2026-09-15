@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { AppSettings, WorkspaceIndexRoot } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { Button, cx } from "../ui";
+import { MetricTile } from "./MetricTile";
 import {
   IconActivity,
   IconDatabase,
@@ -50,35 +51,6 @@ const STATUS_TONE: Record<WorkspaceIndexRoot["status"], string> = {
   skipped_over_limit: "warn",
 };
 
-function MetricTile({
-  icon,
-  tone,
-  label,
-  value,
-  caption,
-  badge,
-}: {
-  icon: React.ReactNode;
-  tone: "accent" | "success" | "warning" | "danger";
-  label: string;
-  value: React.ReactNode;
-  caption?: string;
-  badge?: React.ReactNode;
-}) {
-  return (
-    <div className="idx-tile">
-      <div className="idx-tile-head">
-        <span className={cx("idx-chip", `idx-chip-${tone}`)} aria-hidden="true">
-          {icon}
-        </span>
-        <span className="idx-tile-label">{label}</span>
-        {badge}
-      </div>
-      <div className="idx-tile-value">{value}</div>
-      {caption ? <div className="idx-tile-caption">{caption}</div> : null}
-    </div>
-  );
-}
 
 export function IndexPage({ settings, saveSettings }: IndexPageProps) {
   const { t } = useTranslation();

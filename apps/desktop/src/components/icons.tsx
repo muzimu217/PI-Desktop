@@ -24,6 +24,9 @@ import {
   CircleHelp,
   ClipboardPaste,
   Clock,
+  TrendingUp,
+  PieChart,
+  Flame,
   CloudDownload,
   Code2,
   Database,
@@ -142,6 +145,9 @@ export const IconBookOpen = icon(BookOpen);
 export const IconClipboard = icon(ClipboardPaste);
 export const IconArchive = icon(Archive);
 export const IconDatabase = icon(Database);
+export const IconTrendUp = icon(TrendingUp);
+export const IconPieChart = icon(PieChart);
+export const IconFlame = icon(Flame);
 export const IconBarChart = icon(BarChart3);
 export const IconArchiveRestore = icon(ArchiveRestore);
 export const IconActivity = icon(Activity);

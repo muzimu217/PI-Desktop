@@ -8,7 +8,16 @@ import type {
 } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { Button, cx } from "../ui";
-import { IconBarChart, IconRefresh } from "../icons";
+import {
+  IconBarChart,
+  IconClock,
+  IconFlame,
+  IconPieChart,
+  IconRefresh,
+  IconSparkles,
+  IconTrendUp,
+} from "../icons";
+import { MetricTile } from "./MetricTile";
 
 type Range = 7 | 30;
 type LoadState =
@@ -50,15 +59,8 @@ function download(summary: StatsSummary, sessions: StatsTopSession[], format: "c
   URL.revokeObjectURL(anchor.href);
 }
 
-function Tile({ label, value, caption }: { label: string; value: string; caption?: string }) {
-  return (
-    <div className="idx-tile">
-      <div className="idx-tile-label">{label}</div>
-      <div className="idx-tile-value">{value}</div>
-      {caption ? <div className="idx-tile-caption">{caption}</div> : null}
-    </div>
-  );
-}
+
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
 function Heatmap({ days }: { days: StatsDayTotal[] }) {
   const byDate = useMemo(() => new Map(days.map((day) => [day.date, day.tokens])), [days]);
@@ -74,16 +76,41 @@ function Heatmap({ days }: { days: StatsDayTotal[] }) {
     return list;
   }, [byDate]);
   const max = Math.max(1, ...days.map((day) => day.tokens));
+  const monthTicks = useMemo(() => {
+    const ticks: { label: string; column: number }[] = [];
+    cells.forEach((cell, index) => {
+      const month = Number(cell.date.slice(5, 7)) - 1;
+      const previous = index > 0 ? Number(cells[index - 1].date.slice(5, 7)) - 1 : -1;
+      if (month !== previous) ticks.push({ label: MONTHS[month], column: Math.floor(index / 7) });
+    });
+    return ticks;
+  }, [cells]);
+  const { t } = useTranslation();
   return (
-    <svg className="stats-heatmap" role="img" aria-label={useTranslation().t("stats.heatmapAria")}>
+    <svg className="stats-heatmap" viewBox="0 0 640 126" role="img" aria-label={t("stats.heatmapAria")}>
+      {monthTicks.map((tick, position) => {
+        // One label per month would collide at 12px columns; keep every other
+        // tick so the axis stays readable at any window width.
+        if (position % 2 === 1) return null;
+        return (
+          <text
+            key={`${tick.label}-${tick.column}`}
+            className="stats-heat-month"
+            x={tick.column * 12}
+            y={10}
+          >
+            {tick.label}
+          </text>
+        );
+      })}
       {cells.map((cell, index) => {
         const level = cell.tokens === 0 ? 0 : Math.min(4, Math.ceil((cell.tokens / max) * 4));
         return (
           <rect
             key={cell.date}
             className={`stats-heat-cell stats-heat-${level}`}
-            x={(index % 53) * 12}
-            y={Math.floor(index / 53) * 12}
+            x={Math.floor(index / 7) * 12}
+            y={16 + (index % 7) * 12}
             width={10}
             height={10}
           >
@@ -91,6 +118,13 @@ function Heatmap({ days }: { days: StatsDayTotal[] }) {
           </rect>
         );
       })}
+      <text className="stats-heat-axis" x={0} y={120}>{t("stats.heatLow")}</text>
+      <g transform="translate(64, 116)">
+        {[0, 1, 2, 3, 4].map((level) => (
+          <rect key={level} className={`stats-heat-cell stats-heat-${level}`} x={level * 12} y={0} width={10} height={10} />
+        ))}
+      </g>
+      <text className="stats-heat-axis" x={132} y={120}>{t("stats.heatHigh")}</text>
     </svg>
   );
 }
@@ -230,10 +264,36 @@ export function StatsPage() {
       </div>
 
       <div className="idx-grid">
-        <Tile label={t("stats.totalTokens")} value={formatTokens(cards.totalTokens)} caption={t("stats.inclSubagents")} />
-        <Tile label={t("stats.peakDay")} value={formatTokens(cards.peakDayTokens)} />
-        <Tile label={t("stats.longestChat")} value={formatDuration(cards.longestChatMs)} caption={t("stats.pureChat")} />
-        <Tile label={t("stats.currentStreak")} value={t("stats.days", { count: cards.currentStreakDays })} caption={t("stats.longestStreak", { count: cards.longestStreakDays })} />
+        <MetricTile
+          icon={<IconBarChart size={14} />}
+          tone="accent"
+          label={t("stats.totalTokens")}
+          value={formatTokens(cards.totalTokens)}
+          caption={t("stats.inclSubagents")}
+        />
+        <MetricTile
+          icon={<IconTrendUp size={14} />}
+          tone="accent"
+          label={t("stats.peakDay")}
+          value={formatTokens(cards.peakDayTokens)}
+          badge={cards.peakDayTokens > 0 ? <span className="idx-badge idx-badge-warn">{t("stats.badgeHighest")}</span> : undefined}
+        />
+        <MetricTile
+          icon={<IconClock size={14} />}
+          tone="accent"
+          label={t("stats.longestChat")}
+          value={formatDuration(cards.longestChatMs)}
+          caption={t("stats.pureChat")}
+          badge={cards.longestChatMs > 0 ? <span className="idx-badge">{t("stats.badgeRecord")}</span> : undefined}
+        />
+        <MetricTile
+          icon={<IconFlame size={14} />}
+          tone={cards.currentStreakDays > 0 ? "success" : "accent"}
+          label={t("stats.currentStreak")}
+          value={t("stats.days", { count: cards.currentStreakDays })}
+          caption={t("stats.longestStreak", { count: cards.longestStreakDays })}
+          badge={cards.currentStreakDays > 0 ? <span className="idx-badge idx-badge-ok">{t("stats.badgeOnTrack")}</span> : undefined}
+        />
       </div>
 
       <section className="settings-card-block">
@@ -246,11 +306,21 @@ export function StatsPage() {
 
       <div className="idx-grid">
         <div className="idx-tile">
-          <div className="idx-tile-label">{t("stats.modelUsage")}</div>
+          <div className="idx-tile-head">
+            <span className="idx-chip idx-chip-accent" aria-hidden="true">
+              <IconPieChart size={14} />
+            </span>
+            <span className="idx-tile-label">{t("stats.modelUsage")}</span>
+          </div>
           <Donut models={summary.modelUsage} />
         </div>
         <div className="idx-tile">
-          <div className="idx-tile-label">{t("stats.insights")}</div>
+          <div className="idx-tile-head">
+            <span className="idx-chip idx-chip-warning" aria-hidden="true">
+              <IconSparkles size={14} />
+            </span>
+            <span className="idx-tile-label">{t("stats.insights")}</span>
+          </div>
           <ul className="stats-insights">
             <li>
               <span>{t("stats.cacheLeverage")}</span>

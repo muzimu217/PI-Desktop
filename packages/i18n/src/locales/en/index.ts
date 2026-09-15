@@ -1882,6 +1882,11 @@ export const en = {
     },
   },
   stats: {
+    badgeHighest: "Highest",
+    badgeRecord: "Record",
+    badgeOnTrack: "On track",
+    heatLow: "Low",
+    heatHigh: "High",
     loading: "Reading local session history…",
     loadError: "Usage statistics are unavailable",
     range: "Range",

@@ -1884,6 +1884,11 @@ export const tr = {
     },
   },
   stats: {
+    badgeHighest: "En yüksek",
+    badgeRecord: "Rekor",
+    badgeOnTrack: "Yolunda",
+    heatLow: "Az",
+    heatHigh: "Çok",
     loading: "Yerel oturum geçmişi okunuyor…",
     loadError: "Kullanım istatistikleri kullanılamıyor",
     range: "Aralık",

@@ -1842,6 +1842,11 @@ export const fr = {
     },
   },
   "stats": {
+    "badgeHighest": "Record",
+    "badgeRecord": "Meilleur",
+    "badgeOnTrack": "En cours",
+    "heatLow": "Faible",
+    "heatHigh": "Élevé",
     "loading": "Lecture de l'historique local des sessions…",
     "loadError": "Statistiques indisponibles",
     "range": "Période",

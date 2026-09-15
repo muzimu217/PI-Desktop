@@ -1855,6 +1855,11 @@ export const zhCN = {
     },
   },
   stats: {
+    badgeHighest: "最高",
+    badgeRecord: "纪录",
+    badgeOnTrack: "进行中",
+    heatLow: "少",
+    heatHigh: "多",
     loading: "正在读取本地会话历史…",
     loadError: "使用统计暂不可用",
     range: "范围",

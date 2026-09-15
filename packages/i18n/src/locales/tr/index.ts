@@ -1884,9 +1884,13 @@ export const tr = {
     },
   },
   stats: {
+    trendTotal: "Toplam",
+    trend: "Günlük eğilim",
+    provenanceShort: "Yerel oturum geçmişi · hiçbir şey bu makineden çıkmaz",
     badgeHighest: "En yüksek",
     badgeRecord: "Rekor",
     badgeOnTrack: "Yolunda",
+    heatWeekdays: "Pzt,Sal,Çar,Per,Cum,Cmt,Paz",
     heatLow: "Az",
     heatHigh: "Çok",
     loading: "Yerel oturum geçmişi okunuyor…",
@@ -1916,6 +1920,8 @@ export const tr = {
     topSessions: "Öne çıkan oturumlar",
     empty: "Bu aralıkta henüz oturum yok",
     provenance: "Yerel oturum geçmişinizden hesaplanır. Hiçbir şey bu makineden çıkmaz.",
+    "projectFilter": "Proje",
+    "allProjects": "Tüm projeler",
   },
 } satisfies EnglishCatalog;
 

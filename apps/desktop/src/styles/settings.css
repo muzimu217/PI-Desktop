@@ -2099,11 +2099,18 @@
   border-radius: var(--radius-full);
   font-size: var(--text-2xs);
   line-height: var(--leading-normal);
+  background: color-mix(in oklab, var(--ds-text-primary) 10%, transparent);
+  color: var(--ds-text-secondary);
 }
 
 .idx-badge-warn {
   background: color-mix(in oklab, var(--ds-warning) 14%, transparent);
   color: var(--ds-warning);
+}
+
+.idx-badge-ok {
+  background: color-mix(in oklab, var(--ds-success) 14%, transparent);
+  color: var(--ds-success);
 }
 
 .idx-status {
@@ -2113,7 +2120,7 @@
   border-radius: var(--radius-full);
   font-size: var(--text-sm);
   line-height: var(--leading-normal);
-  background: color-mix(in oklab, var(--ds-text) 10%, transparent);
+  background: color-mix(in oklab, var(--ds-text-primary) 10%, transparent);
 }
 
 .idx-status.ok {
@@ -2151,58 +2158,127 @@
 }
 
 /* Usage statistics page */
+
+/*
+  Chart palette. The skeleton accent token is intentionally neutral, so data
+  visualisation needs its own semantic ramp: blue primary, cyan secondary,
+  then violet/green/amber for model series. Values mirror the approved mockup
+  (blue #3B82F6 / cyan #22D3EE family) while staying theme-aware.
+*/
+.stats-scope {
+  --chart-1: #3b82f6;
+  --chart-2: #22d3ee;
+  --chart-3: #8b5cf6;
+  --chart-4: #34d399;
+  --chart-5: #f59e0b;
+  --chart-6: #94a3b8;
+  /*
+    Donut label sizes are SVG user units inside the 42x42 viewBox, not
+    typography: they scale with the donut geometry rather than the text scale,
+    so they are declared here instead of using the type tokens.
+  */
+  --stats-donut-total-size: 5px;
+  --stats-donut-total-label-size: 2.6px;
+}
+
 .stats-toolbar {
   display: flex;
   align-items: center;
   gap: var(--space-2, 8px);
 }
 
-.stats-heatmap {
-  width: 100%;
-  height: auto;
-  margin-bottom: var(--space-3, 12px);
+.stats-project-filter {
+  max-width: 200px;
+  margin-left: auto;
 }
 
-.stats-heat-cell {
-  fill: color-mix(in oklab, var(--ds-text) 8%, transparent);
-  rx: 2;
+.stats-subtitle {
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  margin-top: calc(var(--space-2, 8px) * -1);
 }
 
-.stats-heat-1 { fill: color-mix(in oklab, var(--ds-accent) 25%, transparent); }
-.stats-heat-2 { fill: color-mix(in oklab, var(--ds-accent) 45%, transparent); }
-.stats-heat-3 { fill: color-mix(in oklab, var(--ds-accent) 65%, transparent); }
-.stats-heat-4 { fill: var(--ds-accent); }
-
-.stats-trend {
-  width: 100%;
-  height: 120px;
-}
-
-.stats-trend-line {
-  stroke: var(--ds-accent);
-  stroke-width: 2;
-}
-
-.stats-donut-wrap {
-  display: flex;
-  align-items: center;
+/* Four metric cards stay on one row like the mockup. */
+.stats-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-3, 12px);
 }
 
-.stats-donut {
-  width: 120px;
-  height: 120px;
-  transform: rotate(-90deg);
+/* Mockup composition: heatmap beside the donut, full-width trend, then
+   insights beside the top-session list. */
+.stats-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: var(--space-3, 12px);
+  align-items: start;
 }
 
-.stats-donut-seg { stroke-width: 6; }
-.stats-seg-0 { stroke: var(--ds-accent); }
-.stats-seg-1 { stroke: var(--ds-success); }
-.stats-seg-2 { stroke: var(--ds-warning); }
-.stats-seg-3 { stroke: var(--ds-info, var(--ds-accent)); }
-.stats-seg-4 { stroke: var(--ds-text-secondary); }
-.stats-seg-5 { stroke: var(--ds-error); }
+.stats-heatmap {
+  width: 100%;
+  height: auto;
+}
 
+/* Chart panels own their inset: the base .settings-panel is padding-free and
+   clips overflow, which put axis labels and values against the tile edge. */
+.stats-chart-panel {
+  padding: 14px 16px;
+}
+
+.stats-heat-cell {
+  fill: color-mix(in oklab, var(--ds-text-primary) 16%, transparent);
+  rx: 2;
+}
+
+.stats-heat-1 { fill: color-mix(in oklab, var(--chart-1) 30%, transparent); }
+.stats-heat-2 { fill: color-mix(in oklab, var(--chart-1) 55%, transparent); }
+.stats-heat-3 { fill: color-mix(in oklab, var(--chart-1) 78%, transparent); }
+.stats-heat-4 { fill: var(--chart-1); }
+
+.stats-heat-month,
+.stats-heat-axis {
+  fill: var(--ds-text-secondary);
+  font-size: var(--text-2xs);
+}
+
+.stats-trend {
+  width: 100%;
+  height: auto;
+}
+
+.stats-trend-line {
+  fill: none;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.stats-trend-0 { stroke: var(--chart-1); }
+.stats-trend-1 { stroke: var(--chart-2); }
+.stats-trend-2 { stroke: var(--chart-3); }
+.stats-trend-3 { stroke: var(--chart-4); }
+.stats-trend-4 { stroke: var(--chart-5); }
+.stats-trend-5 { stroke: var(--chart-6); }
+
+/* The total line is the headline series: primary blue, slightly heavier. */
+.stats-trend-total {
+  stroke: var(--chart-1);
+  stroke-width: 2.5;
+}
+
+.stats-trend-area { fill: color-mix(in oklab, var(--chart-1) 16%, transparent); }
+
+.stats-trend-axis {
+  stroke: color-mix(in oklab, var(--ds-text-primary) 12%, transparent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.stats-trend-tick {
+  fill: var(--ds-text-secondary);
+  font-size: var(--text-2xs);
+}
+
+.stats-trend-legend,
 .stats-legend {
   display: flex;
   flex-direction: column;
@@ -2211,11 +2287,115 @@
   color: var(--ds-text-secondary);
 }
 
+.stats-trend-legend {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--space-3, 12px);
+  margin-top: var(--space-2, 8px);
+}
+
+.stats-trend-legend li,
 .stats-legend li {
   display: flex;
-  justify-content: space-between;
-  gap: var(--space-3, 12px);
+  align-items: center;
+  gap: 6px;
 }
+
+.stats-legend li {
+  justify-content: flex-start;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.stats-legend {
+  min-width: 0;
+  flex: 1;
+}
+
+/* Two-line legend rows: the model name owns the full remaining width and the
+   share/token value sits underneath, so long model ids stop getting clipped. */
+.stats-legend li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 6px;
+  row-gap: 1px;
+  align-items: center;
+}
+
+.stats-legend li > .stats-swatch {
+  grid-row: 1 / span 2;
+}
+
+.stats-legend li > span:nth-child(2) {
+  grid-column: 2;
+  grid-row: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stats-legend-value {
+  grid-column: 2;
+  grid-row: 2;
+  margin-left: 0;
+}
+
+.stats-legend-value {
+  color: var(--ds-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-2xs);
+  flex: none;
+}
+
+.stats-swatch-0 { background: var(--chart-1); }
+.stats-swatch-1 { background: var(--chart-2); }
+.stats-swatch-2 { background: var(--chart-3); }
+.stats-swatch-3 { background: var(--chart-4); }
+.stats-swatch-4 { background: var(--chart-5); }
+.stats-swatch-5 { background: var(--chart-6); }
+
+.stats-donut-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  min-width: 0;
+}
+
+.stats-donut {
+  width: 140px;
+  height: 140px;
+  flex: none;
+  transform: rotate(-90deg);
+}
+
+/* SVG user units: the donut viewBox is 42x42, so text sizes are unit values. */
+.stats-donut-total {
+  fill: var(--ds-text-primary);
+  font-size: var(--stats-donut-total-size);
+  font-variant-numeric: tabular-nums;
+  transform: rotate(90deg);
+  transform-origin: 21px 21px;
+}
+
+.stats-donut-total-label {
+  fill: var(--ds-text-secondary);
+  font-size: var(--stats-donut-total-label-size);
+  transform: rotate(90deg);
+  transform-origin: 21px 21px;
+}
+
+.stats-donut-seg { stroke-width: 6; }
+.stats-seg-0 { stroke: var(--chart-1); }
+.stats-seg-1 { stroke: var(--chart-2); }
+.stats-seg-2 { stroke: var(--chart-3); }
+.stats-seg-3 { stroke: var(--chart-4); }
+.stats-seg-4 { stroke: var(--chart-5); }
+.stats-seg-5 { stroke: var(--chart-6); }
 
 .stats-insights {
   display: flex;
@@ -2230,13 +2410,17 @@
   color: var(--ds-text-secondary);
 }
 
-.stats-heat-month,
-.stats-heat-axis {
-  fill: var(--ds-text-secondary);
-  font-size: var(--text-2xs);
+.stats-insights-value {
+  color: var(--ds-text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
-.idx-badge-ok {
-  background: color-mix(in oklab, var(--ds-success) 14%, transparent);
-  color: var(--ds-success);
+@media (max-width: 900px) {
+  .stats-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stats-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

@@ -1842,9 +1842,13 @@ export const de = {
     },
   },
   "stats": {
+    "trendTotal": "Gesamt",
+    "trend": "Täglicher Verlauf",
+    "provenanceShort": "Lokaler Sitzungsverlauf · nichts verlässt diesen Rechner",
     "badgeHighest": "Höchster",
     "badgeRecord": "Rekord",
     "badgeOnTrack": "Auf Kurs",
+    "heatWeekdays": "Mo,Di,Mi,Do,Fr,Sa,So",
     "heatLow": "Wenig",
     "heatHigh": "Viel",
     "loading": "Lokaler Sitzungsverlauf wird gelesen…",
@@ -1874,6 +1878,8 @@ export const de = {
     "topSessions": "Top-Sitzungen",
     "empty": "Noch keine Sitzungen in diesem Zeitraum",
     "provenance": "Wird lokal aus Ihrem Sitzungsverlauf berechnet. Nichts verlässt diesen Rechner.",
+    "projectFilter": "Projekt",
+    "allProjects": "Alle Projekte",
   },
 } as const;
 

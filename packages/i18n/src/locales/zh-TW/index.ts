@@ -1855,9 +1855,13 @@ export const zhTW = {
     },
   },
   stats: {
+    trendTotal: "總計",
+    trend: "每日趨勢",
+    provenanceShort: "本機會話歷史 · 不上傳資料",
     badgeHighest: "最高",
     badgeRecord: "紀錄",
     badgeOnTrack: "進行中",
+    heatWeekdays: "一,二,三,四,五,六,日",
     heatLow: "少",
     heatHigh: "多",
     loading: "正在讀取本機會話歷史…",
@@ -1887,6 +1891,8 @@ export const zhTW = {
     topSessions: "高消耗會話",
     empty: "該範圍內還沒有會話",
     provenance: "統計由本機會話歷史計算，不會離開這台機器。",
+    "projectFilter": "專案",
+    "allProjects": "全部專案",
   },
 } satisfies EnglishCatalog;
 

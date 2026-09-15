@@ -1884,9 +1884,13 @@ export const ko = {
     },
   },
   stats: {
+    trendTotal: "전체",
+    trend: "일일 추이",
+    provenanceShort: "로컬 세션 기록 · 외부 전송 없음",
     badgeHighest: "최고",
     badgeRecord: "기록",
     badgeOnTrack: "진행 중",
+    heatWeekdays: "월,화,수,목,금,토,일",
     heatLow: "적음",
     heatHigh: "많음",
     loading: "로컬 세션 기록을 읽는 중…",
@@ -1916,6 +1920,8 @@ export const ko = {
     topSessions: "주요 세션",
     empty: "이 범위에 세션이 없습니다",
     provenance: "로컬 세션 기록으로 계산되며 이 컴퓨터 밖으로 나가지 않습니다.",
+    "projectFilter": "프로젝트",
+    "allProjects": "모든 프로젝트",
   },
 } satisfies EnglishCatalog;
 

@@ -1855,9 +1855,13 @@ export const zhCN = {
     },
   },
   stats: {
+    trendTotal: "总计",
+    trend: "每日趋势",
+    provenanceShort: "本地会话历史 · 不上传数据",
     badgeHighest: "最高",
     badgeRecord: "纪录",
     badgeOnTrack: "进行中",
+    heatWeekdays: "一,二,三,四,五,六,日",
     heatLow: "少",
     heatHigh: "多",
     loading: "正在读取本地会话历史…",
@@ -1887,6 +1891,8 @@ export const zhCN = {
     topSessions: "高消耗会话",
     empty: "该范围内还没有会话",
     provenance: "统计由本地会话历史计算，不会离开这台机器。",
+    "projectFilter": "项目",
+    "allProjects": "全部项目",
   },
 } satisfies EnglishCatalog;
 

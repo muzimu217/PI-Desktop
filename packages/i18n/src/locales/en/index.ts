@@ -1882,9 +1882,13 @@ export const en = {
     },
   },
   stats: {
+    trendTotal: "Total",
+    trend: "Daily trend",
+    provenanceShort: "Local session history · nothing leaves this machine",
     badgeHighest: "Highest",
     badgeRecord: "Record",
     badgeOnTrack: "On track",
+    heatWeekdays: "Mon,Tue,Wed,Thu,Fri,Sat,Sun",
     heatLow: "Low",
     heatHigh: "High",
     loading: "Reading local session history…",
@@ -1914,6 +1918,8 @@ export const en = {
     topSessions: "Top sessions",
     empty: "No sessions in this range yet",
     provenance: "Computed locally from your session history. Nothing leaves this machine.",
+    "projectFilter": "Project",
+    "allProjects": "All projects",
   },
 } as const;
 

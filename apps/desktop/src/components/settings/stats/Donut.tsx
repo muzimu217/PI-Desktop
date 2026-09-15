@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import type { StatsModelSlice } from "./dataset";
 import { formatTokens } from "./format";
+import { OTHER_MODEL_ID } from "./types";
 
 /**
  * Model-usage donut: the top six models as ring segments, with the window
@@ -9,12 +10,24 @@ import { formatTokens } from "./format";
 
 export function Donut({ models }: { models: StatsModelSlice[] }) {
   const { t } = useTranslation();
+  const modelLabel = (modelId: string) =>
+    modelId === OTHER_MODEL_ID ? t("stats.modelUsageOther") : modelId;
   const total = models.reduce((sum, model) => sum + model.tokens, 0);
   const denominator = total || 1;
   let offset = 0;
+  // The SVG is a picture of the legend, so its accessible name summarizes the
+  // same shares (top slices first) instead of reusing the trend summary, which
+  // speaks about days and peaks rather than proportions.
+  const ariaLabel =
+    models.length > 0
+      ? `${t("stats.modelUsage")}: ${models
+          .slice(0, 6)
+          .map((model) => `${modelLabel(model.modelId)} ${Math.round(model.share * 100)}%`)
+          .join(", ")}`
+      : t("stats.modelUsage");
   return (
     <div className="stats-donut-wrap stats-scope">
-      <svg viewBox="0 0 42 42" className="stats-donut" role="img" aria-hidden="true">
+      <svg viewBox="0 0 42 42" className="stats-donut" role="img" aria-label={ariaLabel}>
         {models.slice(0, 6).map((model, index) => {
           const fraction = model.tokens / denominator;
           const circle = (
@@ -43,7 +56,7 @@ export function Donut({ models }: { models: StatsModelSlice[] }) {
         {models.slice(0, 6).map((model, index) => (
           <li key={model.modelId}>
             <span className={`stats-swatch stats-swatch-${index}`} aria-hidden="true" />
-            <span>{model.modelId}</span>
+            <span>{modelLabel(model.modelId)}</span>
             <span className="stats-legend-value">
               {Math.round(model.share * 100)}% · {formatTokens(model.tokens)}
             </span>

@@ -11,6 +11,7 @@ import { Donut } from "./stats/Donut";
 import { download } from "./stats/export";
 import { formatDuration, formatLastActive, formatTokens } from "./stats/format";
 import { Heatmap } from "./stats/Heatmap";
+import { ProjectUsage } from "./stats/ProjectUsage";
 import { Trend } from "./stats/Trend";
 import { GRANULARITIES, type Granularity, type Range } from "./stats/types";
 
@@ -23,6 +24,10 @@ export function StatsPage() {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? i18n.language ?? "";
   const selectSession = useAppStore((state) => state.selectSession);
+  // Same entry the settings rail's back-to-app button uses (SettingsPage's
+  // `data-nav="back-to-app"` control calls setPage("chat")), so the empty
+  // state's CTA lands the user on the work view with the nav stack recorded.
+  const setPage = useAppStore((state) => state.setPage);
   const [range, setRange] = useState<Range>(30);
   // Activity-card granularity (daily grid / weekly bars / cumulative area).
   const [granularity, setGranularity] = useState<Granularity>("daily");
@@ -93,7 +98,12 @@ export function StatsPage() {
             ),
           )}
         </div>
-        <span className="idx-state">{t("stats.loading")}</span>
+        {/* Two stacked notes: what is happening, then the privacy answer the
+            audit found missing from the loading posture. */}
+        <div className="stats-loading-notes">
+          <span className="idx-state">{t("stats.loading")}</span>
+          <span className="idx-state">{t("stats.loadingPrivacy")}</span>
+        </div>
       </div>
     );
   }
@@ -119,6 +129,25 @@ export function StatsPage() {
 
   const { summary, sessions } = state;
   if (!dataset) return null;
+  // Page-level empty state: zero completed conversations in the scoped range
+  // means every chart below would render as all-zero chrome. This replaces the
+  // whole page; the quieter per-card "no sessions in this range" row stays for
+  // the filtered-but-nonempty case (turnCount > 0, sessions list empty).
+  if (summary.cards.turnCount === 0) {
+    return (
+      <div className="settings-stack">
+        <section className="settings-card-block">
+          <div className="settings-panel">
+            <div className="stats-empty">
+              <h3 className="stats-empty-title">{t("stats.emptyTitle")}</h3>
+              <p className="stats-empty-desc">{t("stats.emptyDesc")}</p>
+              <Button onClick={() => setPage("chat")}>{t("stats.emptyAction")}</Button>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
   const { cards, diagnostics, heatmap, models, aria } = dataset;
   // The trend card re-derives its chart from the same per-model rows sliced to
   // its own 7/30-day window — no second RPC, no host involvement.
@@ -312,6 +341,20 @@ export function StatsPage() {
         </section>
       </div>
 
+      {/*
+        Project breakdown as its own full-width row: the share bars need
+        horizontal room to encode proportion, and project names are unbounded
+        strings that would starve both columns of the pair grid. Full-width
+        also keeps it the same width class as the top-sessions list that
+        follows, so the page reads pairs → row cards.
+      */}
+      <section className="settings-card-block">
+        <div className="settings-panel">
+          <h3 className="settings-card-heading">{t("stats.projectUsage")}</h3>
+          <ProjectUsage projects={dataset.projectUsage} />
+        </div>
+      </section>
+
       <section className="settings-card-block">
         <div className="settings-panel">
           <h3 className="settings-card-heading">{t("stats.topSessions")}</h3>
@@ -367,8 +410,20 @@ export function StatsPage() {
         </div>
       </section>
 
+      {/* Provenance footer: what the numbers are, how fresh they are, and what
+          they cover. The relative "updated" phrase reuses the same
+          Intl.RelativeTimeFormat helper as the session rows. */}
       <div className="stats-provenance" role="note">
-        {t("stats.provenance")}
+        {(() => {
+          const updatedAgo = formatLastActive(dataset.generatedAt, locale);
+          return [
+            t("stats.provenance"),
+            updatedAgo ? t("stats.lastUpdated", { time: updatedAgo }) : null,
+            t("stats.provenanceFields"),
+          ]
+            .filter(Boolean)
+            .join(" · ");
+        })()}
       </div>
     </div>
   );

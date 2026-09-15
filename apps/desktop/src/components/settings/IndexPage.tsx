@@ -21,6 +21,9 @@ type LoadState =
   | { kind: "error" }
   | { kind: "ready"; root: WorkspaceIndexRoot | null };
 
+/** localStorage flag for the one-time local-only nudge under the index page. */
+const NUDGE_DISMISSED_KEY = "pi.dataStats.nudgeDismissed.v1";
+
 function formatBytes(bytes: number): string {
   if (bytes <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB"];
@@ -41,6 +44,10 @@ function formatRelative(updatedAt: number): string {
   return `${Math.floor(deltaSeconds / 86400)}d`;
 }
 
+function formatMs(ms: number): string {
+  return `${Math.round(ms)}ms`;
+}
+
 const STATUS_TONE: Record<WorkspaceIndexRoot["status"], string> = {
   fresh: "ok",
   building: "busy",
@@ -57,8 +64,27 @@ export function IndexPage({ settings, saveSettings }: IndexPageProps) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [busy, setBusy] = useState<"rebuild" | "clear" | null>(null);
   const [actionError, setActionError] = useState(false);
+  // One-time note: once dismissed it stays dismissed (localStorage), matching
+  // the audit's "never render again once written" requirement.
+  const [nudgeVisible, setNudgeVisible] = useState(() => {
+    try {
+      return localStorage.getItem(NUDGE_DISMISSED_KEY) !== "1";
+    } catch {
+      return true;
+    }
+  });
   const grepBoost = settings.indexGrepBoost === true;
   const building = state.kind === "ready" && state.root?.status === "building";
+
+  const dismissNudge = () => {
+    try {
+      localStorage.setItem(NUDGE_DISMISSED_KEY, "1");
+    } catch {
+      // Storage unavailable (e.g. locked-down profile): degrade to a
+      // session-only dismiss rather than blocking the control.
+    }
+    setNudgeVisible(false);
+  };
 
   const refresh = useCallback(async () => {
     setState((current) =>
@@ -150,29 +176,52 @@ export function IndexPage({ settings, saveSettings }: IndexPageProps) {
   }
 
   const { root } = state;
+  // Host-lifetime fast-path counters only ride along on fresh roots; anything
+  // else (including no root at all) just omits the metrics line.
+  const metrics = root?.status === "fresh" ? root.metrics : undefined;
+  const fastPathDenominator = metrics ? metrics.fastPathServed + metrics.fallbackCount : 0;
+  const fastPathRate = metrics
+    ? fastPathDenominator === 0
+      ? "—"
+      : `${Math.round((metrics.fastPathServed / fastPathDenominator) * 100)}%`
+    : "—";
+  const progress = root?.status === "building" ? root.progress : undefined;
+  const progressPct =
+    progress && progress.filesTotal > 0
+      ? Math.min(100, Math.max(0, Math.round((progress.filesDone / progress.filesTotal) * 100)))
+      : 0;
+
   return (
     <div className="settings-stack">
+      {/* Sits directly under the page title the settings shell renders, same
+          posture (and class) as the usage page's provenanceShort line. */}
+      <p className="stats-subtitle">{t("index.indexSubtitle")}</p>
+
       <section className="settings-card-block">
         <h3 className="settings-card-heading">{t("index.card.health")}</h3>
         <div className="settings-panel">
-          <div className="settings-row">
-            <div className="settings-row-copy">
-              <div className="settings-row-title">{t("index.grepBoost")}</div>
-              <div className="settings-row-desc">{t("index.grepBoostDesc")}</div>
+          {building ? (
+            <div className="idx-progress" role="status">
+              {progress ? (
+                <>
+                  <span className="idx-progress-bar" aria-hidden="true">
+                    <span className="idx-progress-fill" style={{ width: `${progressPct}%` }} />
+                  </span>
+                  <span className="idx-progress-count">
+                    {t("index.progressFiles", {
+                      done: progress.filesDone.toLocaleString(),
+                      total: progress.filesTotal.toLocaleString(),
+                    })}
+                  </span>
+                </>
+              ) : (
+                // Host gave no counts: an indeterminate busy pill instead of a
+                // fake bar, reusing the status language of the tiles below.
+                <span className="idx-status busy">{t("index.status.building")}</span>
+              )}
+              <span className="idx-progress-note">{t("index.progressFallback")}</span>
             </div>
-            <div className="settings-row-control">
-              <button
-                type="button"
-                className={cx("settings-toggle", grepBoost && "on")}
-                role="switch"
-                aria-checked={grepBoost}
-                aria-label={t("index.grepBoost")}
-                onClick={() => void saveSettings({ indexGrepBoost: !grepBoost })}
-              >
-                <span className="settings-toggle-thumb" />
-              </button>
-            </div>
-          </div>
+          ) : null}
           {root ? (
             <div className="idx-grid">
               <MetricTile
@@ -184,7 +233,22 @@ export function IndexPage({ settings, saveSettings }: IndexPageProps) {
                     {t(`index.status.${root.status}`)}
                   </span>
                 }
-                caption={t("index.statusDesc")}
+                caption={
+                  <>
+                    {t("index.statusDesc")}
+                    {metrics ? (
+                      // Value metrics ride under the status caption so the
+                      // 4-card grid keeps its row rhythm.
+                      <span className="idx-tile-metrics">
+                        {t("index.fastPathHitRate")} {fastPathRate}
+                        {" · P50 "}
+                        {formatMs(metrics.p50Ms)}
+                        {" · P95 "}
+                        {formatMs(metrics.p95Ms)}
+                      </span>
+                    ) : undefined}
+                  </>
+                }
               />
               <MetricTile
                 icon={<IconFileText size={14} />}
@@ -255,6 +319,49 @@ export function IndexPage({ settings, saveSettings }: IndexPageProps) {
           ) : null}
         </div>
       </section>
+
+      {/*
+        The behaviour switch gets its own "Codebase" section: it is a setting,
+        not health telemetry, and the audit flagged it sitting wordlessly
+        inside the health card.
+      */}
+      <section className="settings-card-block">
+        <h3 className="settings-card-heading">{t("index.sectionCode")}</h3>
+        <div className="settings-panel">
+          <div className="settings-row">
+            <div className="settings-row-copy">
+              <div className="idx-row-title">
+                <span className="idx-chip idx-chip-accent" aria-hidden="true">
+                  <IconDatabase size={14} />
+                </span>
+                <span className="settings-row-title">{t("index.grepBoost")}</span>
+              </div>
+              <div className="settings-row-desc">{t("index.grepBoostDesc")}</div>
+            </div>
+            <div className="settings-row-control">
+              <button
+                type="button"
+                className={cx("settings-toggle", grepBoost && "on")}
+                role="switch"
+                aria-checked={grepBoost}
+                aria-label={t("index.grepBoost")}
+                onClick={() => void saveSettings({ indexGrepBoost: !grepBoost })}
+              >
+                <span className="settings-toggle-thumb" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {nudgeVisible ? (
+        <div className="idx-nudge" role="note">
+          <span className="idx-nudge-text">{t("stats.nudgeText")}</span>
+          <Button variant="ghost" onClick={dismissNudge}>
+            {t("stats.nudgeDismiss")}
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

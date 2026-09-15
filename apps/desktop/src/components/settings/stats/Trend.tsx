@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { StatsAriaSummary, StatsTrend } from "./dataset";
 import { formatAxis, formatFullDate, formatTokens } from "./format";
 import { TOOLTIP_HALF, TREND } from "./geometry";
+import { OTHER_MODEL_ID } from "./types";
 
 /**
  * Token trend card: total plus per-model lines over a 7/30-day window the
@@ -17,6 +18,10 @@ export function Trend({ trend, ariaSummary }: { trend: StatsTrend; ariaSummary: 
   const [tip, setTip] = useState<TrendTip | null>(null);
   const plotRef = useRef<HTMLDivElement | null>(null);
   const { series, dates, axisMax, totals } = trend;
+  // The host's NULL-model bucket renders as a localized label everywhere the
+  // raw id would otherwise leak into the UI (legend, bubble, sr table).
+  const modelLabel = (modelId: string) =>
+    modelId === OTHER_MODEL_ID ? t("stats.modelUsageOther") : modelId;
 
   if (dates.length === 0) {
     return <div className="stats-trend-tick">{t("stats.empty")}</div>;
@@ -72,7 +77,7 @@ export function Trend({ trend, ariaSummary }: { trend: StatsTrend; ariaSummary: 
         {series.map((entry, index) => (
           <li key={entry.modelId}>
             <span className={`stats-swatch stats-swatch-${index + 1}`} aria-hidden="true" />
-            <span>{entry.modelId}</span>
+            <span>{modelLabel(entry.modelId)}</span>
           </li>
         ))}
       </ul>
@@ -170,7 +175,7 @@ export function Trend({ trend, ariaSummary }: { trend: StatsTrend; ariaSummary: 
             {series.map((entry, index) => (
               <div className="stats-tooltip-row" key={entry.modelId}>
                 <span className={`stats-swatch stats-swatch-${index + 1}`} aria-hidden="true" />
-                <span>{entry.modelId}</span>
+                <span>{modelLabel(entry.modelId)}</span>
                 <span className="stats-tooltip-num">{formatTokens(entry.values[tip.index])}</span>
               </div>
             ))}
@@ -186,7 +191,7 @@ export function Trend({ trend, ariaSummary }: { trend: StatsTrend; ariaSummary: 
             <th scope="col">{t("stats.trendTotal")}</th>
             {series.map((entry) => (
               <th scope="col" key={entry.modelId}>
-                {entry.modelId}
+                {modelLabel(entry.modelId)}
               </th>
             ))}
           </tr>

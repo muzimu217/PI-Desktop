@@ -2816,6 +2816,189 @@
   text-align: left;
 }
 
+/*
+  Loading notes stack under the placeholder cards: what is happening, then the
+  privacy line. `--space-1` keeps them reading as one quiet block.
+*/
+.stats-loading-notes {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+/*
+  Page-level empty state (zero completed conversations in range): one centred
+  card replaces the whole page body, so it keeps generous padding instead of
+  the chart panels' tighter inset.
+*/
+.stats-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+}
+
+.stats-empty-title {
+  color: var(--ds-text-primary);
+  font-size: var(--text-lg);
+  margin: 0;
+}
+
+.stats-empty-desc {
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  margin: 0;
+}
+
+/*
+  Project breakdown rows: name | share bar | percent | tokens. The bar column
+  gets the wider track so proportion stays readable; percents get a fixed
+  minimum so the digits do not reflow the row as values tick over.
+*/
+.stats-usage-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+
+.stats-usage-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr) auto auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.stats-usage-name {
+  color: var(--ds-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats-usage-track {
+  display: block;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklab, var(--ds-text-primary) 10%, transparent);
+  overflow: hidden;
+}
+
+/* Thin part-to-whole bar; the primary chart hue matches the heatmap ramp. */
+.stats-usage-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--chart-1);
+}
+
+.stats-usage-share {
+  color: var(--ds-text-secondary);
+  font-variant-numeric: tabular-nums;
+  min-width: 3.5em;
+  text-align: right;
+}
+
+/* Token totals read as data, so they take the mono voice like the tooltips. */
+.stats-usage-tokens {
+  color: var(--ds-text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  min-width: 4.5em;
+  text-align: right;
+}
+
+/*
+  Build progress row at the top of the index health card: thin determinate bar
+  + file counter + the always-true "Grep is unaffected" reassurance. The bar
+  reuses the chart primary where the stats scope defines it and falls back to
+  the accent token here (the index page has no `.stats-scope` ancestor).
+*/
+.idx-progress {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.idx-progress-bar {
+  --chart-1: var(--ds-accent);
+  display: block;
+  flex: 1 1 120px;
+  min-width: 120px;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: color-mix(in oklab, var(--ds-text-primary) 10%, transparent);
+  overflow: hidden;
+}
+
+.idx-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--chart-1);
+  transition: width var(--motion-duration-normal) var(--motion-ease-out);
+}
+
+.idx-progress-count {
+  color: var(--ds-text-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.idx-progress-note {
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+}
+
+/* Icon chip + title line for the codebase switch rows (MetricTile head voice). */
+.idx-row-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/*
+  Fast-path value line inside the status tile's caption: a second quiet line
+  with tabular digits, so the health grid stays 4 cards.
+*/
+.idx-tile-metrics {
+  display: block;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+  One-time local-only note at the bottom of the index page. Same soft-tile
+  treatment as the trust notice above; `role="note"` keeps it out of the
+  critical path, so muted ink and a ghost dismiss.
+*/
+.idx-nudge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--ds-tile);
+  color: var(--ds-text-muted);
+  font-size: var(--text-sm);
+}
+
+.idx-nudge-text {
+  min-width: 0;
+}
+
 @media (max-width: 900px) {
   .stats-cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2855,6 +3038,19 @@
   */
   .idx-actions {
     justify-content: flex-start;
+  }
+
+  /*
+    Narrow content column: the usage rows drop the inline bar (a 40%-wide
+    track encodes nothing) and let it run full-width under the name, with the
+    percent and tokens staying on the title line.
+  */
+  .stats-usage-row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .stats-usage-track {
+    grid-column: 1 / -1;
   }
 }
 .extension-prompt-message {

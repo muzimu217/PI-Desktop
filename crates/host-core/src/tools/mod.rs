@@ -1685,19 +1685,21 @@ fn tool_grep(
     // path serves we skip the `rg` backend entirely instead of racing it.
     let mut fast_candidates: Option<Vec<PathBuf>> = None;
     if index_grep_boost && !scoped && include_pattern.is_none() && search_dir.as_path() == root {
-        if let (Some(index), Some(literal)) = (
-            index,
-            crate::index::fast_path::admitted_literal(pattern, case_insensitive),
-        ) {
-            if let crate::index::fast_path::CandidateSelection::Ready(files) =
-                crate::index::fast_path::select_candidates(
-                    index,
-                    root,
-                    literal,
-                    GREP_MAX_CANDIDATE_FILES,
-                )
-            {
-                fast_candidates = Some(files);
+        if let Some(index) = index {
+            match crate::index::fast_path::admitted_literal(pattern, case_insensitive) {
+                None => index.metrics().record_not_literal(),
+                Some(literal) => {
+                    if let crate::index::fast_path::CandidateSelection::Ready(files) =
+                        crate::index::fast_path::select_candidates(
+                            index,
+                            root,
+                            literal,
+                            GREP_MAX_CANDIDATE_FILES,
+                        )
+                    {
+                        fast_candidates = Some(files);
+                    }
+                }
             }
         }
     }

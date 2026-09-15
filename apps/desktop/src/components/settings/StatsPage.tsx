@@ -1,29 +1,30 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type {
-  ProjectRecord,
-  StatsDayModel,
-  StatsDayTotal,
-  StatsSummary,
-  StatsTopSession,
-} from "@pi-desktop/shared";
+import type { ProjectRecord, StatsSummary, StatsTopSession } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
+import { useAppStore } from "../../stores/app-store";
 import { Button, Select, cx } from "../ui";
 import {
   IconBarChart,
   IconClock,
   IconFlame,
-  IconPieChart,
   IconRefresh,
-  IconSparkles,
   IconTrendUp,
 } from "../icons";
 import { MetricTile } from "./MetricTile";
+import {
+  buildStatsDataset,
+  type StatsAriaSummary,
+  type StatsDataset,
+  type StatsHeatmap,
+  type StatsModelSlice,
+  type StatsTrend,
+} from "./stats/dataset";
 
 type Range = 7 | 30;
 type LoadState =
   | { kind: "loading" }
-  | { kind: "error" }
+  | { kind: "error"; code: string | null }
   | { kind: "ready"; summary: StatsSummary; sessions: StatsTopSession[] };
 
 function formatTokens(value: number): string {
@@ -45,7 +46,43 @@ function formatDuration(ms: number): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
-function download(summary: StatsSummary, sessions: StatsTopSession[], format: "csv" | "json") {
+// The repo has no shared relative-time helper (each page keeps a small local
+// one), so the session rows reuse the same Intl.RelativeTimeFormat pattern as
+// NotificationCenter / ProjectsPage rather than inventing a new format.
+function formatLastActive(ms: number, locale: string): string {
+  if (!ms) return "";
+  const delta = ms - Date.now();
+  const absolute = Math.abs(delta);
+  try {
+    const formatter = new Intl.RelativeTimeFormat(locale || undefined, { numeric: "auto" });
+    if (absolute < 60 * 60_000) return formatter.format(Math.round(delta / 60_000), "minute");
+    if (absolute < 24 * 60 * 60_000) return formatter.format(Math.round(delta / (60 * 60_000)), "hour");
+    if (absolute < 7 * 24 * 60 * 60_000) {
+      return formatter.format(Math.round(delta / (24 * 60 * 60_000)), "day");
+    }
+    return new Intl.DateTimeFormat(locale || undefined, {
+      month: "short",
+      day: "numeric",
+      year: new Date(ms).getFullYear() === new Date().getFullYear() ? undefined : "numeric",
+    }).format(new Date(ms));
+  } catch {
+    return new Date(ms).toLocaleDateString();
+  }
+}
+
+/** Quote a CSV field only when it contains a delimiter, quote, or newline. */
+function csvField(value: string): string {
+  return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+function download(
+  dataset: StatsDataset,
+  summary: StatsSummary,
+  sessions: StatsTopSession[],
+  format: "csv" | "json",
+) {
+  // File-name only: the UTC slice here is intentional and unrelated to the
+  // local-date bucketing the heatmap uses for its cells.
   const base = `pi-usage-${new Date(summary.generatedAt).toISOString().slice(0, 10)}`;
   const anchor = document.createElement("a");
   if (format === "json") {
@@ -55,11 +92,22 @@ function download(summary: StatsSummary, sessions: StatsTopSession[], format: "c
     anchor.href = URL.createObjectURL(blob);
     anchor.download = `${base}.json`;
   } else {
-    const rows = [
-      ["date", "tokens"],
-      ...summary.dailyTotals.map((day) => [day.date, String(day.tokens)]),
+    const { exportMeta, exportRows } = dataset;
+    const lines: string[] = [
+      `# range: ${exportMeta.rangeDays}, generatedAt: ${exportMeta.generatedAtIso}, scope: ${exportMeta.scope}`,
+      "# sections: daily, modelUsage, projectUsage, diagnostics, topSessions",
     ];
-    const blob = new Blob([rows.map((row) => row.join(",")).join("\n")], { type: "text/csv" });
+    const sections: Array<[string, string[][]]> = [
+      ["daily", exportRows.daily],
+      ["modelUsage", exportRows.modelUsage],
+      ["projectUsage", exportRows.projectUsage],
+      ["diagnostics", exportRows.diagnostics],
+      ["topSessions", exportRows.topSessions],
+    ];
+    for (const [name, rows] of sections) {
+      lines.push("", `[${name}]`, ...rows.map((row) => row.map(csvField).join(",")));
+    }
+    const blob = new Blob([`${lines.join("\n")}\n`], { type: "text/csv" });
     anchor.href = URL.createObjectURL(blob);
     anchor.download = `${base}.csv`;
   }
@@ -67,69 +115,63 @@ function download(summary: StatsSummary, sessions: StatsTopSession[], format: "c
   URL.revokeObjectURL(anchor.href);
 }
 
-
-const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-
-function Heatmap({ days }: { days: StatsDayTotal[] }) {
-  const byDate = useMemo(() => new Map(days.map((day) => [day.date, day.tokens])), [days]);
-  const cells = useMemo(() => {
-    const list: { date: string; tokens: number }[] = [];
-    const today = new Date();
-    for (let offset = 364; offset >= 0; offset -= 1) {
-      const date = new Date(today);
-      date.setDate(today.getDate() - offset);
-      const key = date.toISOString().slice(0, 10);
-      list.push({ date: key, tokens: byDate.get(key) ?? 0 });
-    }
-    return list;
-  }, [byDate]);
-  const max = Math.max(1, ...days.map((day) => day.tokens));
-  const monthTicks = useMemo(() => {
-    const ticks: { label: string; column: number }[] = [];
-    cells.forEach((cell, index) => {
-      const month = Number(cell.date.slice(5, 7)) - 1;
-      const previous = index > 0 ? Number(cells[index - 1].date.slice(5, 7)) - 1 : -1;
-      if (month !== previous) ticks.push({ label: MONTHS[month], column: Math.floor(index / 7) });
-    });
-    return ticks;
-  }, [cells]);
+/**
+ * Heatmap — one cell per local calendar day, last 365 days ending today.
+ *
+ * Cells come from `dataset.heatmap`, whose keys are local dates. The host
+ * buckets turns by local date (`stats.rs::local_date`), so `toISOString()`
+ * would shift each day's 00:00–08:00 spend (UTC+8) into the previous column
+ * and misalign the whole grid by one day.
+ */
+function Heatmap({ heatmap, ariaSummary }: { heatmap: StatsHeatmap; ariaSummary: StatsAriaSummary }) {
   const { t } = useTranslation();
   const weekdayLabels = t("stats.heatWeekdays").split(",");
+  const { cells, monthTicks } = heatmap;
   return (
-    <svg className="stats-heatmap" viewBox="0 0 664 126" role="img" aria-label={t("stats.heatmapAria")}>
-      {/* Left gutter carries the Mon–Sun row axis, matching the mockup. */}
-      {weekdayLabels.map((label, row) => (
-        <text
-          key={label}
-          className="stats-heat-month"
-          x={22}
-          y={16 + row * 12 + 8}
-          textAnchor="end"
-        >
-          {label}
-        </text>
-      ))}
-      {monthTicks.map((tick, position) => {
-        // One label per month would collide at 12px columns; keep every other
-        // tick so the axis stays readable at any window width.
-        if (position % 2 === 1) return null;
-        return (
+    <>
+      <svg
+        className="stats-heatmap"
+        viewBox="0 0 664 126"
+        role="img"
+        aria-label={t("stats.heatmapAria", ariaSummary)}
+      >
+        {/* Left gutter carries the Mon–Sun row axis, matching the mockup. */}
+        {weekdayLabels.map((label, row) => (
           <text
-            key={`${tick.label}-${tick.column}`}
+            key={label}
             className="stats-heat-month"
-            x={24 + tick.column * 12}
-            y={10}
+            x={22}
+            y={16 + row * 12 + 8}
+            textAnchor="end"
           >
-            {tick.label}
+            {label}
           </text>
-        );
-      })}
-      {cells.map((cell, index) => {
-        const level = cell.tokens === 0 ? 0 : Math.min(4, Math.ceil((cell.tokens / max) * 4));
-        return (
+        ))}
+        {monthTicks.map((tick, position) => {
+          // One label per month would collide at 12px columns; keep every other
+          // tick so the axis stays readable at any window width.
+          if (position % 2 === 1) return null;
+          return (
+            <text
+              key={`${tick.label}-${tick.column}`}
+              className="stats-heat-month"
+              x={24 + tick.column * 12}
+              y={10}
+            >
+              {tick.label}
+            </text>
+          );
+        })}
+        {cells.map((cell, index) => (
           <rect
             key={cell.date}
-            className={`stats-heat-cell stats-heat-${level}`}
+            // `stats-heat-today` marks the current local day; the CSS lives with
+            // the other stats-heat-* rules (added by the styles owner).
+            className={cx(
+              "stats-heat-cell",
+              `stats-heat-${cell.level}`,
+              cell.isToday && "stats-heat-today",
+            )}
             x={24 + Math.floor(index / 7) * 12}
             y={16 + (index % 7) * 12}
             width={10}
@@ -137,61 +179,46 @@ function Heatmap({ days }: { days: StatsDayTotal[] }) {
           >
             <title>{`${cell.date}: ${cell.tokens}`}</title>
           </rect>
-        );
-      })}
-      <text className="stats-heat-axis" x={24} y={120}>{t("stats.heatLow")}</text>
-      <g transform="translate(88, 116)">
-        {[0, 1, 2, 3, 4].map((level) => (
-          <rect key={level} className={`stats-heat-cell stats-heat-${level}`} x={level * 12} y={0} width={10} height={10} />
         ))}
-      </g>
-      <text className="stats-heat-axis" x={156} y={120}>{t("stats.heatHigh")}</text>
-    </svg>
+        <text className="stats-heat-axis" x={24} y={120}>{t("stats.heatLow")}</text>
+        <g transform="translate(88, 116)">
+          {[0, 1, 2, 3, 4].map((level) => (
+            <rect key={level} className={`stats-heat-cell stats-heat-${level}`} x={level * 12} y={0} width={10} height={10} />
+          ))}
+        </g>
+        <text className="stats-heat-axis" x={156} y={120}>{t("stats.heatHigh")}</text>
+      </svg>
+      {/*
+       * Screen-reader twin of the heatmap: the same 365 daily values the cells
+       * paint, as a real table. `stats-sr-table` is the page-scoped hook the
+       * styles owner uses for the visually-hidden rule; `sr-only` is the
+       * Tailwind utility already applied elsewhere in the renderer, so the
+       * table stays hidden even before that CSS lands.
+       */}
+      <table className="stats-sr-table sr-only">
+        <caption>{t("stats.heatmapTableCaption")}</caption>
+        <thead>
+          <tr>
+            <th scope="col">{t("stats.tableDate")}</th>
+            <th scope="col">{t("stats.tableTokens")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {cells.map((cell) => (
+            <tr key={cell.date}>
+              <th scope="row">{cell.date}</th>
+              <td>{cell.tokens}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
   );
 }
 
-// Axis tops read like the mockup (0 / 50K / 100K / 150K / 200K) instead of
-// ending on the raw peak, so the gridline labels stay round numbers.
-function niceCeil(value: number): number {
-  if (value <= 0) return 1;
-  const base = 10 ** Math.floor(Math.log10(value));
-  const normalized = value / base;
-  const step = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 2.5 ? 2.5 : normalized <= 5 ? 5 : 10;
-  return step * base;
-}
-
-// Plot geometry in viewBox units. The SVG keeps its aspect ratio (no
-// preserveAspectRatio="none"), so axis text never stretches with the card.
-// Right inset leaves room for the final "MM-DD" label, which is centred on the
-// last gridline and would otherwise be clipped by the viewBox edge.
-const TREND = { width: 720, height: 200, left: 52, right: 688, top: 12, bottom: 150 };
-
-function Trend({ days }: { days: StatsDayModel[] }) {
+function Trend({ trend, ariaSummary }: { trend: StatsTrend; ariaSummary: StatsAriaSummary }) {
   const { t } = useTranslation();
-  const { series, dates, axisMax, totalValues } = useMemo(() => {
-    const byModel = new Map<string, Map<string, number>>();
-    const totals = new Map<string, number>();
-    const dateSet = new Set<string>();
-    for (const day of days) {
-      dateSet.add(day.date);
-      const model = byModel.get(day.modelId) ?? new Map<string, number>();
-      model.set(day.date, (model.get(day.date) ?? 0) + day.tokens);
-      byModel.set(day.modelId, model);
-      totals.set(day.date, (totals.get(day.date) ?? 0) + day.tokens);
-    }
-    const sortedDates = [...dateSet].sort();
-    const ordered = [...byModel.entries()]
-      .map(([modelId, values]) => ({
-        modelId,
-        values: sortedDates.map((date) => values.get(date) ?? 0),
-        total: [...values.values()].reduce((sum, value) => sum + value, 0),
-      }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 5);
-    const sum = sortedDates.map((date) => totals.get(date) ?? 0);
-    const peak = Math.max(0, ...sum, ...ordered.flatMap((entry) => entry.values));
-    return { series: ordered, dates: sortedDates, axisMax: niceCeil(peak), totalValues: sum };
-  }, [days]);
+  const { series, dates, axisMax, totals } = trend;
 
   if (dates.length === 0) {
     return <div className="stats-trend-tick">{t("stats.empty")}</div>;
@@ -221,7 +248,7 @@ function Trend({ days }: { days: StatsDayModel[] }) {
         viewBox={`0 0 ${TREND.width} ${TREND.height}`}
         className="stats-trend"
         role="img"
-        aria-label={t("stats.trendAria")}
+        aria-label={t("stats.trendAria", ariaSummary)}
       >
         {yTicks.map((tick) => (
           <g key={tick.value}>
@@ -237,14 +264,14 @@ function Trend({ days }: { days: StatsDayModel[] }) {
             </text>
           </g>
         ))}
-        {totalValues.length > 0 ? (
+        {totals.length > 0 ? (
           <polygon
             className="stats-trend-area"
-            points={`${TREND.left},${TREND.bottom} ${toPoints(totalValues)} ${TREND.right},${TREND.bottom}`}
+            points={`${TREND.left},${TREND.bottom} ${toPoints(totals)} ${TREND.right},${TREND.bottom}`}
           />
         ) : null}
-        {totalValues.length > 0 ? (
-          <polyline className="stats-trend-line stats-trend-total" points={toPoints(totalValues)} />
+        {totals.length > 0 ? (
+          <polyline className="stats-trend-line stats-trend-total" points={toPoints(totals)} />
         ) : null}
         {series.map((entry, index) => (
           <polyline
@@ -278,11 +305,37 @@ function Trend({ days }: { days: StatsDayModel[] }) {
           </li>
         ))}
       </ul>
+      {/* Screen-reader twin of the trend lines; values are the plotted ones. */}
+      <table className="stats-sr-table sr-only">
+        <caption>{t("stats.trendTableCaption")}</caption>
+        <thead>
+          <tr>
+            <th scope="col">{t("stats.tableDate")}</th>
+            <th scope="col">{t("stats.trendTotal")}</th>
+            {series.map((entry) => (
+              <th scope="col" key={entry.modelId}>
+                {entry.modelId}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {dates.map((date, index) => (
+            <tr key={date}>
+              <th scope="row">{date}</th>
+              <td>{totals[index]}</td>
+              {series.map((entry) => (
+                <td key={entry.modelId}>{entry.values[index]}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
 
-function Donut({ models }: { models: StatsSummary["modelUsage"] }) {
+function Donut({ models }: { models: StatsModelSlice[] }) {
   const { t } = useTranslation();
   const total = models.reduce((sum, model) => sum + model.tokens, 0);
   const denominator = total || 1;
@@ -329,23 +382,35 @@ function Donut({ models }: { models: StatsSummary["modelUsage"] }) {
   );
 }
 
+// Plot geometry in viewBox units. The SVG keeps its aspect ratio (no
+// preserveAspectRatio="none"), so axis text never stretches with the card.
+// Right inset leaves room for the final "MM-DD" label, which is centred on the
+// last gridline and would otherwise be clipped by the viewBox edge.
+const TREND = { width: 720, height: 200, left: 52, right: 688, top: 12, bottom: 150 };
+
 export function StatsPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale = i18n.resolvedLanguage ?? i18n.language ?? "";
+  const selectSession = useAppStore((state) => state.selectSession);
   const [range, setRange] = useState<Range>(30);
   const [projectId, setProjectId] = useState<number | undefined>(undefined);
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [state, setState] = useState<LoadState>({ kind: "loading" });
 
-  const load = useCallback(async (days: Range, project?: number) => {
+  const load = useCallback(async (days: Range, project?: number, force?: boolean) => {
     setState({ kind: "loading" });
     try {
       const [summary, top] = await Promise.all([
-        api.statsSummary(days, project),
+        api.statsSummary(days, project, { force }),
         api.statsTopSessions(days, project),
       ]);
       setState({ kind: "ready", summary, sessions: top.sessions ?? [] });
-    } catch {
-      setState({ kind: "error" });
+    } catch (error) {
+      // `invoke` (lib/api.ts) attaches the host error code; HOST_UNAVAILABLE
+      // means the transport is gone and the honest message is "retry", while
+      // anything else is a data failure the user cannot fix by waiting.
+      const code = (error as { code?: unknown } | null)?.code;
+      setState({ kind: "error", code: typeof code === "string" ? code : null });
     }
   }, []);
 
@@ -371,6 +436,11 @@ export function StatsPage() {
     void load(range, projectId);
   }, [load, range, projectId]);
 
+  const dataset = useMemo(
+    () => (state.kind === "ready" ? buildStatsDataset(state.summary, state.sessions) : null),
+    [state],
+  );
+
   if (state.kind === "loading") {
     return (
       <div className="settings-stack" role="status">
@@ -379,15 +449,18 @@ export function StatsPage() {
     );
   }
   if (state.kind === "error") {
+    const hostDown = state.code === "HOST_UNAVAILABLE";
     return (
       <div className="settings-stack">
         <div className="settings-panel">
           <div className="settings-row">
             <div className="settings-row-copy">
-              <div className="settings-row-title">{t("stats.loadError")}</div>
+              <div className="settings-row-title">
+                {hostDown ? t("stats.loadErrorHost") : t("stats.loadError")}
+              </div>
             </div>
             <div className="settings-row-control">
-              <Button onClick={() => void load(range, projectId)}>{t("index.retry")}</Button>
+              <Button onClick={() => void load(range, projectId, true)}>{t("index.retry")}</Button>
             </div>
           </div>
         </div>
@@ -396,7 +469,23 @@ export function StatsPage() {
   }
 
   const { summary, sessions } = state;
-  const { cards, diagnostics } = summary;
+  if (!dataset) return null;
+  const { cards, diagnostics, heatmap, trend, models, aria } = dataset;
+  // The charts' aria summaries need formatted numbers; the dataset keeps raw
+  // values, so formatting happens here (the consumer) at render time.
+  const heatAria = {
+    days: aria.heatmap.days,
+    tokens: formatTokens(aria.heatmap.totalTokens),
+    peakTokens: formatTokens(aria.heatmap.peakTokens),
+    peakDate: aria.heatmap.peakDate ?? "—",
+  };
+  const trendAria = {
+    days: aria.trend.days,
+    tokens: formatTokens(aria.trend.totalTokens),
+    peakTokens: formatTokens(aria.trend.peakTokens),
+    peakDate: aria.trend.peakDate ?? "—",
+  };
+
   return (
     <div className="settings-stack stats-scope">
       <p className="stats-subtitle">{t("stats.provenanceShort")}</p>
@@ -431,13 +520,17 @@ export function StatsPage() {
             ))}
           </Select>
         ) : null}
-        <Button variant="ghost" aria-label={t("stats.refresh")} onClick={() => void load(range, projectId)}>
+        <Button
+          variant="ghost"
+          aria-label={t("stats.refresh")}
+          onClick={() => void load(range, projectId, true)}
+        >
           <IconRefresh size={14} />
         </Button>
-        <Button variant="ghost" onClick={() => download(summary, sessions, "csv")}>
+        <Button variant="ghost" onClick={() => download(dataset, summary, sessions, "csv")}>
           {t("stats.exportCsv")}
         </Button>
-        <Button variant="ghost" onClick={() => download(summary, sessions, "json")}>
+        <Button variant="ghost" onClick={() => download(dataset, summary, sessions, "json")}>
           {t("stats.exportJson")}
         </Button>
       </div>
@@ -455,6 +548,8 @@ export function StatsPage() {
           tone="accent"
           label={t("stats.peakDay")}
           value={formatTokens(cards.peakDayTokens)}
+          // The mockup labels the peak value with the day it happened on.
+          caption={dataset?.peakDay.date ?? undefined}
           badge={cards.peakDayTokens > 0 ? <span className="idx-badge idx-badge-warn">{t("stats.badgeHighest")}</span> : undefined}
         />
         <MetricTile
@@ -479,13 +574,13 @@ export function StatsPage() {
         <section className="settings-card-block">
           <h3 className="settings-card-heading">{t("stats.activity")}</h3>
           <div className="settings-panel stats-chart-panel">
-            <Heatmap days={summary.heatmap} />
+            <Heatmap heatmap={heatmap} ariaSummary={heatAria} />
           </div>
         </section>
         <section className="settings-card-block">
           <h3 className="settings-card-heading">{t("stats.modelUsage")}</h3>
           <div className="settings-panel stats-chart-panel">
-            <Donut models={summary.modelUsage} />
+            <Donut models={models} />
           </div>
         </section>
       </div>
@@ -494,7 +589,7 @@ export function StatsPage() {
         <section className="settings-card-block">
           <h3 className="settings-card-heading">{t("stats.trend")}</h3>
           <div className="settings-panel stats-chart-panel">
-            <Trend days={summary.dailyByModel as StatsDayModel[]} />
+            <Trend trend={trend} ariaSummary={trendAria} />
           </div>
         </section>
         <section className="settings-card-block">
@@ -514,7 +609,7 @@ export function StatsPage() {
                 <span
                   className={cx(
                     "stats-insights-value",
-                    diagnostics.top5SessionShare > 0.35 && "idx-status warn",
+                    diagnostics.top5Concentrated && "idx-status warn",
                   )}
                 >
                   {Math.round(diagnostics.top5SessionShare * 100)}%
@@ -535,16 +630,47 @@ export function StatsPage() {
               </div>
             </div>
           ) : (
-            sessions.map((session, index) => (
-              <div className="settings-row" key={session.sessionId}>
-                <div className="settings-row-copy">
-                  <div className="settings-row-title">
-                    {index + 1}. {session.title ?? session.sessionId.slice(0, 8)}
+            sessions.map((session, index) => {
+              // The sessions table stores title as NOT NULL DEFAULT '', so an
+              // untitled session arrives as an empty string rather than null —
+              // a nullish check would leave the row label blank.
+              const title = session.title?.trim() || session.sessionId.slice(0, 8);
+              const lastActive = formatLastActive(session.lastActiveMs, locale);
+              return (
+                // A real button keeps the row Tab-reachable with native
+                // Enter/Space activation. `.settings-row` already carries the
+                // tile background, so the styles owner only needs to add a
+                // button reset on `stats-session-row` (width:100%,
+                // text-align:left, font:inherit, cursor:pointer) plus a visible
+                // `:focus-visible` ring.
+                <button
+                  type="button"
+                  className="settings-row stats-session-row"
+                  key={session.sessionId}
+                  aria-label={t("stats.openSession", { title })}
+                  onClick={() => {
+                    // Navigation is best-effort: the session may have been
+                    // deleted since the stats snapshot, and selectSession
+                    // rejects in that case. Swallow it rather than surfacing an
+                    // error for a row that is already stale.
+                    void selectSession(session.sessionId).catch(() => undefined);
+                  }}
+                >
+                  <div className="settings-row-copy">
+                    <div className="settings-row-title">
+                      {index + 1}. {title}
+                    </div>
+                    {session.turnCount > 0 || session.lastActiveMs > 0 ? (
+                      <div className="settings-row-desc">
+                        {t("stats.turns", { count: session.turnCount })}
+                        {lastActive ? ` · ${t("stats.lastActive", { time: lastActive })}` : ""}
+                      </div>
+                    ) : null}
                   </div>
-                </div>
-                <div className="settings-row-control idx-status ok">{formatTokens(session.tokens)}</div>
-              </div>
-            ))
+                  <div className="settings-row-control idx-status ok">{formatTokens(session.tokens)}</div>
+                </button>
+              );
+            })
           )}
         </div>
       </section>

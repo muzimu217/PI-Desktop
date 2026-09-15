@@ -9,9 +9,13 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub mod fast_path;
+pub mod metrics;
+
+use metrics::{BuildProgress, IndexMetrics, WorkspaceIndexMetrics};
 
 pub const MAX_FILES: usize = 50_000;
 pub const MAX_FILE_BYTES: u64 = 1024 * 1024;
@@ -75,6 +79,20 @@ pub struct RootStatus {
     pub error_count: i64,
     pub last_error: Option<String>,
     pub updated_at: i64,
+    /// Only present while `status == "building"`; omitted otherwise so the
+    /// non-building response shape is unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub progress: Option<RootProgress>,
+    /// In-memory fast-path counters; never persisted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metrics: Option<WorkspaceIndexMetrics>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RootProgress {
+    pub files_done: u64,
+    pub files_total: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -120,6 +138,11 @@ struct RootUpdate<'a> {
 #[derive(Debug, Clone)]
 pub struct IndexStore {
     path: PathBuf,
+    /// Fast-path counters shared by every clone of this store (see
+    /// [`metrics::IndexMetrics`]). In-memory only.
+    metrics: Arc<IndexMetrics>,
+    /// Live crawl counters for the root currently being rebuilt.
+    progress: Arc<BuildProgress>,
 }
 
 impl IndexStore {
@@ -127,7 +150,11 @@ impl IndexStore {
         let directory = data_dir.join("index");
         std::fs::create_dir_all(&directory).context("create index directory")?;
         let path = directory.join("index.db");
-        let store = Self { path };
+        let store = Self {
+            path,
+            metrics: Arc::new(IndexMetrics::default()),
+            progress: Arc::new(BuildProgress::default()),
+        };
         if let Err(error) = store.initialize() {
             store.quarantine_corrupt_db();
             store
@@ -135,6 +162,12 @@ impl IndexStore {
                 .with_context(|| format!("rebuild index database after failure: {error}"))?;
         }
         Ok(store)
+    }
+
+    /// Shared fast-path counters, for callers that record into them (the Grep
+    /// fast path) and for `index.status`.
+    pub fn metrics(&self) -> &Arc<IndexMetrics> {
+        &self.metrics
     }
 
     pub fn status(&self, root: Option<&Path>) -> Result<Vec<RootStatus>> {
@@ -159,10 +192,23 @@ impl IndexStore {
                 error_count: row.get(5)?,
                 last_error: row.get(6)?,
                 updated_at: row.get(7)?,
+                // Filled in below: the row callback cannot borrow `self`.
+                progress: None,
+                metrics: None,
             })
         })?;
-        rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(Into::into)
+        let mut statuses = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+        for status in &mut statuses {
+            if status.status == IndexStatus::Building.as_str() {
+                let (files_done, files_total) = self.progress.snapshot();
+                status.progress = Some(RootProgress {
+                    files_done,
+                    files_total,
+                });
+            }
+            status.metrics = Some(self.metrics.snapshot());
+        }
+        Ok(statuses)
     }
 
     pub fn rebuild(&self, root: &Path, limits: IndexLimits) -> Result<RootStatus> {
@@ -171,6 +217,17 @@ impl IndexStore {
             anyhow::bail!("INDEX_ROOT_NOT_FOUND: {}", root.display());
         }
         let root_id = root_id(&root);
+        // Seed the progress denominator from the previous visible set (or 0 on
+        // a first build). The crawler advances `done` as it visits files.
+        let previous_files: i64 = self
+            .connection()?
+            .query_row(
+                "SELECT COUNT(*) FROM files WHERE root_id = ?1",
+                [&root_id],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        self.progress.reset(previous_files.max(0) as u64);
         self.set_root_status(
             &root_id,
             &root,
@@ -183,7 +240,7 @@ impl IndexStore {
             },
         )?;
 
-        let scan = scan_root(&root, limits);
+        let scan = scan_root(&root, limits, Some(&self.progress));
         let connection = self.connection()?;
         match scan {
             Ok(result) => {
@@ -404,7 +461,11 @@ mod fts {
     }
 }
 
-fn scan_root(root: &Path, limits: IndexLimits) -> Result<ScanResult> {
+fn scan_root(
+    root: &Path,
+    limits: IndexLimits,
+    progress: Option<&BuildProgress>,
+) -> Result<ScanResult> {
     let mut result = ScanResult::default();
     // The crawler and Grep share one visible-set definition; see
     // `crate::tools::ignore_rules`. The crawler always covers the whole root,
@@ -427,6 +488,10 @@ fn scan_root(root: &Path, limits: IndexLimits) -> Result<ScanResult> {
         if result.files.len() >= limits.max_files {
             result.over_limit = true;
             break;
+        }
+        // One visible file counts as progress, whether or not it is ingested.
+        if let Some(progress) = progress {
+            progress.inc_done();
         }
         let metadata = match entry.metadata() {
             Ok(metadata) => metadata,
@@ -716,5 +781,56 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))
             .unwrap();
         assert_eq!(files_left, 1);
+    }
+
+    #[test]
+    fn status_reports_metrics_always_and_progress_only_while_building() {
+        let data = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("a.txt"), "alpha\n").unwrap();
+        let store = IndexStore::open(data.path()).unwrap();
+
+        // An unindexed root marked building (as the auto-index path does)
+        // surfaces the progress block; a never-built root seeds the total at 0.
+        assert_eq!(
+            store.ensure_index(root.path()).unwrap(),
+            crate::index::EnsureOutcome::Triggered
+        );
+        let building = store
+            .status(Some(root.path()))
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
+        assert_eq!(building.status, "building");
+        let progress = building.progress.expect("building exposes progress");
+        assert_eq!(progress.files_done, 0);
+        assert!(building.metrics.is_some());
+
+        // A fresh root carries metrics but no progress field.
+        let fresh = store.rebuild(root.path(), IndexLimits::default()).unwrap();
+        assert_eq!(fresh.status, "fresh");
+        assert!(fresh.metrics.is_some());
+        assert!(fresh.progress.is_none());
+
+        // Marking the freshly built root stale makes the next ensure_index mark
+        // it building again; the progress denominator is seeded from the
+        // previous visible set (1 file).
+        fts::open(&store.path)
+            .unwrap()
+            .execute("UPDATE indexed_roots SET status = 'stale'", [])
+            .unwrap();
+        assert_eq!(
+            store.ensure_index(root.path()).unwrap(),
+            crate::index::EnsureOutcome::Triggered
+        );
+        let rebuilding = store
+            .status(Some(root.path()))
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
+        let progress = rebuilding.progress.expect("building exposes progress");
+        assert_eq!(progress.files_total, 1);
     }
 }

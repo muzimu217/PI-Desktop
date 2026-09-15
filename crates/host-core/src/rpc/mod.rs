@@ -349,6 +349,34 @@ fn checked_index_root(
     Ok(current)
 }
 
+/// Stats range selector. Missing/null keeps the historical default (30 days);
+/// any other value must be one of the supported windows, so an illegal range
+/// is a client error rather than a silent 30-day fallback.
+fn stats_range_days_param(params: &Value) -> Result<i64, JsonRpcError> {
+    match params.get("rangeDays") {
+        None => Ok(30),
+        Some(value) if value.is_null() => Ok(30),
+        Some(value) => match value.as_i64() {
+            Some(days @ 7) | Some(days @ 30) => Ok(days),
+            _ => Err(rpc_err(
+                1002,
+                "rangeDays must be one of 7, 30",
+                "INVALID_PARAMS",
+            )),
+        },
+    }
+}
+
+/// Clamp `limit` to the documented 1..=50 window so a hostile or accidental
+/// value cannot turn the top-sessions scan into an unbounded response.
+fn stats_limit_param(params: &Value) -> i64 {
+    params
+        .get("limit")
+        .and_then(Value::as_i64)
+        .unwrap_or(5)
+        .clamp(1, 50)
+}
+
 /// Parse the optional session thinking selector at the RPC boundary.  A
 /// missing/null value keeps the backwards-compatible default; present values
 /// must be strings from the host's allowlist rather than being silently
@@ -1063,42 +1091,91 @@ async fn handle_request(
             Ok(json!({ "projects": projects }))
         }
         "stats.summary" => {
-            let range_days = match params.get("rangeDays").and_then(Value::as_i64) {
-                Some(days @ 7) | Some(days @ 30) => days,
-                _ => 30,
-            };
-            let project_id = params.get("projectId").and_then(Value::as_i64);
-            let (summary_value, key) = {
-                let st = state.lock().await;
-                let key = crate::stats::cache_key(&st.db, range_days, project_id)
-                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-                let now = chrono::Utc::now().timestamp_millis();
-                if let Some(cached) = st.stats_cache.get(key, now) {
-                    return Ok(cached);
-                }
-                let summary = crate::stats::summary(&st.db, range_days, project_id)
-                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-                let value = serde_json::to_value(&summary)
-                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-                (value, key)
-            };
-            let now = chrono::Utc::now().timestamp_millis();
-            state.lock().await.stats_cache.put(key, now, summary_value.clone());
-            Ok(summary_value)
+            let started = std::time::Instant::now();
+            let result: Result<Value, JsonRpcError> = async {
+                let range_days = stats_range_days_param(&params)?;
+                let project_id = params.get("projectId").and_then(Value::as_i64);
+                // The refresh button sets force to invalidate the TTL cache: the
+                // read is skipped but the freshly computed value is still stored.
+                let force = params
+                    .get("force")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                let (summary_value, cache_hit) = {
+                    let st = state.lock().await;
+                    let key = crate::stats::cache_key(&st.db, range_days, project_id)
+                        .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+                    let now = chrono::Utc::now().timestamp_millis();
+                    let cached = if force {
+                        None
+                    } else {
+                        st.stats_cache.get(key, now)
+                    };
+                    if let Some(cached) = cached {
+                        (cached, true)
+                    } else {
+                        let summary = crate::stats::summary(&st.db, range_days, project_id)
+                            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+                        let value = serde_json::to_value(&summary)
+                            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+                        // Force recomputes but still refreshes the cached entry.
+                        st.stats_cache.put(key, now, value.clone());
+                        (value, false)
+                    }
+                };
+                tracing::info!(
+                    method = "stats.summary",
+                    range_days,
+                    force,
+                    cache_hit,
+                    duration_ms = started.elapsed().as_millis() as u64,
+                    "stats rpc served"
+                );
+                Ok(summary_value)
+            }
+            .await;
+            if result.is_err() {
+                tracing::info!(
+                    method = "stats.summary",
+                    error = true,
+                    duration_ms = started.elapsed().as_millis() as u64,
+                    "stats rpc failed"
+                );
+            }
+            result
         }
         "stats.topSessions" => {
-            let range_days = match params.get("rangeDays").and_then(Value::as_i64) {
-                Some(days @ 7) | Some(days @ 30) => days,
-                _ => 30,
-            };
-            let project_id = params.get("projectId").and_then(Value::as_i64);
-            let limit = params.get("limit").and_then(Value::as_i64).unwrap_or(5);
-            let st = state.lock().await;
-            let sessions = crate::stats::top_sessions(&st.db, range_days, project_id, limit)
-                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-            Ok(json!({ "sessions": sessions }))
+            let started = std::time::Instant::now();
+            let result: Result<Value, JsonRpcError> = async {
+                let range_days = stats_range_days_param(&params)?;
+                let project_id = params.get("projectId").and_then(Value::as_i64);
+                let limit = stats_limit_param(&params);
+                let st = state.lock().await;
+                let sessions = crate::stats::top_sessions(&st.db, range_days, project_id, limit)
+                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+                tracing::info!(
+                    method = "stats.topSessions",
+                    range_days,
+                    limit,
+                    count = sessions.len(),
+                    duration_ms = started.elapsed().as_millis() as u64,
+                    "stats rpc served"
+                );
+                Ok(json!({ "sessions": sessions }))
+            }
+            .await;
+            if result.is_err() {
+                tracing::info!(
+                    method = "stats.topSessions",
+                    error = true,
+                    duration_ms = started.elapsed().as_millis() as u64,
+                    "stats rpc failed"
+                );
+            }
+            result
         }
         "index.status" => {
+            let started = std::time::Instant::now();
             let requested_root = params
                 .get("rootPath")
                 .and_then(Value::as_str)
@@ -1113,6 +1190,11 @@ async fn handle_request(
                 )
             };
             let Some(current_root) = current_root else {
+                tracing::info!(
+                    method = "index.status",
+                    duration_ms = started.elapsed().as_millis() as u64,
+                    "index rpc served"
+                );
                 return Ok(json!({ "roots": [] }));
             };
             let root = checked_index_root(requested_root, current_root)?;
@@ -1120,9 +1202,16 @@ async fn handle_request(
                 .await
                 .map_err(|e| rpc_err(1000, e.to_string(), "INDEX_UNAVAILABLE"))?
                 .map_err(|e| rpc_err(1000, e.to_string(), "INDEX_UNAVAILABLE"))?;
+            tracing::info!(
+                method = "index.status",
+                roots = roots.len(),
+                duration_ms = started.elapsed().as_millis() as u64,
+                "index rpc served"
+            );
             Ok(json!({ "roots": roots }))
         }
         "index.rebuild" => {
+            let started = std::time::Instant::now();
             let requested_root = params
                 .get("rootPath")
                 .and_then(Value::as_str)
@@ -1139,15 +1228,39 @@ async fn handle_request(
             let current_root = current_root
                 .ok_or_else(|| rpc_err(1002, "active workspace required", "INVALID_PARAMS"))?;
             let root = checked_index_root(requested_root, current_root)?;
+            let audit_root = root.to_string_lossy().into_owned();
             let status = tokio::task::spawn_blocking(move || {
                 index.rebuild(&root, crate::index::IndexLimits::default())
             })
             .await
             .map_err(|e| rpc_err(1000, e.to_string(), "INDEX_REBUILD_FAILED"))?
             .map_err(|e| rpc_err(1000, e.to_string(), "INDEX_REBUILD_FAILED"))?;
+            // Destructive lifecycle operation: record who rebuilt which root.
+            // Only the redacted summary fields go to the audit log — never any
+            // file content.
+            let st = state.lock().await;
+            let _ = audit::append(
+                &st.db,
+                "index_rebuild",
+                None,
+                json!({
+                    "rootPath": audit_root,
+                    "status": status.status,
+                    "fileCount": status.file_count,
+                    "errorCount": status.error_count,
+                }),
+            );
+            tracing::info!(
+                method = "index.rebuild",
+                status = %status.status,
+                file_count = status.file_count,
+                duration_ms = started.elapsed().as_millis() as u64,
+                "index rpc served"
+            );
             Ok(json!({ "root": status }))
         }
         "index.clear" => {
+            let started = std::time::Instant::now();
             let requested_root = params
                 .get("rootPath")
                 .and_then(Value::as_str)
@@ -1164,10 +1277,24 @@ async fn handle_request(
             let current_root = current_root
                 .ok_or_else(|| rpc_err(1002, "active workspace required", "INVALID_PARAMS"))?;
             let root = checked_index_root(requested_root, current_root)?;
+            let audit_root = root.to_string_lossy().into_owned();
             let cleared = tokio::task::spawn_blocking(move || index.clear(Some(&root)))
                 .await
                 .map_err(|e| rpc_err(1000, e.to_string(), "INDEX_UNAVAILABLE"))?
                 .map_err(|e| rpc_err(1000, e.to_string(), "INDEX_UNAVAILABLE"))?;
+            let st = state.lock().await;
+            let _ = audit::append(
+                &st.db,
+                "index_clear",
+                None,
+                json!({ "rootPath": audit_root, "cleared": cleared }),
+            );
+            tracing::info!(
+                method = "index.clear",
+                cleared,
+                duration_ms = started.elapsed().as_millis() as u64,
+                "index rpc served"
+            );
             Ok(json!({ "ok": true, "cleared": cleared }))
         }
         "workspace.set" => {
@@ -1202,7 +1329,9 @@ async fn handle_request(
                 match index.ensure_index(&root) {
                     Ok(crate::index::EnsureOutcome::Triggered) => {
                         tokio::task::spawn_blocking(move || {
-                            if let Err(error) = index.rebuild(&root, crate::index::IndexLimits::default()) {
+                            if let Err(error) =
+                                index.rebuild(&root, crate::index::IndexLimits::default())
+                            {
                                 tracing::warn!(error = %error, "background index rebuild failed");
                             }
                         });
@@ -1649,13 +1778,9 @@ async fn handle_request(
                 .and_then(|v| v.as_str())
                 .map(str::to_string);
             let st = state.lock().await;
-            let saved = sessions::save_inflight_message(
-                &st.db,
-                session_id,
-                turn_id.as_deref(),
-                &message,
-            )
-            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            let saved =
+                sessions::save_inflight_message(&st.db, session_id, turn_id.as_deref(), &message)
+                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "ok": true, "saved": saved }))
         }
         "session.recoverInflightMessages" => {
@@ -3743,10 +3868,26 @@ mod tests {
 
         let unknown_level = parse_capability_query(&json!({ "level": "workspace" }))
             .expect_err("unknown capability levels are invalid");
-        assert_eq!(unknown_level.data.unwrap()["errorCode"], "CAPABILITY_INVALID");
-        assert_eq!(scope_err("CAPABILITY_INVALID: missing project").data.unwrap()["errorCode"], "CAPABILITY_INVALID");
-        assert_eq!(skill_err("CAPABILITY_INVALID: missing project").data.unwrap()["errorCode"], "CAPABILITY_INVALID");
-        assert_eq!(capability_err("missing project").data.unwrap()["errorCode"], "CAPABILITY_INVALID");
+        assert_eq!(
+            unknown_level.data.unwrap()["errorCode"],
+            "CAPABILITY_INVALID"
+        );
+        assert_eq!(
+            scope_err("CAPABILITY_INVALID: missing project")
+                .data
+                .unwrap()["errorCode"],
+            "CAPABILITY_INVALID"
+        );
+        assert_eq!(
+            skill_err("CAPABILITY_INVALID: missing project")
+                .data
+                .unwrap()["errorCode"],
+            "CAPABILITY_INVALID"
+        );
+        assert_eq!(
+            capability_err("missing project").data.unwrap()["errorCode"],
+            "CAPABILITY_INVALID"
+        );
     }
 
     fn available_test_shell_id() -> Option<String> {
@@ -4518,9 +4659,13 @@ mod tests {
         let (tx, _rx) = mpsc::unbounded_channel();
 
         // Shipping default: the switch is absent, so Grep walks the tree.
-        let walked =
-            execute_literal_grep_through_rpc(state.clone(), &session.id, "grep-default", tx.clone())
-                .await;
+        let walked = execute_literal_grep_through_rpc(
+            state.clone(),
+            &session.id,
+            "grep-default",
+            tx.clone(),
+        )
+        .await;
         assert_eq!(walked["content"]["count"].as_u64(), Some(1));
 
         handle_request(
@@ -4534,9 +4679,13 @@ mod tests {
 
         // Same query, now served from the index. The candidate *source*
         // changed, so the reported result must not.
-        let boosted =
-            execute_literal_grep_through_rpc(state.clone(), &session.id, "grep-boosted", tx.clone())
-                .await;
+        let boosted = execute_literal_grep_through_rpc(
+            state.clone(),
+            &session.id,
+            "grep-boosted",
+            tx.clone(),
+        )
+        .await;
         assert_eq!(boosted["content"], walked["content"]);
     }
 
@@ -6219,8 +6368,8 @@ mod tests {
         let data_dir = tempfile::tempdir().unwrap();
         let mut app_state = AppState::open(data_dir.path()).unwrap();
         app_state.handshook = true;
-        let session = sessions::create_session(&app_state.db, None, None, None, None, None)
-            .unwrap();
+        let session =
+            sessions::create_session(&app_state.db, None, None, None, None, None).unwrap();
         let turn = sessions::begin_turn(&app_state.db, &session.id, None, None).unwrap();
         let state = Arc::new(Mutex::new(app_state));
         let (tx, _rx) = mpsc::unbounded_channel();
@@ -6359,5 +6508,116 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM notifications", [], |row| row.get(0))
             .unwrap();
         assert_eq!(remaining, 0);
+    }
+
+    #[tokio::test]
+    async fn stats_summary_rejects_illegal_range_days() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        for bad in [json!({ "rangeDays": 3 }), json!({ "rangeDays": "30" })] {
+            let error = handle_request(state.clone(), "stats.summary", bad.clone(), tx.clone())
+                .await
+                .unwrap_err();
+            assert_eq!(error.data.unwrap()["errorCode"], "INVALID_PARAMS", "{bad}");
+        }
+        // A missing range still defaults to the historical 30 days.
+        let defaulted = handle_request(state.clone(), "stats.summary", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert!(defaulted.get("cards").is_some());
+    }
+
+    #[tokio::test]
+    async fn stats_summary_serves_cache_unless_forced() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        // Seed the cache with a sentinel under the real key for (30, None).
+        {
+            let st = state.lock().await;
+            let key = crate::stats::cache_key(&st.db, 30, None).unwrap();
+            st.stats_cache.put(
+                key,
+                chrono::Utc::now().timestamp_millis(),
+                json!({ "cached": true }),
+            );
+        }
+        // A normal call hits the cache and returns the sentinel unchanged.
+        let hit = handle_request(
+            state.clone(),
+            "stats.summary",
+            json!({ "rangeDays": 30 }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(hit, json!({ "cached": true }));
+
+        // force=true bypasses the read and recomputes a real summary, which
+        // still refreshes the cache for the next non-forced call.
+        let forced = handle_request(
+            state.clone(),
+            "stats.summary",
+            json!({ "rangeDays": 30, "force": true }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert!(forced.get("cards").is_some());
+        let after = handle_request(
+            state.clone(),
+            "stats.summary",
+            json!({ "rangeDays": 30 }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert!(after.get("cards").is_some());
+    }
+
+    #[tokio::test]
+    async fn index_rebuild_and_clear_are_audited() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        std::fs::write(workspace.path().join("audit.txt"), "audit target\n").unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        handle_request(
+            state.clone(),
+            "workspace.set",
+            json!({ "path": workspace.path().display().to_string() }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        handle_request(state.clone(), "index.rebuild", json!({}), tx.clone())
+            .await
+            .unwrap();
+        handle_request(state.clone(), "index.clear", json!({}), tx.clone())
+            .await
+            .unwrap();
+
+        let st = state.lock().await;
+        let mut kinds: Vec<String> = st
+            .db
+            .conn()
+            .prepare("SELECT kind FROM audit_log WHERE kind LIKE 'index_%' ORDER BY id")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        kinds.sort();
+        assert_eq!(kinds, vec!["index_clear", "index_rebuild"]);
     }
 }

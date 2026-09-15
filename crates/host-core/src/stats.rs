@@ -86,6 +86,7 @@ pub struct Scope {
 pub struct Cards {
     pub total_tokens: i64,
     pub peak_day_tokens: i64,
+    pub peak_day_date: Option<String>,
     pub longest_chat_ms: i64,
     pub current_streak_days: i64,
     pub longest_streak_days: i64,
@@ -253,7 +254,12 @@ pub fn summary(db: &Database, range_days: i64, project_id: Option<i64>) -> Resul
     let range_start = end_ms - range_days * 24 * 3600 * 1000;
     let rows = scan_window(db, scan_start, end_ms, project_id)?;
 
-    let mut daily: BTreeMap<String, i64> = BTreeMap::new();
+    // Two daily maps on purpose: `daily_range` feeds `dailyTotals`/peak day and
+    // is scoped to the requested range, while `daily_full` covers the whole
+    // 365-day heatmap window. Accumulating both into one map double-counted
+    // every in-range day.
+    let mut daily_range: BTreeMap<String, i64> = BTreeMap::new();
+    let mut daily_full: BTreeMap<String, i64> = BTreeMap::new();
     let mut daily_model: BTreeMap<(String, String), i64> = BTreeMap::new();
     let mut models: BTreeMap<String, i64> = BTreeMap::new();
     let mut projects: BTreeMap<Option<i64>, i64> = BTreeMap::new();
@@ -263,6 +269,7 @@ pub fn summary(db: &Database, range_days: i64, project_id: Option<i64>) -> Resul
     let mut cards = Cards {
         total_tokens: 0,
         peak_day_tokens: 0,
+        peak_day_date: None,
         longest_chat_ms: 0,
         current_streak_days: 0,
         longest_streak_days: 0,
@@ -270,6 +277,7 @@ pub fn summary(db: &Database, range_days: i64, project_id: Option<i64>) -> Resul
         turn_count: 0,
     };
     let mut cache_read_total = 0i64;
+    let mut input_total = 0i64;
     let mut large_context = 0i64;
 
     for row in &rows {
@@ -279,7 +287,7 @@ pub fn summary(db: &Database, range_days: i64, project_id: Option<i64>) -> Resul
         if in_range {
             cards.total_tokens += tokens;
             cards.turn_count += 1;
-            *daily.entry(date.clone()).or_default() += tokens;
+            *daily_range.entry(date.clone()).or_default() += tokens;
             *daily_model
                 .entry((
                     date.clone(),
@@ -294,25 +302,32 @@ pub fn summary(db: &Database, range_days: i64, project_id: Option<i64>) -> Resul
             *session_chat_ms.entry(row.session_id.clone()).or_default() +=
                 (row.ended_ms - row.started_at).max(0);
             cache_read_total += row.cache_read;
+            input_total += row.input;
             if row.input + row.cache_read + row.cache_write > LARGE_CONTEXT_TOKENS {
                 large_context += 1;
             }
         }
         // Heatmap covers the full 365-day window regardless of range/scope.
-        *daily.entry(local_date(row.started_at)).or_default() += tokens;
+        *daily_full.entry(date).or_default() += tokens;
         active_days.insert(local_date(row.started_at));
     }
 
-    cards.peak_day_tokens = daily
+    // Peak day carries its date so the card can label the value; the mockup
+    // shows "186.7K / 2025-09-08". BTreeMap iterates by date, so a strict
+    // greater-than comparison keeps the earliest date among equal peaks.
+    let peak = daily_range
         .iter()
         .filter(|(date, _)| {
             chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
                 .map(|d| (Local::now().date_naive() - d).num_days() < range_days)
                 .unwrap_or(false)
         })
-        .map(|(_, tokens)| *tokens)
-        .max()
-        .unwrap_or(0);
+        .fold(None, |best: Option<(&String, &i64)>, (date, tokens)| match best {
+            Some((_, best_tokens)) if *tokens <= *best_tokens => best,
+            _ => Some((date, tokens)),
+        });
+    cards.peak_day_tokens = peak.map(|(_, tokens)| *tokens).unwrap_or(0);
+    cards.peak_day_date = peak.map(|(date, _)| date.clone());
     cards.longest_chat_ms = session_chat_ms.values().copied().max().unwrap_or(0);
     cards.session_count = session_tokens.len() as i64;
     (cards.current_streak_days, cards.longest_streak_days) = streaks(&active_days);
@@ -349,8 +364,16 @@ pub fn summary(db: &Database, range_days: i64, project_id: Option<i64>) -> Resul
         values.iter().take(5).sum()
     };
     let diagnostics = Diagnostics {
-        cache_leverage: cache_read_total as f64
-            / (cards.total_tokens + cache_read_total).max(1) as f64,
+        // Spec §2: cache leverage is cacheRead / (input + cacheRead); cacheWrite
+        // is deliberately excluded. Zero denominator yields zero, not a panic.
+        cache_leverage: {
+            let denominator = input_total + cache_read_total;
+            if denominator > 0 {
+                cache_read_total as f64 / denominator as f64
+            } else {
+                0.0
+            }
+        },
         cache_read_tokens: cache_read_total,
         large_context_turn_share: large_context as f64 / cards.turn_count.max(1) as f64,
         top5_session_share: top5 as f64 / session_total,
@@ -364,7 +387,7 @@ pub fn summary(db: &Database, range_days: i64, project_id: Option<i64>) -> Resul
         scope: Scope { project_id },
         cards,
         diagnostics,
-        daily_totals: daily
+        daily_totals: daily_range
             .iter()
             .map(|(date, tokens)| DayTotal {
                 date: date.clone(),
@@ -381,7 +404,7 @@ pub fn summary(db: &Database, range_days: i64, project_id: Option<i64>) -> Resul
             .collect(),
         model_usage,
         project_usage,
-        heatmap: daily
+        heatmap: daily_full
             .iter()
             .map(|(date, tokens)| DayTotal {
                 date: date.clone(),
@@ -410,11 +433,13 @@ pub fn top_sessions(
     let end_ms = now_ms();
     let start_ms = end_ms - range_days * 24 * 3600 * 1000;
     let rows = scan_window(db, start_ms, end_ms, project_id)?;
-    let mut sessions: BTreeMap<String, (i64, i64, Option<String>)> = BTreeMap::new();
+    // tokens, turn_count, last_active_ms, title
+    let mut sessions: BTreeMap<String, (i64, i64, i64, Option<String>)> = BTreeMap::new();
     for row in &rows {
         let entry = sessions.entry(row.session_id.clone()).or_default();
         entry.0 += row.input + row.output;
         entry.1 += 1;
+        entry.2 = entry.2.max(row.ended_ms);
     }
     for row in db
         .conn()
@@ -425,24 +450,28 @@ pub fn top_sessions(
     {
         let (id, title) = row?;
         if let Some(entry) = sessions.get_mut(&id) {
-            entry.2 = title;
+            entry.3 = title;
         }
     }
-    let mut list: Vec<(String, i64, i64)> = sessions
+    let mut list: Vec<(String, i64, i64, i64, Option<String>)> = sessions
         .into_iter()
-        .map(|(id, (tokens, turns, _))| (id, tokens, turns))
+        .map(|(id, (tokens, turns, last_active_ms, title))| {
+            (id, tokens, turns, last_active_ms, title)
+        })
         .collect();
     list.sort_unstable_by(|a, b| b.1.cmp(&a.1));
     Ok(list
         .into_iter()
         .take(limit.max(0) as usize)
-        .map(|(session_id, tokens, turn_count)| TopSession {
-            last_active_ms: 0,
-            title: None,
-            session_id,
-            tokens,
-            turn_count,
-        })
+        .map(
+            |(session_id, tokens, turn_count, last_active_ms, title)| TopSession {
+                last_active_ms,
+                title,
+                session_id,
+                tokens,
+                turn_count,
+            },
+        )
         .collect())
 }
 
@@ -465,8 +494,12 @@ mod tests {
     }
 
     fn insert_session(db: &Database, id: &str) {
+        insert_session_with_title(db, id, "");
+    }
+
+    fn insert_session_with_title(db: &Database, id: &str, title: &str) {
         db.conn()
-            .execute("INSERT INTO sessions (id, mode, created_at, updated_at) VALUES (?1, 'agent', ?2, ?2)", params![id, now_ms()])
+            .execute("INSERT INTO sessions (id, title, mode, created_at, updated_at) VALUES (?1, ?2, 'agent', ?3, ?3)", params![id, title, now_ms()])
             .context("insert session")
             .unwrap();
     }
@@ -552,6 +585,66 @@ mod tests {
         assert!(summary.diagnostics.large_context_turn_share > 0.0);
         assert_eq!(summary.model_usage[0].model_id, "model-b");
         assert_eq!(summary.heatmap.last().unwrap().tokens > 0, true);
+        // Every in-range row is counted once: the daily totals must add up to
+        // the headline figure instead of the ~2x double-count.
+        assert_eq!(
+            summary
+                .daily_totals
+                .iter()
+                .map(|day| day.tokens)
+                .sum::<i64>(),
+            summary.cards.total_tokens
+        );
+        // The heatmap day for today holds the real day total (3000), not 2x.
+        let today = local_date(now);
+        let heat_today = summary
+            .heatmap
+            .iter()
+            .find(|day| day.date == today)
+            .expect("today is in the heatmap window");
+        assert_eq!(heat_today.tokens, 3_000);
+        let daily_today = summary
+            .daily_totals
+            .iter()
+            .find(|day| day.date == today)
+            .expect("today is in the range");
+        assert_eq!(daily_today.tokens, 3_000);
+    }
+
+    #[test]
+    fn cache_leverage_is_cache_read_over_input_plus_cache_read() {
+        let (_dir, db) = setup_db();
+        insert_session(&db, "s1");
+        let now = now_ms();
+        // input 1_000, cacheRead 3_000, cacheWrite 6_000 (excluded), output 4_000.
+        db.conn()
+            .execute(
+                "INSERT INTO turns (id, session_id, status, model_id, input_tokens, output_tokens, usage_json, started_at, ended_at)
+                 VALUES ('t1', 's1', 'completed', 'm', 1_000, 4_000, ?1, ?2, ?3)",
+                params![
+                    serde_json::json!({ "cacheReadTokens": 3_000, "cacheWriteTokens": 6_000 })
+                        .to_string(),
+                    now - 1_000,
+                    now
+                ],
+            )
+            .unwrap();
+        let summary = summary(&db, 7, None).unwrap();
+        // cacheRead / (input + cacheRead) = 3000 / 4000 = 0.75.
+        assert!((summary.diagnostics.cache_leverage - 0.75).abs() < 1e-9);
+        assert_eq!(summary.diagnostics.cache_read_tokens, 3_000);
+        // Headline token count stays input + output (cacheWrite/cacheRead excluded).
+        assert_eq!(summary.cards.total_tokens, 5_000);
+    }
+
+    #[test]
+    fn zero_token_summary_reports_zero_cache_leverage() {
+        let (_dir, db) = setup_db();
+        insert_session(&db, "s1");
+        let now = now_ms();
+        insert_turn(&db, "t1", "s1", now - 1_000, now, 0, 0, 0, "m");
+        let summary = summary(&db, 7, None).unwrap();
+        assert_eq!(summary.diagnostics.cache_leverage, 0.0);
     }
 
     #[test]
@@ -575,6 +668,28 @@ mod tests {
         assert_eq!(top.len(), 2);
         assert_eq!(top[0].session_id, "s2");
         assert_eq!(top[0].tokens, 10_000);
+    }
+
+    #[test]
+    fn top_sessions_carry_title_and_last_active() {
+        let (_dir, db) = setup_db();
+        insert_session_with_title(&db, "s1", "Fix the widget");
+        insert_session_with_title(&db, "s2", "Ship the release");
+        let now = now_ms();
+        // Two turns in s1: last_active_ms must be the window max(ended_at).
+        insert_turn(&db, "t1", "s1", now - 9_000, now - 8_000, 100, 100, 0, "m");
+        insert_turn(&db, "t2", "s1", now - 5_000, now - 2_000, 100, 100, 0, "m");
+        insert_turn(&db, "t3", "s2", now - 1_000, now, 5_000, 5_000, 0, "m");
+
+        let top = top_sessions(&db, 7, None, 5).unwrap();
+        assert_eq!(top.len(), 2);
+        assert_eq!(top[0].session_id, "s2");
+        assert_eq!(top[0].title.as_deref(), Some("Ship the release"));
+        assert_eq!(top[0].last_active_ms, now);
+
+        let s1 = top.iter().find(|s| s.session_id == "s1").unwrap();
+        assert_eq!(s1.title.as_deref(), Some("Fix the widget"));
+        assert_eq!(s1.last_active_ms, now - 2_000);
     }
 
     #[test]

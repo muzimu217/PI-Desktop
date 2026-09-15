@@ -1938,6 +1938,7 @@ export type StatsSummary = {
   cards: {
     totalTokens: number;
     peakDayTokens: number;
+    peakDayDate: string | null;
     longestChatMs: number;
     currentStreakDays: number;
     longestStreakDays: number;
@@ -1983,4 +1984,20 @@ export type WorkspaceIndexRoot = {
   errorCount: number;
   lastError: string | null;
   updatedAt: number;
+  /** Present while status is "building"; absent otherwise. */
+  progress?: { filesDone: number; filesTotal: number };
+  /** In-memory fast-path counters; not persisted. */
+  metrics?: WorkspaceIndexMetrics;
+};
+
+export type WorkspaceIndexMetrics = {
+  fastPathServed: number;
+  fallbackCount: number;
+  fallbackNotLiteral: number;
+  fallbackStateGate: number;
+  fallbackTooWide: number;
+  fallbackVerifyFailed: number;
+  candidateRatioAvg: number;
+  p50Ms: number;
+  p95Ms: number;
 };

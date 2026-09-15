@@ -1531,13 +1531,20 @@
   background: currentcolor;
 }
 
+/*
+  State tints use one 14% mix, the repo-wide standard (`.idx-chip`,
+  `.idx-badge`, `.agent-capability-glyph`, and the other state pills all sit at
+  14%). These three badge rules were the only 13% holdouts, so a ready/failed
+  capability badge read one step dimmer than the identical state on a glyph or
+  a metric badge.
+*/
 .agent-capability-badge.is-ready {
-  background: color-mix(in oklab, var(--ds-success) 13%, transparent);
+  background: color-mix(in oklab, var(--ds-success) 14%, transparent);
   color: var(--ds-success);
 }
 
 .agent-capability-badge.is-connecting {
-  background: color-mix(in oklab, var(--ds-warning) 13%, transparent);
+  background: color-mix(in oklab, var(--ds-warning) 14%, transparent);
   color: var(--ds-warning);
 }
 
@@ -1546,7 +1553,7 @@
 }
 
 .agent-capability-badge.is-failed {
-  background: color-mix(in oklab, var(--ds-error) 13%, transparent);
+  background: color-mix(in oklab, var(--ds-error) 14%, transparent);
   color: var(--ds-error);
 }
 
@@ -2017,23 +2024,36 @@
 .idx-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: var(--space-3, 12px);
+  gap: var(--space-3);
 }
 
+/*
+  Metric tile surface, unified with the settings card language (D297): the same
+  translucent `--ds-tile` fill that `.settings-panel` and `.settings-row` use,
+  plus one hairline so a 4-up grid of tiles keeps a readable edge on the dark
+  plate where a 3.5% fill alone can wash out.
+
+  Radius moves off the compact-control rung (`--radius-xs`, 8px) onto
+  `--radius-md-plus` (14px). That is the documented "cards" rung and it is the
+  rung `.settings-row` already uses, so the two-tier system is now: structural
+  panels at `--radius-lg` (16px), cards at 14px. The tile is a card, not a
+  panel, so 14px is the consistent choice; both data pages render this one
+  class, so the index library and the usage page cannot drift.
+*/
 .idx-tile {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2, 8px);
-  padding: var(--space-3, 12px);
-  border-radius: var(--radius-xs);
-  background: var(--ds-raised);
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md-plus);
+  background: var(--ds-tile);
   border: 1px solid var(--ds-border-subtle);
 }
 
 .idx-tile-head {
   display: flex;
   align-items: center;
-  gap: var(--space-2, 8px);
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -2091,6 +2111,12 @@
   line-height: var(--leading-normal);
 }
 
+/*
+  Badges sit in a 26px header row next to the tile label. Without `nowrap` a
+  longer localized label (e.g. the "highest/record/on track" badges, or an
+  error count) wraps to a second line and pushes the 26px row taller, breaking
+  the row rhythm across the grid.
+*/
 .idx-badge {
   display: inline-flex;
   align-items: center;
@@ -2099,6 +2125,7 @@
   border-radius: var(--radius-full);
   font-size: var(--text-2xs);
   line-height: var(--leading-normal);
+  white-space: nowrap;
   background: color-mix(in oklab, var(--ds-text-primary) 10%, transparent);
   color: var(--ds-text-secondary);
 }
@@ -2120,6 +2147,7 @@
   border-radius: var(--radius-full);
   font-size: var(--text-sm);
   line-height: var(--leading-normal);
+  white-space: nowrap;
   background: color-mix(in oklab, var(--ds-text-primary) 10%, transparent);
 }
 
@@ -2151,7 +2179,7 @@
 }
 
 .idx-error-line {
-  margin-top: var(--space-2, 8px);
+  margin-top: var(--space-2);
   color: var(--ds-error);
   font-size: var(--text-sm);
   line-height: var(--leading-normal);
@@ -2181,10 +2209,19 @@
   --stats-donut-total-label-size: 2.6px;
 }
 
+/*
+  Scope + range segmented control, project filter, refresh, and the two export
+  buttons are five non-shrinking members (~550px together), so the row must
+  wrap: without it a narrow window overflows the content column and turns the
+  whole page into a horizontal scroll. Same posture as
+  `.agent-capability-toolbar` above: one `gap` serves both axes, so a wrapped
+  line is spaced exactly like the items on a line.
+*/
 .stats-toolbar {
   display: flex;
   align-items: center;
-  gap: var(--space-2, 8px);
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
 .stats-project-filter {
@@ -2195,14 +2232,14 @@
 .stats-subtitle {
   color: var(--ds-text-secondary);
   font-size: var(--text-sm);
-  margin-top: calc(var(--space-2, 8px) * -1);
+  margin-top: calc(var(--space-2) * -1);
 }
 
 /* Four metric cards stay on one row like the mockup. */
 .stats-cards {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-3, 12px);
+  gap: var(--space-3);
 }
 
 /* Mockup composition: heatmap beside the donut, full-width trend, then
@@ -2210,8 +2247,21 @@
 .stats-pair {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
-  gap: var(--space-3, 12px);
+  gap: var(--space-3);
   align-items: start;
+}
+
+/*
+  `.settings-card-block` carries a 28px bottom margin for the standalone
+  section rhythm on other settings pages. Inside the pair grid that margin is
+  counted into the grid item's outer size, so it stacked on top of the
+  `.settings-stack` gap (14px) and pushed the vertical rhythm between chart
+  blocks to 42px while the toolbar-to-cards gap stayed at 14px — a 3× jump for
+  no visual reason. Zero it in this context only; the class keeps its margin
+  everywhere else. Higher specificity than the bare class, so order is moot.
+*/
+.stats-pair > .settings-card-block {
+  margin-bottom: 0;
 }
 
 .stats-heatmap {
@@ -2234,6 +2284,23 @@
 .stats-heat-2 { fill: color-mix(in oklab, var(--chart-1) 55%, transparent); }
 .stats-heat-3 { fill: color-mix(in oklab, var(--chart-1) 78%, transparent); }
 .stats-heat-4 { fill: var(--chart-1); }
+
+/*
+  Today's column marker. A ring rather than a fill on purpose: the four heat
+  levels already encode token volume as blue density, so tinting the cell would
+  read as a fifth data level. A `--ds-text-primary` stroke stays legible on
+  every level — including the empty 16% gray cell, where a blue ring would look
+  like data — so it cannot be mistaken for a value. `non-scaling-stroke` keeps
+  the ring exactly 1px as the SVG stretches to the panel width (same reason the
+  trend lines use it); the cell is 10px inside a 12px grid step, so the stroke
+  straddling the edge has a 2px gutter and never touches its neighbour.
+*/
+.stats-heat-today {
+  stroke: var(--ds-text-primary);
+  stroke-width: 1;
+  stroke-opacity: 0.55;
+  vector-effect: non-scaling-stroke;
+}
 
 .stats-heat-month,
 .stats-heat-axis {
@@ -2290,8 +2357,8 @@
 .stats-trend-legend {
   flex-direction: row;
   flex-wrap: wrap;
-  gap: var(--space-3, 12px);
-  margin-top: var(--space-2, 8px);
+  gap: var(--space-3);
+  margin-top: var(--space-2);
 }
 
 .stats-trend-legend li,
@@ -2362,7 +2429,7 @@
 .stats-donut-wrap {
   display: flex;
   align-items: center;
-  gap: var(--space-3, 12px);
+  gap: var(--space-3);
   min-width: 0;
 }
 
@@ -2397,10 +2464,32 @@
 .stats-seg-4 { stroke: var(--chart-5); }
 .stats-seg-5 { stroke: var(--chart-6); }
 
+/*
+  Screen-reader-only data table: the charts above are SVG pictures, so this
+  carries the same numbers as real text for assistive tech. Standard visually-
+  hidden recipe (same shape Tailwind's `sr-only` emits) — it must stay in the
+  accessibility tree, so it is clipped rather than `display: none`. This is the
+  one sr-only utility in the settings stylesheet; the repo's other sr-only
+  consumers use the Tailwind class, which is generated from the utilities
+  layer, not from here.
+*/
+.stats-sr-table {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 .stats-insights {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2, 8px);
+  gap: var(--space-2);
   font-size: var(--text-sm);
 }
 
@@ -2415,6 +2504,16 @@
   font-variant-numeric: tabular-nums;
 }
 
+/*
+  Top-session rows are buttons so they are keyboard-activatable, but the base
+  button reset does not clear `text-align`. Without this the user-agent default
+  (center) would centre the row title and meta, unlike every div-based row.
+*/
+.stats-session-row {
+  width: 100%;
+  text-align: left;
+}
+
 @media (max-width: 900px) {
   .stats-cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2422,5 +2521,37 @@
 
   .stats-pair {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  /*
+    Once the toolbar wraps, the filter is no longer sharing one line, so the
+    fixed 200px cap just leaves it as a lonely narrow control with dead space
+    beside it. Let it take the room of whatever line it lands on, bounded by
+    the container so it can never re-introduce overflow.
+  */
+  .stats-project-filter {
+    flex: 1 1 160px;
+    max-width: 100%;
+  }
+
+  /*
+    The donut keeps its 140px geometry; the legend is the part that can afford
+    to wrap under it once the panel is this narrow.
+  */
+  .stats-donut-wrap {
+    flex-wrap: wrap;
+  }
+
+  /*
+    Index tiles reflow on their own (`auto-fit`/`minmax(200px, 1fr)`); only the
+    action row needs help. At ≤820px `.settings-row` stacks and makes its
+    control full-width and left-aligned, but `.idx-actions` (declared later in
+    this file, so it wins on order) pins the buttons right inside that
+    full-width box. This rule comes after `.idx-actions`, so it can restore the
+    left edge. Above 820px the control hugs its content, so the declaration is
+    a no-op there and the horizontal row is untouched.
+  */
+  .idx-actions {
+    justify-content: flex-start;
   }
 }

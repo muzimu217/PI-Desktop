@@ -25,8 +25,9 @@
 use anyhow::Result;
 use rusqlite::{params, OptionalExtension};
 use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
+use std::time::{Instant, UNIX_EPOCH};
 
+use super::metrics::FallbackReason;
 use super::{normalize_root, root_id, IndexStore};
 
 /// Trigram tokenizer lower bound: a pattern shorter than this has no 3-gram,
@@ -81,17 +82,44 @@ pub enum CandidateSelection {
 /// Select candidate files for `literal` under `root` from a `fresh` index.
 ///
 /// Any internal error degrades to [`CandidateSelection::Fallback`]; the fast
-/// path must never change Grep's public shape.
+/// path must never change Grep's public shape. Every outcome is recorded in the
+/// store's in-memory metrics so `index.status` can report fast-path health.
 pub fn select_candidates(
     index: &IndexStore,
     root: &Path,
     literal: &str,
     cap: usize,
 ) -> CandidateSelection {
+    let started = Instant::now();
     match select_candidates_inner(index, root, literal, cap) {
-        Ok(Some(files)) => CandidateSelection::Ready(files),
-        Ok(None) | Err(_) => CandidateSelection::Fallback,
+        Ok(InnerSelection::Served { files, visible }) => {
+            index.metrics().record_served(
+                files.len(),
+                visible,
+                started.elapsed().as_millis() as u64,
+            );
+            CandidateSelection::Ready(files)
+        }
+        Ok(InnerSelection::Fallback(reason)) => {
+            index
+                .metrics()
+                .record_fallback(reason, started.elapsed().as_millis() as u64);
+            CandidateSelection::Fallback
+        }
+        Err(_) => {
+            index.metrics().record_fallback(
+                FallbackReason::Internal,
+                started.elapsed().as_millis() as u64,
+            );
+            CandidateSelection::Fallback
+        }
     }
+}
+
+/// Inner outcome that keeps the *why* of a fallback so the caller can count it.
+enum InnerSelection {
+    Served { files: Vec<PathBuf>, visible: usize },
+    Fallback(FallbackReason),
 }
 
 fn select_candidates_inner(
@@ -99,7 +127,7 @@ fn select_candidates_inner(
     root: &Path,
     literal: &str,
     cap: usize,
-) -> Result<Option<Vec<PathBuf>>> {
+) -> Result<InnerSelection> {
     let root = normalize_root(root);
     let root_id = root_id(&root);
     let connection = index.connection()?;
@@ -114,7 +142,7 @@ fn select_candidates_inner(
         )
         .optional()?;
     if status.as_deref() != Some("fresh") {
-        return Ok(None);
+        return Ok(InnerSelection::Fallback(FallbackReason::StateGate));
     }
 
     let phrase = fts_phrase(literal);
@@ -144,7 +172,7 @@ fn select_candidates_inner(
     }
     if candidates.len() > cap {
         // Too wide to be a cheap narrowing; let the fallback search handle it.
-        return Ok(None);
+        return Ok(InnerSelection::Fallback(FallbackReason::TooWide));
     }
 
     // Files the crawler saw but never ingested — binary extensions, over-size
@@ -170,10 +198,20 @@ fn select_candidates_inner(
         candidates.push(row?);
     }
     if candidates.len() > cap {
-        return Ok(None);
+        return Ok(InnerSelection::Fallback(FallbackReason::TooWide));
     }
+    // The visible set is every row the crawler stored for this root, ingested
+    // or not; it is the denominator for the candidate-ratio diagnostic.
+    let visible: i64 = connection.query_row(
+        "SELECT COUNT(*) FROM files WHERE root_id = ?1",
+        [&root_id],
+        |row| row.get(0),
+    )?;
     if candidates.is_empty() {
-        return Ok(Some(Vec::new()));
+        return Ok(InnerSelection::Served {
+            files: Vec::new(),
+            visible: visible.max(0) as usize,
+        });
     }
 
     // Hit verification: stat every candidate. A vanished candidate means the
@@ -184,7 +222,7 @@ fn select_candidates_inner(
     for (rel_path, size, mtime_ms) in candidates {
         let absolute = root.join(&rel_path);
         let Ok(metadata) = std::fs::metadata(&absolute) else {
-            return Ok(None);
+            return Ok(InnerSelection::Fallback(FallbackReason::VerifyFailed));
         };
         let on_disk_mtime = metadata
             .modified()
@@ -198,9 +236,12 @@ fn select_candidates_inner(
         files.push(absolute);
     }
     if drifted as f64 / files.len() as f64 > MAX_DRIFT_RATIO {
-        return Ok(None);
+        return Ok(InnerSelection::Fallback(FallbackReason::VerifyFailed));
     }
-    Ok(Some(files))
+    Ok(InnerSelection::Served {
+        files,
+        visible: visible.max(0) as usize,
+    })
 }
 
 #[cfg(test)]
@@ -351,5 +392,39 @@ mod tests {
             select_candidates(&store, root.path(), "marker", 3),
             CandidateSelection::Fallback
         ));
+    }
+
+    #[test]
+    fn metrics_record_served_and_fallback_outcomes() {
+        let data = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("hit.txt"), "the literal needle is here\n").unwrap();
+        fs::write(root.path().join("miss.txt"), "nothing to see\n").unwrap();
+        let store = IndexStore::open(data.path()).unwrap();
+        store.rebuild(root.path(), IndexLimits::default()).unwrap();
+
+        // Served: one candidate out of two visible files.
+        assert!(matches!(
+            select_candidates(&store, root.path(), "needle", 20_000),
+            CandidateSelection::Ready(_)
+        ));
+        // State gate: an unindexed root falls back.
+        let other = tempfile::tempdir().unwrap();
+        assert!(matches!(
+            select_candidates(&store, other.path(), "needle", 20_000),
+            CandidateSelection::Fallback
+        ));
+        // Too wide: the cap is smaller than the candidate set.
+        assert!(matches!(
+            select_candidates(&store, root.path(), "needle", 0),
+            CandidateSelection::Fallback
+        ));
+
+        let snapshot = store.metrics().snapshot();
+        assert_eq!(snapshot.fast_path_served, 1);
+        assert_eq!(snapshot.fallback_count, 2);
+        assert_eq!(snapshot.fallback_state_gate, 1);
+        assert_eq!(snapshot.fallback_too_wide, 1);
+        assert!((snapshot.candidate_ratio_avg - 0.5).abs() < 1e-9);
     }
 }

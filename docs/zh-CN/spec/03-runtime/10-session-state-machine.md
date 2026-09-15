@@ -76,17 +76,34 @@ accept_prompt
  -> turn_end
 ```
 
+回合会到达三种终止原因之一 —— `completed`、`aborted` 或 `error` —— 与
+第 1 节状态表中 `aborted` / `error` 两行一致。终止原因只决定一次：
+中止会在取消请求发出之前记录其决定，因此之后的 `agent_end` 无法把已中止的
+回合改述为已完成。终止事件按回合身份归属，而不是按会话：某个终止事件
+所属的回合若已不再拥有该会话，它既不改变当前回合的状态，也不释放其资源，
+迟到的消息行和工具行仍作为历史记录。宿主在每次已开始的回合中通过
+`session:turnEnded` 插件事件宣告一次终止状态（见 ADR 0252，
+`docs/adr/0252-plugin-host-turn-end-event.md`）。
+
+转向输入按同一身份判定：命名了一个已取消、已开始收尾或已不再拥有该会话的回合的输入，
+会以「回合已结束」被拒绝。
+
 ## 3. 转换规则
 
 1. 每个会话只有一个有效回合
-2. 新提示被 `AGENT_BUSY` 拒绝，而 running/waiting_permission
+2. 新提示被 `AGENT_BUSY` 拒绝，而 running/waiting_permission 期间 renderer 的
+   运行中发送路径经 `agent/queue/push` 把下一条 prompt 推入 Host 拥有的回合队列
+   （架构 v15，D375 / D386 / ADR 0213），并从 `agent/event/queueChanged` 镜像持久
+   条目；Agent Host 模块在 `agent_end` 之后释放一条，恢复的队列挂起到 owner 接入，
+   `agent/queue/prioritize` 把条目移到队列头部，因此正常的用户发送不会看到
+   `AGENT_BUSY`。
 3. 允许中止运行或 waiting_permission。 Renderer 智能停止
    删除未应答的 root 用户行并恢复其 session/turn-scoped
    预序列化输入框快照；曾经助理文字、思考或任何
    工具行开始，中止保留部分转录本并恢复不
    草稿。
 4. 权限超时变为工具被拒绝，然后代理可以根据运行时处理继续或结束
-5. 终端回合状态持久后，会话状态返回空闲状态
+5. 终端回合状态持久后，会话状态返回空闲状态。父级终态错误会中止残留委托，因此“继续”不会变成 `AGENT_BUSY`（D352）
 6. 更改渲染器的活动 project/session 不会转换或中止
    任何后台会话
 7. 工具转换保留原始会话的持久项目根；

@@ -2,6 +2,73 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const trEntries: ChangelogEntry[] = [
   {
+    "version": "0.14.8",
+    "date": "2026-09-14",
+    "highlights": [
+      "MCP pazarında resmi kayıttan ve kullanıcı tanımlı kaynaklardan MCP sunucularını tarayıp yükleyin.",
+      "Skill pazarında seçilmiş ve GitHub kaynaklarından skill tarayıp yükleyin; kurulum herkese açık HTTPS ve boyut sınırlarıyla yapılır.",
+      "Dosya görünümünü birlikte gelen File Manager eklentisi olarak sunar; paketlenmiş bir eklenti pazar güncellemesini koruyabilir.",
+      "Çalışma paneli önizleme modu ekler, sohbet sütununun tabanını 450px'e yükseltir ve üç sütunlu düzende MainChat'i öne alır.",
+      "Bağımsız oturumları keşfeder, host'a ait işbirliği iletileri gönderir ve işbirliği bağlantılarını açar.",
+      "Alt ajanlar ebeveyn araçlarını devralabilir, Ayarlar'da birlikte gelen yerleşikler listelenir, bir UI tasarımcı yerleşiği eklenir ve oluşturma durumu ayrı gösterilir.",
+      "Alt+Enter ile süren turu yönlendirin ve yapıştırılan metin dosyalarını düzenlemek için bestecide genişletin.",
+      "Proje oluşturmayı yeniden tasarlar: çok klasörlü çalışma alanları, projeye ait bellek ve görsel bellek düzenleyici.",
+      "İçe aktarılan pi paketlerinin bildirdiği bağımlılıkları ve skill'leri host güvenlik sınırının ardında yükler.",
+      "Model bağlam penceresi ve en yüksek çıktı için hazır yongalar ekler, araç yongalarında Read satır aralıklarını gösterir ve başarısız sıkıştırmadan sonra bağlamı kurtarılabilir tutar.",
+    ],
+  },
+  {
+    "version": "0.14.6",
+    "date": "2026-09-10",
+    "highlights": [
+      "Bu sürüm yerel verilerinizden eskiyse veya Apple Silicon üzerinde Intel sürümü çalışıyorsa sessizce başarısız olmak yerine uyarır.",
+      "Yerel bir MCP masaüstü denetim düzlemi ekler; incelenmiş eklentiler masaüstünü yalnızca yerel onaydan sonra yönetir.",
+      "Alt ajan ön ayar şablonları, sağlayıcıya bağlı model seçici ve yetkilendirme kartlarında etkin düşünme düzeyi ekler.",
+      "Yapılandırılmış modellere takma ad verin, model kimliklerini kopyalayın ve modelin kendi API biçimini sağlayıcı geneli stile tercih edin.",
+      "Edit aracındaki metin eşlemeyi satıra bağlı işlemlerle değiştirir ve hataya özel kurtarma rehberliği sunar.",
+      "Sağlayıcıları görünür geri sayımla on kereye kadar yeniden dener ve yalnızca ilerleme içeren otonom turları kurtarır.",
+      "macOS yükleyicisini yeniden tasarlar, Windows taşınabilir exe ve Linux RPM paketi ekler, GNOME tepsi ve dock simgelerini geri getirir.",
+      "Kenar çubuğundan konuşma kimliklerini kopyalayın ve oturum klasörlerini açın; yalnızca simgeli eylemlerde yerelleştirilmiş ipuçları.",
+      "Etkinlik satırında canlı süreç durumu ve sessiz aralıkları gösterir, görünüm alanına sabit bir çalışma paneli anahtarı ekler.",
+      "Çalışma alanı yok sayma kurallarını uygular, kopuk sembolik bağlantıları çözer ve her yönlendirmede eklenti ağ çıkışını yeniden denetler.",
+      "Proxy atlama kurallarına uyar, yapıştırılan özel kullanım glifleri korur ve dosya önizlemelerini düzenleyiciyi engellemeden yükler.",
+    ],
+  },
+  {
+    "version": "0.14.5",
+    "date": "2026-09-09",
+    "highlights": [
+      "Her macOS DMG ve ZIP indirmesini yerel arm64 veya x64 mimarisiyle açıkça etiketleyin."
+    ]
+  },
+  {
+    "version": "0.14.4",
+    "date": "2026-09-09",
+    "highlights": [
+      "Eklentiler için sınırlı büyük dosya aralığı okumaları ve gerçek sürükle-bırak hareketlerine bağlı dosya izinleri ekleyin.",
+      "macOS imzalama ve noter onayını açıkça seçilebilir hale getirin ve güvenilir imzasız derlemeleri açma yönergeleri ekleyin."
+    ]
+  },
+  {
+    "version": "0.14.3",
+    "date": "2026-09-09",
+    "highlights": [
+      "Intel macOS indirmelerini açıkça etiketleyerek yükleyici mimarisini anlaşılır hale getirin."
+    ]
+  },
+  {
+    "version": "0.14.2",
+    "date": "2026-09-08",
+    "highlights": [
+      "Seçili modeli izleyen ve sıkıştırma yönergelerini gösteren bir bağlam kullanımı denetçisi ekleyin.",
+      "Aranabilir seçim, toplu işlemler ve daha anlaşılır getirme hatalarıyla sağlayıcı ve model ayarlarını geliştirin.",
+      "Oturum başlıklarını otomatik olarak özetleyin ve yeniden başlatmalar arasında korunan proje adlarına izin verin.",
+      "Canlı durum, kompakt görev baloncukları, model kimliği ve en yeni çıktıya gitme özelliğiyle alt aracı panelini geliştirin.",
+      "Etkileşimli sorular ve onaylar için yerel bildirimler gönderin; normal tamamlanmaları gelen kutusunun dışında tutun.",
+      "Korece arayüz yerelleştirmesi ekleyin ve yerelleştirilmiş ayarları, pano geçmişini ve güvenli bağlantı işlemeyi geliştirin.",
+    ]
+  },
+  {
     "version": "0.14.1",
     "date": "2026-09-08",
     "highlights": [
@@ -25,7 +92,6 @@ export const trEntries: ChangelogEntry[] = [
     "version": "0.13.11",
     "date": "2026-09-07",
     "highlights": [
-      "İkinci bir modelin mevcut konuşmayı incelemesini sağlamak için birlikte verilen Danışman eklentisini etkinleştirin.",
       "Eklentilerin modelleri listelemesine, oturum içi oturum bağlamını okumasına ve kimlik bilgileri almadan ana bilgisayarın sahip olduğu tamamlamaları talep etmesine izin verin."
     ]
   },

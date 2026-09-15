@@ -30,6 +30,29 @@ test("every shipped catalog matches English keys and interpolation variables", (
   }
 });
 
+test("canonical thinking levels are not translated catalog entries", () => {
+  const levels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+  const effortKeys = [
+    "chat.effortOff",
+    "chat.effortMinimal",
+    "chat.effortLow",
+    "chat.effortMid",
+    "chat.effortHigh",
+    "chat.effortXhigh",
+    "chat.effortMax",
+  ];
+
+  for (const [id, catalog] of Object.entries(catalogs)) {
+    const flat = flattenCatalog(catalog);
+    for (const level of levels) {
+      assert.equal(flat[`thinkingLevel.${level}`], undefined, `${id} ${level}`);
+    }
+    for (const key of effortKeys) {
+      assert.equal(flat[key], undefined, `${id} ${key}`);
+    }
+  }
+});
+
 test("settings subagent empty-state copy uses a non-conflicting key", () => {
   const chinese = flattenCatalog(zhCN);
 
@@ -37,6 +60,21 @@ test("settings subagent empty-state copy uses a non-conflicting key", () => {
   assert.equal(chinese["settings.subagentsEmpty"], "还没有你自己的子智能体");
   assert.equal(typeof english["settings.subagents"], "string");
   assert.equal(typeof english["extensions.subagents.empty"], "string");
+});
+
+test("creation-phase delegation copy is catalog-backed", () => {
+  assert.equal(english["chat.subagentCreating"], "Starting subagent…");
+  assert.equal(
+    flattenCatalog(zhCN)["chat.subagentCreating"],
+    "正在创建子智能体…",
+  );
+  for (const [id, catalog] of Object.entries(catalogs)) {
+    assert.equal(
+      typeof flattenCatalog(catalog)["chat.subagentCreating"],
+      "string",
+      id,
+    );
+  }
 });
 
 test("settings rail labels stay concise and parallel across locales", () => {

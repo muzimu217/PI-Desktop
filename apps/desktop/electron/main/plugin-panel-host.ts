@@ -1,7 +1,8 @@
 import { BrowserWindow, ipcMain, session } from "electron";
 import { pathToFileURL } from "node:url";
-import { join } from "node:path";
-import { isNetUrlAllowed } from "@pi-desktop/plugin-sdk";
+import { join, resolve } from "node:path";
+import { isNetUrlAllowed, THEME_ASSET_SCHEME } from "@pi-desktop/plugin-sdk";
+import { builtinWindowBackground } from "@pi-desktop/shared";
 import {
   isPluginPanelWindowControlAction,
   PLUGIN_PANEL_WINDOW_CONTROL_CHANNEL,
@@ -25,24 +26,35 @@ export type PluginPanelOpenRequest = {
    * an unmetered outbound channel that bypasses the `net.fetch` permission.
    */
   netDomains?: readonly string[];
+  /** Allows microphone audio for plugins with the explicit ui.microphone grant. */
+  allowMicrophone?: boolean;
   /** Adds a development-only reminder for the non-clickable drag band. */
   development?: boolean;
 };
 
-/** Schemes a panel may always load: its own bundle and devtools plumbing. */
+/**
+ * Schemes a panel may always load: its own bundle, devtools plumbing, and the
+ * host scheme that serves declared theme assets. The asset handler resolves
+ * through the requested plugin's own declarations, so admitting it here does
+ * not widen egress — it is read-only and package-scoped (ADR 0248).
+ */
 const PANEL_LOCAL_SCHEMES = new Set([
   "file:",
   "data:",
   "blob:",
   "devtools:",
   "chrome-extension:",
+  `${THEME_ASSET_SCHEME}:`,
 ]);
+
+const DROPPED_PATH_TTL_MS = 30_000;
 
 
 type BridgeHandler = (
   pluginId: string,
   channel: string,
   payload?: Record<string, unknown>,
+  context?: { droppedPath?: string },
 ) => Promise<unknown>;
 
 /** Reports an egress attempt a panel was not allowed to make. */
@@ -65,6 +77,7 @@ export function applyPluginEgressPolicy(
   input: {
     pluginId: string;
     netDomains?: readonly string[];
+    allowMicrophone?: boolean;
     onBlockedRequest?: PluginPanelBlockedRequest;
   },
 ): void {
@@ -89,12 +102,18 @@ export function applyPluginEgressPolicy(
     input.onBlockedRequest?.({ pluginId: input.pluginId, url: details.url });
     callback({ cancel: true });
   });
-  // A panel is a document, not a device. Nothing in this list is reachable
-  // over the bridge either, so denying wholesale costs the plugin nothing.
-  ses.setPermissionRequestHandler((_contents, _permission, callback) => {
-    callback(false);
+  // A panel is denied device access by default. The only opt-in is an
+  // audio-only media request for a plugin that declared ui.microphone.
+  ses.setPermissionRequestHandler((_contents, permission, callback, details) => {
+    const mediaTypes =
+      permission === "media" && "mediaTypes" in details ? details.mediaTypes : undefined;
+    const audioOnly =
+      Array.isArray(mediaTypes) && mediaTypes.length > 0 && mediaTypes.every((type) => type === "audio");
+    callback(input.allowMicrophone === true && audioOnly);
   });
-  ses.setPermissionCheckHandler(() => false);
+  ses.setPermissionCheckHandler((_contents, permission, _origin, details) =>
+    permission === "media" && input.allowMicrophone === true && details.mediaType === "audio",
+  );
 }
 
 /** Persisted session partition shared by a plugin's panel window and views. */
@@ -111,6 +130,8 @@ export class PluginPanelHost {
   private bridge: BridgeHandler;
   private onBlockedRequest?: PluginPanelBlockedRequest;
   private handlerReady = false;
+  /** Paths reported by the preload for a real drop, keyed by web contents. */
+  private pendingDrops = new Map<number, Map<string, number>>();
   /**
    * Other owners of plugin web contents that may use the panel bridge — the
    * docked work-panel views. Kept separate from `windows` so window controls
@@ -118,10 +139,17 @@ export class PluginPanelHost {
    * plugin's detached panel window.
    */
   private senderResolvers: Array<(senderId: number) => string | null> = [];
+  /** Observer for failures of the fire-and-forget legacy sync bridge. */
+  private onBridgeError?: (pluginId: string, channel: string, error: unknown) => void;
 
-  constructor(bridge: BridgeHandler, onBlockedRequest?: PluginPanelBlockedRequest) {
+  constructor(
+    bridge: BridgeHandler,
+    onBlockedRequest?: PluginPanelBlockedRequest,
+    onBridgeError?: (pluginId: string, channel: string, error: unknown) => void,
+  ) {
     this.bridge = bridge;
     this.onBlockedRequest = onBlockedRequest;
+    this.onBridgeError = onBridgeError;
     this.ensureHandlers();
   }
 
@@ -144,9 +172,22 @@ export class PluginPanelHost {
           rawPayload && typeof rawPayload === "object"
             ? (rawPayload as Record<string, unknown>)
             : undefined;
-        return this.bridge(pluginId, channel, payload);
+        const droppedPath =
+          channel === "fs.registerDropped"
+            ? this.consumeDroppedPath(event.sender.id, payload?.path)
+            : undefined;
+        return this.bridge(pluginId, channel, payload, droppedPath ? { droppedPath } : undefined);
       },
     );
+
+    ipcMain.on("pi-plugin-panel-drop", (event, rawPaths: unknown) => {
+      const pluginId = this.pluginIdForSender(event.sender.id);
+      if (!pluginId || !Array.isArray(rawPaths)) return;
+      this.recordDroppedPaths(
+        event.sender.id,
+        rawPaths.filter((value): value is string => typeof value === "string"),
+      );
+    });
 
     // Legacy sync bridge used by older sample panels.
     ipcMain.on(
@@ -165,8 +206,13 @@ export class PluginPanelHost {
           rawPayload && typeof rawPayload === "object"
             ? (rawPayload as Record<string, unknown>)
             : undefined;
-        // Sync IPC cannot await; kick async work and return ack.
-        void this.bridge(pluginId, channel, payload);
+        // Sync IPC cannot await; kick async work and return ack. The bridge
+        // rejects when the plugin is unloaded or times out, and a panel page
+        // can call this at will, so the rejection must be observed here
+        // rather than surfacing as an unhandled rejection in main.
+        this.bridge(pluginId, channel, payload).catch((error) => {
+          this.onBridgeError?.(pluginId, channel, error);
+        });
         event.returnValue = { ok: true, accepted: true };
       },
     );
@@ -196,6 +242,34 @@ export class PluginPanelHost {
       if (pluginId) return pluginId;
     }
     return null;
+  }
+
+  private recordDroppedPaths(senderId: number, paths: readonly string[]): void {
+    const now = Date.now();
+    const pending = this.pendingDrops.get(senderId) ?? new Map<string, number>();
+    for (const rawPath of paths.slice(0, 32)) {
+      if (!rawPath) continue;
+      pending.set(resolve(rawPath), now + DROPPED_PATH_TTL_MS);
+    }
+    if (pending.size) this.pendingDrops.set(senderId, pending);
+  }
+
+  private consumeDroppedPath(senderId: number, rawPath: unknown): string | null {
+    if (typeof rawPath !== "string" || !rawPath) return null;
+    const pending = this.pendingDrops.get(senderId);
+    if (!pending) return null;
+    const now = Date.now();
+    for (const [path, expiresAt] of pending) {
+      if (expiresAt <= now) pending.delete(path);
+    }
+    const path = resolve(rawPath);
+    if (!pending.has(path)) {
+      if (!pending.size) this.pendingDrops.delete(senderId);
+      return null;
+    }
+    pending.delete(path);
+    if (!pending.size) this.pendingDrops.delete(senderId);
+    return path;
   }
 
   /**
@@ -243,6 +317,7 @@ export class PluginPanelHost {
     applyPluginEgressPolicy(ses, {
       pluginId: request.pluginId,
       netDomains: request.netDomains,
+      allowMicrophone: request.allowMicrophone,
       onBlockedRequest: this.onBlockedRequest,
     });
   }
@@ -268,7 +343,7 @@ export class PluginPanelHost {
       autoHideMenuBar: true,
       // The host theme is only a fallback; the preload samples the actual
       // plugin page colors after it has loaded and paints the chrome from them.
-      backgroundColor: request.theme === "light" ? "#ffffff" : "#181818",
+      backgroundColor: builtinWindowBackground(request.theme),
       // Every platform uses the same frameless surface. The preload owns the
       // only visible window controls: a fixed three-button capsule.
       frame: false,
@@ -306,7 +381,12 @@ export class PluginPanelHost {
     win.on("unmaximize", sendWindowState);
     win.webContents.on("did-finish-load", sendWindowState);
 
+    // `closed` fires after the native window is gone. Copy the contents id
+    // while the window is still alive; reading `webContents` later throws
+    // "Object has been destroyed" and surfaces an uncaught main-process dialog.
+    const webContentsId = win.webContents.id;
     win.on("closed", () => {
+      this.pendingDrops.delete(webContentsId);
       this.windows.delete(request.pluginId);
     });
 
@@ -341,7 +421,11 @@ export class PluginPanelHost {
     const channel = `pi-plugin-panel-event:${event}`;
     for (const win of this.windows.values()) {
       if (win.isDestroyed() || win.webContents.isDestroyed()) continue;
-      win.webContents.send(channel, payload);
+      try {
+        win.webContents.send(channel, payload);
+      } catch {
+        // One panel that cannot receive must not starve the others.
+      }
     }
   }
 }

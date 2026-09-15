@@ -9,10 +9,11 @@
  *
  * Wire protocol (both directions, one JSON message per frame):
  *   parent -> child  { t: "init", id, pluginId, pluginPath, main, manifest }
- *   parent -> child  { t: "call", id, method, payload }   command.run | tool.execute |
+ *   parent -> child  { t: "call", id, method, payload, invocationId? } command.run | tool.execute |
  *                                                        service.start | service.stop |
  *                                                        lifecycle.unload
- *   child  -> parent { t: "call", id, api, args }         host API request
+ *   child  -> parent { t: "call", id, api, args, invocationId? } host API request
+ *   parent -> child  { t: "cancel", invocationId, reason } abort one tool invocation
  *   *      -> *      { t: "res", id, ok, value } | { t: "res", id, ok: false, error: { code, message } }
  *   parent -> child  { t: "event", event, ... }           push, no reply (bus.message, host events)
  *   child  -> parent { t: "log", level, message }         diagnostics, fire and forget
@@ -20,6 +21,7 @@
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { join } from "node:path";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 const parentPort = process.parentPort;
 
@@ -44,15 +46,46 @@ let manifest = { id: "", name: "", version: "", main: "", schemaVersion: 1 };
 let pluginModule = null;
 
 const pending = new Map();
+const invocations = new Map();
+const invocationContext = new AsyncLocalStorage();
 let nextCallId = 1;
 
 /** Proxy a host API call to the broker and await its verdict. */
 function call(api, args = []) {
+  const invocation = invocationContext.getStore();
+  if (invocation && (invocation.controller.signal.aborted || invocations.get(invocation.id) !== invocation)) {
+    return Promise.reject(invocation.controller.signal.reason ?? toolAbortedError("Plugin tool invocation finished"));
+  }
   const id = `c${nextCallId++}`;
   return new Promise((resolve, reject) => {
-    pending.set(id, { resolve, reject });
-    send({ t: "call", id, api, args });
+    pending.set(id, { resolve, reject, invocationId: invocation?.id });
+    try {
+      send({ t: "call", id, api, args, ...(invocation ? { invocationId: invocation.id } : {}) });
+    } catch (error) {
+      pending.delete(id);
+      reject(error);
+    }
   });
+}
+
+function toolAbortedError(reason) {
+  return Object.assign(new Error(reason), { code: "PLUGIN_TOOL_ABORTED" });
+}
+
+function rejectInvocationCalls(invocationId, error) {
+  for (const [id, entry] of pending) {
+    if (entry.invocationId !== invocationId) continue;
+    pending.delete(id);
+    entry.reject(error);
+  }
+}
+
+function cancelInvocation(invocationId, reason) {
+  const invocation = invocations.get(invocationId);
+  if (!invocation || invocation.controller.signal.aborted) return;
+  const error = toolAbortedError(reason || "Plugin tool execution aborted");
+  invocation.controller.abort(error);
+  rejectInvocationCalls(invocationId, error);
 }
 
 function settle(message) {
@@ -88,6 +121,21 @@ function normalizeClipboardHistory(value) {
   );
 }
 
+function normalizeBytes(value) {
+  if (value instanceof Uint8Array) return value;
+  if (Array.isArray(value)) return Uint8Array.from(value);
+  if (!value || typeof value !== "object") return new Uint8Array();
+  if (value.type === "Buffer" && Array.isArray(value.data)) {
+    return Uint8Array.from(value.data);
+  }
+  return Uint8Array.from(
+    Object.entries(value)
+      .filter(([key]) => /^\d+$/.test(key))
+      .sort(([left], [right]) => Number(left) - Number(right))
+      .map(([, byte]) => Number(byte)),
+  );
+}
+
 // Contribution points registered by this plugin. The callable half stays here;
 // the broker only ever holds the descriptor plus a proxy back into this process.
 const commands = new Map();
@@ -105,6 +153,14 @@ function buildApi() {
     app: {
       getVersion: () => call("app.getVersion"),
       getLocale: () => call("app.getLocale"),
+      getAppearance: () => call("app.getAppearance"),
+      setTheme: (themeId) => call("app.setTheme", [themeId]),
+    },
+    themes: {
+      upsert: (input) => call("themes.upsert", [input]),
+      remove: (themeId) => call("themes.remove", [themeId]),
+      list: () => call("themes.list"),
+      setVariables: (themeId, values) => call("themes.setVariables", [themeId, values]),
     },
     plugin: {
       getId: () => pluginId,
@@ -150,11 +206,24 @@ function buildApi() {
       requestNotificationPermission: () => call("ui.requestNotificationPermission"),
       showNativeNotification: (input) => call("ui.showNativeNotification", [input]),
     },
+    project: {
+      create: (input) => call("project.create", [input ?? {}]),
+    },
     workspace: {
       get: () => call("workspace.get"),
     },
+    desktop: {
+      listOperations: () => call("desktop.listOperations"),
+      invoke: (input) => call("desktop.invoke", [input ?? {}]),
+    },
     fs: {
       readText: (path) => call("fs.readText", [path]),
+      stat: (path, grantId) => call("fs.stat", [path, grantId]),
+      readRange: (path, byteOffset, length, grantId) =>
+        call("fs.readRange", [path, byteOffset, length, grantId]).then((result) => ({
+          ...result,
+          bytes: normalizeBytes(result?.bytes),
+        })),
       readPreview: (path) => call("fs.readPreview", [path]),
       openDefault: (path) => call("fs.openDefault", [path]),
       reveal: (path) => call("fs.reveal", [path]),
@@ -198,6 +267,13 @@ function buildApi() {
     },
     session: {
       getLlmContext: () => call("session.getLlmContext"),
+      list: (input) => call("session.list", [input ?? {}]),
+      get: (input) => call("session.get", [input ?? {}]),
+      listMessages: (input) => call("session.listMessages", [input ?? {}]),
+      import: (input) => call("session.import", [input ?? {}]),
+      importBatch: (input) => call("session.importBatch", [input ?? {}]),
+      rename: (input) => call("session.rename", [input ?? {}]),
+      delete: (input) => call("session.delete", [input ?? {}]),
     },
     /**
      * Resident background workers (spec 07 §3). Registration is local: the
@@ -336,7 +412,7 @@ async function handleInit(message) {
   return { pluginId };
 }
 
-async function handleParentCall(method, payload) {
+async function handleParentCall(method, payload, invocationId) {
   switch (method) {
     case "panel.invoke": {
       const invoke = pluginModule?.onPanelInvoke;
@@ -358,20 +434,32 @@ async function handleParentCall(method, payload) {
       return { ok: true };
     }
     case "tool.execute": {
+      if (typeof invocationId !== "string" || !invocationId || invocations.has(invocationId)) {
+        throw toolAbortedError("A unique host tool invocation ID is required");
+      }
       const execute = tools.get(String(payload?.name ?? ""));
       if (!execute) {
         const error = new Error(`tool not registered: ${payload?.name}`);
         error.code = "TOOL_NOT_FOUND";
         throw error;
       }
-      const result = await execute(payload?.args, {
-        sessionId: payload?.sessionId,
-        turnId: payload?.turnId,
-        modelKey: payload?.modelKey,
-        thinkingLevel: payload?.thinkingLevel,
-        log: (msg) => log("info", msg),
-      });
-      return result ?? null;
+      const invocation = { id: invocationId, controller: new AbortController() };
+      invocations.set(invocationId, invocation);
+      try {
+        const result = await invocationContext.run(invocation, () => execute(payload?.args, {
+          sessionId: payload?.sessionId,
+          turnId: payload?.turnId,
+          mode: payload?.mode,
+          modelKey: payload?.modelKey,
+          thinkingLevel: payload?.thinkingLevel,
+          signal: invocation.controller.signal,
+          log: (msg) => log("info", msg),
+        }));
+        return result ?? null;
+      } finally {
+        invocations.delete(invocationId);
+        rejectInvocationCalls(invocationId, toolAbortedError("Plugin tool invocation finished"));
+      }
     }
     case "service.start": {
       const id = String(payload?.id ?? "");
@@ -396,6 +484,7 @@ async function handleParentCall(method, payload) {
       return { ok: true };
     }
     case "lifecycle.unload": {
+      for (const id of invocations.keys()) cancelInvocation(id, "Plugin unloaded");
       // Best effort: a throwing onUnload must not block teardown.
       try {
         if (pluginModule?.onUnload) await pluginModule.onUnload();
@@ -427,6 +516,10 @@ onHostMessage((message) => {
     handleHostEvent(message);
     return;
   }
+  if (message.t === "cancel") {
+    cancelInvocation(message.invocationId, String(message.reason ?? ""));
+    return;
+  }
   if (message.t === "init") {
     void handleInit(message)
       .then((value) => send({ t: "res", id: message.id, ok: true, value }))
@@ -444,7 +537,7 @@ onHostMessage((message) => {
     return;
   }
   if (message.t === "call") {
-    void handleParentCall(message.method, message.payload)
+    void invocationContext.run(undefined, () => handleParentCall(message.method, message.payload, message.invocationId))
       .then((value) => send({ t: "res", id: message.id, ok: true, value: value ?? null }))
       .catch((error) =>
         send({

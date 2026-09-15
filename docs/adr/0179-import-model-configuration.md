@@ -4,6 +4,7 @@
 - Date: 2026-09-08
 - Deciders: PI-Desktop core
 - Related: D007, D342, ADR 0012,
+  ADR 0188,
   `04-ux/06-settings-ia.md`, `04-ux/08-component-spec.md` §18.5,
   `03-runtime/01-ipc-protocol.md`, `03-runtime/11-provider-model-system.md`
 
@@ -40,8 +41,8 @@ credentials. Copying refresh tokens would be the wrong security boundary.
    - CC Switch: `~/.cc-switch/cc-switch.db` `providers` table (legacy
      `config.json`). Each row's `settings_config` is converted by app type.
      Empty official seeds and OAuth-only rows are omitted. A live Claude /
-     Codex / OpenCode / Pi file that matches a CC Switch endpoint is not
-     listed twice.
+     Codex / OpenCode / Pi file that matches a CC Switch endpoint and
+     credential is not listed twice; a different credential remains visible.
 
 3. **IPC** (Electron only, no host protocol bump):
    `pi-desktop/modelConfig/importScan` returns public drafts
@@ -55,9 +56,11 @@ credentials. Copying refresh tokens would be the wrong security boundary.
    OAuth auth.json entries and Codex `requires_openai_auth` tables without
    a key are omitted or imported without a secret.
 
-5. **Idempotence.** A candidate whose normalized base URL and API style
-   match an existing provider is skipped. Named presets may set `vendorKey`;
-   a custom URL stays `custom`.
+5. **Idempotence.** A candidate whose normalized base URL, API style, and
+   credential match an existing provider is skipped. Different credentials
+   remain independent provider rows; the credential comparison stays in
+   Electron main and never reaches the renderer. Named presets may set
+   `vendorKey`; a custom URL stays `custom`. ADR 0188 amends this rule.
 
 6. **Default model.** If `settings.defaultProviderId` is empty after the
    first successful create in that run, that provider and its first model

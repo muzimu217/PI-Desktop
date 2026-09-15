@@ -1,3 +1,4 @@
+import { readSettingsSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -6,10 +7,7 @@ const search = await readFile(
   new URL("../src/lib/settings-search.ts", import.meta.url),
   "utf8",
 );
-const settingsPage = await readFile(
-  new URL("../src/pages/SettingsPage.tsx", import.meta.url),
-  "utf8",
-);
+const settingsPage = await readSettingsSource();
 const api = await readFile(new URL("../src/lib/api.ts", import.meta.url), "utf8");
 
 // D335 amended (ADR 0181): the Usage destination returns to Settings inside

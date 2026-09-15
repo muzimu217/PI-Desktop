@@ -1,21 +1,20 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readComposerSource } from "./helpers/composer-source.mjs";
+import { readMainSource } from "./helpers/main-source.mjs";
 import { loadStyles } from "./helpers/styles.mjs";
+import { readStoreSource } from "./helpers/store-source.mjs";
+import { readTranscriptSource } from "./helpers/transcript-source.mjs";
+import { readSharedTypesSource } from "./helpers/shared-types-source.mjs";
 
 const stylesSource = await loadStyles();
-const transcriptSource = await readFile(
-  new URL("../src/components/ChatTranscript.tsx", import.meta.url),
-  "utf8",
-);
+const transcriptSource = await readTranscriptSource();
 const inspectorSource = await readFile(
   new URL("../src/components/ContextUsageInspector.tsx", import.meta.url),
   "utf8",
 );
-const composerSource = await readFile(
-  new URL("../src/components/Composer.tsx", import.meta.url),
-  "utf8",
-);
+const composerSource = await readComposerSource();
 const minimapSource = await readFile(
   new URL("../src/components/ConversationMinimap.tsx", import.meta.url),
   "utf8",
@@ -184,11 +183,8 @@ test("user-message file chips reuse the composer chip node", () => {
 });
 
 test("stopping a turn undoes an unanswered prompt or settles the partial reply", async () => {
-  const storeSource = await readFile(
-    new URL("../src/stores/app-store.ts", import.meta.url),
-    "utf8",
-  );
-  assert.match(storeSource, /const submittedDraft = submittedComposerDrafts\.get\(sessionId\)/);
+  const storeSource = await readStoreSource();
+  assert.match(storeSource, /const submittedDraft = runtime\.submittedComposerDrafts\.get\(sessionId\)/);
   assert.match(storeSource, /resolveComposerSmartStop\(state\.messages, submittedDraft\)/);
   assert.match(storeSource, /composerPrefill:\s*\{ \.\.\.fullStop\.draft, sessionId \}/);
   assert.match(storeSource, /submittedDraft\?\.resolveAbort\?\.\(true\)/);
@@ -215,23 +211,18 @@ test("stopping a turn undoes an unanswered prompt or settles the partial reply",
 });
 
 test("delete remains on user turns and is removed from assistant toolbar", async () => {
-  const storeSource = await readFile(
-    new URL("../src/stores/app-store.ts", import.meta.url),
-    "utf8",
-  );
+  const storeSource = await readStoreSource();
   assert.match(storeSource, /deleteMessage:\s*async \(messageId\)/);
   assert.match(storeSource, /replaceSessionMessages\(sessionId,\s*next\)/);
   assert.match(transcriptSource, /deleteMessage\(message\.id\)/);
   assert.match(transcriptSource, /chat\.deleteMessage/);
-  assert.match(transcriptSource, /\{isUser \? \(/);
+  assert.match(transcriptSource, /const editableUserMessage = isUser && !isSessionMessage;/);
+  assert.match(transcriptSource, /\{editableUserMessage \? \(/);
   assert.match(stylesSource, /\.copy-btn\.danger:hover/);
 });
 
 test("editing a user prompt regenerates it and keeps the old branch reachable", async () => {
-  const storeSource = await readFile(
-    new URL("../src/stores/app-store.ts", import.meta.url),
-    "utf8",
-  );
+  const storeSource = await readStoreSource();
   // Edit lives on the user turn (the prompt is what gets rewritten), not on
   // the assistant answer.
   assert.match(transcriptSource, /editUserMessage\(message\.id, next, message\.attachments\)/);
@@ -245,7 +236,7 @@ test("editing a user prompt regenerates it and keeps the old branch reachable", 
   assert.doesNotMatch(transcriptSource, /editAssistantMessage/);
   assert.doesNotMatch(storeSource, /editAssistantMessage/);
   // Slash prompts edit their typed form so the resend re-expands the template.
-  assert.match(transcriptSource, /const editSeed = \(isUser && message\.command\) \|\| message\.content/);
+  assert.match(transcriptSource, /const editSeed = \(editableUserMessage && message\.command\) \|\| requestTextWithoutAnnotations\(message\.content/);
   // Same branch mechanics as regenerate, so main archives the replaced turn
   // as a revision the pager can walk back to.
   assert.match(storeSource, /editUserMessage:\s*async \(messageId, content, attachments\)/);
@@ -269,45 +260,44 @@ test("editing a user prompt regenerates it and keeps the old branch reachable", 
 });
 
 test("message toolbars are icon-only with hover tooltips", () => {
-  // No worded chips in the toolbar: labels ride on data-tip + aria-label.
+  // No worded chips in the toolbar: labels ride on tooltip + aria-label.
   assert.doesNotMatch(
     transcriptSource,
     /<span>\{(?:forkLabel|retryLabel|editLabel|copyLabel)\}<\/span>/,
   );
   for (const label of ["editLabel", "deleteLabel"]) {
     assert.ok(
-      transcriptSource.includes(`aria-label={${label}}`),
+      transcriptSource.includes(`ariaLabel={${label}}`),
       `${label} needs an aria-label`,
     );
     assert.ok(
-      transcriptSource.includes(`data-tip={${label}}`),
+      transcriptSource.includes(`tooltip={${label}}`),
       `${label} needs a hover tooltip`,
     );
   }
   for (const key of ["chat.forkResponse", "chat.retry"]) {
-    assert.match(transcriptSource, new RegExp(`aria-label=\\{t\\("${key}"\\)\\}`));
-    assert.match(transcriptSource, new RegExp(`data-tip=\\{t\\("${key}"\\)\\}`));
+    assert.match(transcriptSource, new RegExp(`ariaLabel=\\{t\\("${key}"\\)\\}`));
+    assert.match(transcriptSource, new RegExp(`tooltip=\\{t\\("${key}"\\)\\}`));
   }
   assert.ok(transcriptSource.includes("label={copyLabel}"));
   assert.match(transcriptSource, /className="copy-btn icon"/);
-  assert.match(transcriptSource, /data-tip=\{t\("chat\.forkResponse"\)\}/);
-  assert.match(stylesSource, /\.copy-btn\[data-tip\]::after \{[\s\S]*?content:\s*attr\(data-tip\);/);
-  assert.match(
-    stylesSource,
-    /\.copy-btn\[data-tip\]:hover::after,\s*\.copy-btn\[data-tip\]:focus-visible::after \{\s*opacity:\s*1;/,
-  );
-  // Tooltip floats 8px above the button with a compact raised shadow so the
-  // composer's 20px glow cannot wash the label into --ds-bg-hover (#74).
-  assert.match(
-    stylesSource,
-    /\.copy-btn\[data-tip\]::after \{[\s\S]*?bottom:\s*calc\(100%\s*\+\s*8px\)/,
-  );
-  assert.match(
-    stylesSource,
-    /\.copy-btn\[data-tip\]::after \{[\s\S]*?box-shadow:\s*var\(--ds-raised-shadow\)/,
-  );
+  assert.match(transcriptSource, /tooltip=\{t\("chat\.forkResponse"\)\}/);
+  assert.match(transcriptSource, /import \{ TooltipButton \} from "\.\.\/\.\.\/\.\.\/components\/ui"/);
+  assert.match(transcriptSource, /<TooltipButton/);
+  assert.match(stylesSource, /\.ui-tooltip\s*\{[\s\S]*?position:\s*fixed;/);
+  assert.match(stylesSource, /\.ui-tooltip\s*\{[\s\S]*?z-index:\s*1000;/);
+  assert.match(stylesSource, /\.ui-tooltip\s*\{[\s\S]*?transform:\s*translate\(-50%,\s*-100%\)/);
   // Worded surfaces (error details) keep their label.
   assert.match(transcriptSource, /withLabel/);
+});
+
+test("streaming assistant turns hide answer copy until idle", () => {
+  assert.ok(transcriptSource.includes("{complete ? ("));
+  assert.ok(
+    transcriptSource.includes(
+      '<CopyButton text={content} label={t("chat.copy")} />',
+    ),
+  );
 });
 
 test("assistant context inspector keeps a compact summary and retry action wired", () => {
@@ -331,6 +321,9 @@ test("assistant context inspector keeps a compact summary and retry action wired
   assert.match(inspectorSource, /chat\.usageThroughput/);
   assert.match(inspectorSource, /calculateCacheRate/);
   assert.match(inspectorSource, /chat\.usageCacheRate/);
+  assert.match(inspectorSource, /contextOccupancyTokens\(usage\)/);
+  assert.match(inspectorSource, /usage\.cacheReadTokens/);
+  assert.doesNotMatch(inspectorSource, /turnUsage\.cacheReadTokens/);
   assert.match(inspectorSource, /createPortal\(popover, document\.body\)/);
   assert.match(inspectorSource, /getBoundingClientRect\(\)/);
   assert.match(inspectorSource, /addEventListener\("scroll", handleViewportChange, true\)/);
@@ -385,14 +378,8 @@ test("context inspector panel opens on click, not hover (D225)", () => {
 });
 
 test("regenerate rewrites the current turn instead of appending", async () => {
-  const storeSource = await readFile(
-    new URL("../src/stores/app-store.ts", import.meta.url),
-    "utf8",
-  );
-  const mainSource = await readFile(
-    new URL("../electron/main/index.ts", import.meta.url),
-    "utf8",
-  );
+  const storeSource = await readStoreSource();
+  const mainSource = await readMainSource();
   const protocolSource = await readFile(
     new URL("../../../packages/shared/src/protocol.ts", import.meta.url),
     "utf8",
@@ -410,12 +397,15 @@ test("regenerate rewrites the current turn instead of appending", async () => {
   assert.match(mainSource, /agent\.disposeSession/);
   assert.match(mainSource, /truncateFromMessageId/);
   // The host resolves the boundary against its own transcript, and an
-  // unresolvable boundary fails instead of truncating at a guessed position.
+  // unresolvable identity is rejected instead of truncating at a guessed position.
   assert.match(
     mainSource,
-    /resolveTranscriptTruncation\(allMessages,\s*req\)/,
+    /"session\.truncateFrom",\s*\{\s*sessionId:\s*req\.sessionId/,
   );
-  assert.match(mainSource, /truncation\.kind === "unknown-message"/);
+  assert.doesNotMatch(
+    mainSource,
+    /resolveTranscriptTruncation|truncation\.kind === "unknown-message"/,
+  );
   assert.match(protocolSource, /sessionReplaceMessages/);
 });
 
@@ -470,24 +460,15 @@ test("conversation minimap stays centered below titlebar at high density", () =>
 });
 
 test("regenerate history pager and stable revision family are wired", async () => {
-  const storeSource = await readFile(
-    new URL("../src/stores/app-store.ts", import.meta.url),
-    "utf8",
-  );
-  const mainSource = await readFile(
-    new URL("../electron/main/index.ts", import.meta.url),
-    "utf8",
-  );
-  const sharedSource = await readFile(
-    new URL("../../../packages/shared/src/types.ts", import.meta.url),
-    "utf8",
-  );
+  const storeSource = await readStoreSource();
+  const mainSource = await readMainSource();
+  const sharedSource = await readSharedTypesSource();
   assert.match(transcriptSource, /message-revision-pager/);
   assert.match(transcriptSource, /activateMessageRevision/);
   assert.match(transcriptSource, /chat\.revisionPager/);
   assert.match(
     transcriptSource,
-    /const showRevisionPager = isUser && revisionCount > 1;/,
+    /const showRevisionPager = editableUserMessage && revisionCount > 1;/,
   );
   assert.match(
     transcriptSource,
@@ -503,10 +484,10 @@ test("regenerate history pager and stable revision family are wired", async () =
   assert.match(storeSource, /activateSessionRevision/);
   assert.match(mainSource, /session\.saveRevision/);
   assert.match(mainSource, /revisionRootId/);
-  assert.match(mainSource, /revisionCount: count \+ 1/);
+  assert.match(mainSource, /revisionCount: revision\.revisionCount/);
   assert.match(
     mainSource,
-    /save regenerate revision failed[\s\S]*?throw error;[\s\S]*?session\.replaceMessages/,
+    /truncate regenerate transcript failed[\s\S]*?throw error;/,
   );
   assert.match(sharedSource, /revisionRootId\?: string/);
   assert.match(sharedSource, /MessageRevisionSummary/);

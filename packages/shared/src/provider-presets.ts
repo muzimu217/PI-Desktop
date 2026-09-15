@@ -312,3 +312,66 @@ export function zhipuRequestCompat(input: {
     ? { thinkingFormat: "zai", zaiToolStream: true }
     : undefined;
 }
+
+function mentionsDeepSeek(value: string | undefined): boolean {
+  return (value ?? "").toLowerCase().includes("deepseek");
+}
+
+/**
+ * DeepSeek thinking mode requires every replayed assistant message to carry a
+ * reasoning field. Official `deepseek.com` endpoints accept `""` for turns that
+ * produced no thinking (#223 / D389). OpenCode and third-party relays for the
+ * same model family reject empty echoes and require a non-empty value (#296).
+ * pi-ai auto-detects only `provider === "deepseek"` or a `deepseek.com` URL;
+ * PI-Desktop stores a UUID as `model.provider`, so aggregators and custom
+ * gateways never match. Detect the family from vendorKey, URL, model id, or
+ * catalog family without changing `thinkingFormat`.
+ */
+export function isDeepSeekReasoningReplay(input: {
+  vendorKey?: string;
+  baseUrl?: string;
+  modelId?: string;
+  family?: string;
+}): boolean {
+  const key = normalizedVendorKey(input.vendorKey);
+  if (key.includes("deepseek")) return true;
+  if ((input.baseUrl ?? "").toLowerCase().includes("deepseek.com")) return true;
+  return mentionsDeepSeek(input.modelId) || mentionsDeepSeek(input.family);
+}
+
+/** Official DeepSeek Completions hosts that still accept empty-string replay. */
+export function isOfficialDeepSeekEndpoint(input: { baseUrl?: string }): boolean {
+  return (input.baseUrl ?? "").toLowerCase().includes("deepseek.com");
+}
+
+/**
+ * Documented non-empty stand-in when a strict DeepSeek-compatible relay requires
+ * reasoning replay but the turn's real thinking was never retained (compaction
+ * summary, synthetic bridge assistants, or thinking-less turns). Must match the
+ * literal embedded in patches/@earendil-works__pi-ai@0.85.1.patch.
+ */
+export const DEEPSEEK_REASONING_REPLAY_PLACEHOLDER =
+  "[reasoning not retained for this turn]";
+
+export type DeepSeekRequestCompat = {
+  requiresReasoningContentOnAssistantMessages: true;
+  /** When set, missing reasoning is filled with {@link DEEPSEEK_REASONING_REPLAY_PLACEHOLDER}. */
+  requiresNonEmptyReasoningReplay?: true;
+};
+
+/** pi-ai Completions flags for DeepSeek-family reasoning replay. */
+export function deepseekRequestCompat(input: {
+  vendorKey?: string;
+  baseUrl?: string;
+  modelId?: string;
+  family?: string;
+}): DeepSeekRequestCompat | undefined {
+  if (!isDeepSeekReasoningReplay(input)) return undefined;
+  if (isOfficialDeepSeekEndpoint(input)) {
+    return { requiresReasoningContentOnAssistantMessages: true };
+  }
+  return {
+    requiresReasoningContentOnAssistantMessages: true,
+    requiresNonEmptyReasoningReplay: true,
+  };
+}

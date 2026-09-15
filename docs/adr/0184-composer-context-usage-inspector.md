@@ -1,10 +1,10 @@
 # ADR 0184: Dock the context usage inspector in the composer toolbar
 
-- Status: Accepted
+- Status: Accepted (amended by D355 / ADR 0193)
 - Date: 2026-09-08
 - Deciders: PI-Desktop renderer and UX maintainers
 - Amends: D103, D184, D244, ADR 0047, ADR 0103
-- Related: D347, E2E-060d, US-UI-61
+- Related: D347, D355, E2E-060d, US-UI-61
 
 ## Context
 
@@ -19,13 +19,15 @@ numbers.
 1. Render one context inspector in the composer right toolbar, immediately
    left of the combined model × reasoning chip. Hide it until the active
    session has usage.
-2. Keep the data contract: remaining capacity, used/window counts, turn
-   total, completed-turn speed, exact provider values, aggregate tool
-   summary, and the newest compaction line still describe the newest
-   assistant turn that reported usage. A later streaming turn without totals
-   does not steal that turn's tools or throughput. Delegate rows' usage does
-   not drive the ring. Compaction marks still split overflow-retry turns so
-   the inspector does not sum the failed attempt with the retry.
+2. Keep the data contract, as amended by D355: remaining capacity,
+   used/window counts, turn total, and exact provider
+   input/output/cache/reasoning/hit-rate describe the newest usage-bearing
+   assistant message (the last model request). Completed-turn speed and the
+   aggregate tool summary still describe that visual turn. A later streaming
+   turn without totals does not steal that turn's tools or throughput.
+   Delegate rows' usage does not drive the ring. Compaction marks still
+   split overflow-retry turns so the inspector does not sum the failed
+   attempt with the retry.
 3. Keep the click/keyboard trigger, remaining-capacity ring, viewport-aware
    body portal, outside-click dismissal, and Escape behavior. The trigger
    shows the ring and percentage only; the redundant `Context` label is

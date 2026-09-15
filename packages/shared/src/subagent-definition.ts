@@ -11,10 +11,14 @@
  *
  * Two defaults matter for safety:
  * - a delegate that does not declare `tools` is read-only, and
- * - a delegate never inherits mutation rights from the parent session.
+ * - a delegate never inherits mutation rights unless it opts in with
+ *   `tools: inherit` (nested Task / mode-switch tools stay denied).
  */
 
-import { THINKING_LEVELS, type ThinkingLevel } from "./types.js";
+import {
+  SUBAGENT_THINKING_LEVELS,
+  type SubagentThinkingLevel,
+} from "./types.js";
 
 /**
  * Where a definition came from. User-owned global documents shadow builtins by
@@ -35,10 +39,23 @@ export type SubagentDefinition = {
   description: string;
   /** Tools the delegate may call; read-only by default. */
   tools: string[];
+  /**
+   * When true, the delegate also receives the parent session's live tool
+   * catalog minus {@link SUBAGENT_INHERIT_DENY_TOOLS}. Set by `tools: inherit`
+   * (alone or alongside assignable extras). The session runtime resolves the
+   * inherited set at spawn time from `toolCatalog`, including deferred plugin
+   * and MCP tools the parent is allowed to call.
+   */
+  inheritTools?: boolean;
   /** Provider/model this definition pins, when it pins one. */
   model?: SubagentModelPin;
-  /** Reasoning level for the delegate, clamped against the model in main. */
-  thinkingLevel?: ThinkingLevel;
+  /** Ordered, definition-scoped alternatives after a provider failure. */
+  fallbackModels?: SubagentModelPin[];
+  /**
+   * Reasoning level for the delegate, clamped against the model in main.
+   * omit leaves the provider's own default untouched.
+   */
+  thinkingLevel?: SubagentThinkingLevel;
   /**
    * Permission scope for the delegate's tool calls (ADR 0089). `inherit`
    * follows the session's effective mode; the other values override it for the
@@ -46,8 +63,13 @@ export type SubagentDefinition = {
    * (a delegate never unlocks paths outside the workspace and scratch roots).
    */
   permission?: SubagentPermission;
-  /** Optional hard cap on delegate turns; omitted means unlimited turns. */
-  maxTurns?: number;
+  /**
+   * Output-token cap for one delegate response. Omitted follows the model's
+   * own published limit, which is what every definition did before this field
+   * existed (D383). A delegate is a bounded worker, so the cap is per response
+   * rather than per run.
+   */
+  maxTokens?: number;
   /** Idle watchdog in seconds; parser materializes the default for documents. */
   idleTimeoutSeconds?: number;
   /** Total runtime watchdog in seconds; parser materializes the default. */
@@ -59,9 +81,9 @@ export type SubagentDefinition = {
   filePath?: string;
 };
 
-/** Tools a definition may declare. Plugin, skill, mode and meta tools stay out
- * of reach: a delegate is a bounded file/search/shell worker, not a second
- * full session. */
+/** Tools a definition may declare by name. Plugin, skill, mode and meta tools
+ * are not on this list; a document opts into the parent's live catalog with
+ * `tools: inherit` instead (ADR 0246). */
 export const SUBAGENT_ASSIGNABLE_TOOLS = [
   "Read",
   "Glob",
@@ -74,6 +96,54 @@ export const SUBAGENT_ASSIGNABLE_TOOLS = [
 
 export type SubagentAssignableTool = (typeof SUBAGENT_ASSIGNABLE_TOOLS)[number];
 
+/** Frontmatter token that opts a definition into parent-tool inheritance. */
+export const SUBAGENT_INHERIT_TOKEN = "inherit";
+
+/**
+ * Tools that are never inherited, even with `tools: inherit`. Nested fan-out
+ * and mode switches stay with the parent; the user-facing ask tool is out of
+ * reach because a delegate has no user. `ToolSearch` and `new_context` mutate
+ * the parent runtime's deferred-tool set and compaction flag, so they stay
+ * denied even though the child receives the full catalog without searching.
+ */
+export const SUBAGENT_INHERIT_DENY_TOOLS: readonly string[] = [
+  "Task",
+  "TaskWait",
+  "TaskList",
+  "TaskStop",
+  "EnterPlanMode",
+  "EnterGoalMode",
+  "asktool",
+  "new_context",
+  "ToolSearch",
+];
+
+/**
+ * Resolve the tool-name set a delegate should receive at spawn time.
+ *
+ * - Without `inheritTools`, this is the declared list only (today's behavior).
+ * - With `inheritTools`, the parent's live tool catalog is unioned in after
+ *   dropping {@link SUBAGENT_INHERIT_DENY_TOOLS}. Explicit assignable extras
+ *   are still included so a definition can add Bash on top of inherit.
+ */
+export function resolveSubagentToolNames(
+  definition: Pick<SubagentDefinition, "tools" | "inheritTools">,
+  parentToolNames: readonly string[],
+): string[] {
+  const declared = definition.tools.filter(
+    (name) => name !== SUBAGENT_INHERIT_TOKEN,
+  );
+  if (!definition.inheritTools) return [...declared];
+  const deny = new Set(SUBAGENT_INHERIT_DENY_TOOLS);
+  const resolved: string[] = [];
+  for (const name of [...parentToolNames, ...declared]) {
+    if (deny.has(name)) continue;
+    if (resolved.includes(name)) continue;
+    resolved.push(name);
+  }
+  return resolved;
+}
+
 /** Tools that can change the workspace; declaring one makes a delegate
  * write-capable, which drives the write lock and permission attribution. */
 export const SUBAGENT_MUTATING_TOOLS = ["Bash", "Edit", "Write"] as const;
@@ -85,7 +155,15 @@ export const DEFAULT_SUBAGENT_TOOLS: readonly SubagentAssignableTool[] = [
   "Grep",
 ];
 
-export const MAX_SUBAGENT_MAX_TURNS = 80;
+/**
+ * Defensive ceiling for a declared output cap. No published model accepts an
+ * output limit above 128k, so a value past this is a typo rather than an
+ * intent; the clamp keeps a document from asking a provider for something it
+ * can only reject. The floor is 1 — a cap of 0 would mean "no output", which
+ * is what leaving the field out already expresses.
+ */
+export const MAX_SUBAGENT_MAX_TOKENS = 200_000;
+export const MIN_SUBAGENT_MAX_TOKENS = 1;
 /**
  * Parsed from definition frontmatter for compatibility. Idle and duration
  * watchdogs are withdrawn (D328): the parent agent decides when to stop a
@@ -147,8 +225,27 @@ export function isSubagentMutatingTool(value: string): boolean {
 }
 
 /** Whether this delegate can change the workspace. */
-export function subagentCanMutate(definition: SubagentDefinition): boolean {
+export function subagentCanMutate(
+  definition: SubagentDefinition,
+  resolvedTools?: readonly string[],
+): boolean {
+  if (resolvedTools) return resolvedTools.some(isSubagentMutatingTool);
+  // Inherit is resolved at spawn. Until then, treat it as write-capable:
+  // Agent-mode parents always expose Bash/Edit/Write in the live catalog.
+  if (definition.inheritTools) return true;
   return definition.tools.some(isSubagentMutatingTool);
+}
+
+/** Compact `tools:` label for the Task catalog and fallback prompt text. */
+export function subagentToolsLabel(
+  definition: Pick<SubagentDefinition, "tools" | "inheritTools">,
+): string {
+  if (definition.inheritTools) {
+    return definition.tools.length > 0
+      ? `inherit + ${definition.tools.join(", ")}`
+      : "inherit";
+  }
+  return definition.tools.join(", ") || "none";
 }
 
 /** Filename (or frontmatter `name`) to definition id. */
@@ -168,8 +265,8 @@ export type SubagentParseResult =
 
 type Frontmatter = Map<string, string | string[]>;
 
-/** Frontmatter keys are matched loosely so `max-turns`, `max_turns` and
- * `maxTurns` all land on the same field. */
+/** Frontmatter keys are matched loosely, so `max-tokens` and `maxTokens` land
+ * on the same field. */
 function normalizeKey(key: string): string {
   return key.trim().toLowerCase().replace(/[-_\s]/g, "");
 }
@@ -277,6 +374,7 @@ export function parseSubagentDefinition(
 
   const declaredTools = asList(frontmatter.get("tools"));
   let tools: string[];
+  let inheritTools = false;
   if (declaredTools.length === 0) {
     tools = [...DEFAULT_SUBAGENT_TOOLS];
   } else if (declaredTools.length === 1 && declaredTools[0] === "*") {
@@ -284,13 +382,21 @@ export function parseSubagentDefinition(
   } else {
     const accepted: string[] = [];
     for (const tool of declaredTools) {
+      if (tool === SUBAGENT_INHERIT_TOKEN) {
+        inheritTools = true;
+        continue;
+      }
       if (isSubagentAssignableTool(tool)) {
         if (!accepted.includes(tool)) accepted.push(tool);
       } else {
         warnings.push(`ignoring unknown tool "${tool}"`);
       }
     }
-    if (accepted.length === 0) {
+    if (inheritTools) {
+      // `tools: inherit` alone still lists nothing at parse time; the runtime
+      // fills the parent's set at spawn. Keep extras the definition declared.
+      tools = accepted;
+    } else if (accepted.length === 0) {
       errors.push("`tools` lists no usable tool");
       tools = [...DEFAULT_SUBAGENT_TOOLS];
     } else {
@@ -299,13 +405,20 @@ export function parseSubagentDefinition(
   }
 
   const model = parseModelPin(frontmatter, errors);
+  const fallbackModels: SubagentModelPin[] = [];
+  for (const value of asList(frontmatter.get("fallbackmodels"))) {
+    const pin = parseModelPin(new Map([["model", value]]), errors);
+    if (pin && !fallbackModels.some((entry) => subagentModelKey(entry) === subagentModelKey(pin))) {
+      fallbackModels.push(pin);
+    }
+  }
 
   const declaredThinking = asScalar(frontmatter.get("thinkinglevel"));
-  let thinkingLevel: ThinkingLevel | undefined;
+  let thinkingLevel: SubagentThinkingLevel | undefined;
   if (declaredThinking) {
     const candidate = declaredThinking.trim().toLowerCase();
-    if ((THINKING_LEVELS as readonly string[]).includes(candidate)) {
-      thinkingLevel = candidate as ThinkingLevel;
+    if ((SUBAGENT_THINKING_LEVELS as readonly string[]).includes(candidate)) {
+      thinkingLevel = candidate as SubagentThinkingLevel;
     } else {
       warnings.push(`ignoring unknown thinking level "${declaredThinking}"`);
     }
@@ -327,7 +440,10 @@ export function parseSubagentDefinition(
     }
   }
 
-  const maxTurns = parseMaxTurns(asScalar(frontmatter.get("maxturns")), warnings);
+  const maxTokens = parseMaxTokens(
+    asScalar(frontmatter.get("maxtokens")),
+    warnings,
+  );
   const idleTimeoutSeconds = parseTimeoutSeconds(
     asScalar(frontmatter.get("idletimeout")) ??
       asScalar(frontmatter.get("idletimeoutseconds")),
@@ -357,10 +473,12 @@ export function parseSubagentDefinition(
       name,
       description,
       tools,
+      ...(inheritTools ? { inheritTools: true } : {}),
       ...(model ? { model } : {}),
+      ...(fallbackModels.length ? { fallbackModels } : {}),
       ...(thinkingLevel ? { thinkingLevel } : {}),
       ...(permission ? { permission } : {}),
-      ...(maxTurns !== undefined ? { maxTurns } : {}),
+      ...(maxTokens !== undefined ? { maxTokens } : {}),
       idleTimeoutSeconds,
       maxDurationSeconds,
       prompt,
@@ -403,7 +521,16 @@ function parseModelPin(
   };
 }
 
-function parseMaxTurns(
+/**
+ * Parse the delegate's output cap.
+ *
+ * Everything that means "no cap" — an absent key, `none`, or `0` — returns
+ * `undefined` rather than a number, so a definition without the field keeps
+ * following the model's published limit. A negative or fractional value is a
+ * typo, not a cap, so it is ignored with a warning instead of being coerced
+ * into something the provider would reject.
+ */
+function parseMaxTokens(
   value: string | undefined,
   warnings: string[],
 ): number | undefined {
@@ -412,15 +539,17 @@ function parseMaxTurns(
   }
   const parsed = Number(value);
   if (parsed === 0) return undefined;
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    warnings.push(`ignoring invalid \`maxTurns\` "${value}" (unlimited)`);
+  if (!Number.isInteger(parsed) || parsed < MIN_SUBAGENT_MAX_TOKENS) {
+    warnings.push(
+      `ignoring invalid \`maxTokens\` "${value}" (following the model limit)`,
+    );
     return undefined;
   }
-  if (parsed > MAX_SUBAGENT_MAX_TURNS) {
+  if (parsed > MAX_SUBAGENT_MAX_TOKENS) {
     warnings.push(
-      `clamping \`maxTurns\` ${parsed} to ${MAX_SUBAGENT_MAX_TURNS}`,
+      `clamping \`maxTokens\` ${parsed} to ${MAX_SUBAGENT_MAX_TOKENS}`,
     );
-    return MAX_SUBAGENT_MAX_TURNS;
+    return MAX_SUBAGENT_MAX_TOKENS;
   }
   return parsed;
 }
@@ -492,10 +621,12 @@ export function subagentPinnedProviders(
 ): string[] {
   const providers: string[] = [];
   for (const definition of definitions) {
-    const providerId = definition.model?.providerId;
-    if (!providerId || providers.includes(providerId)) continue;
-    if (providers.length >= MAX_SUBAGENT_PROVIDERS) break;
-    providers.push(providerId);
+    for (const pin of [definition.model, ...(definition.fallbackModels ?? [])]) {
+      const providerId = pin?.providerId;
+      if (!providerId || providers.includes(providerId)) continue;
+      if (providers.length >= MAX_SUBAGENT_PROVIDERS) return providers;
+      providers.push(providerId);
+    }
   }
   return providers;
 }

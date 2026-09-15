@@ -2,7 +2,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
-  existingProviderMatchKey,
+  draftMatchesExisting,
   parseCcSwitchConfigJson,
   parseCcSwitchProviders,
   parseClaudeCodeModelConfig,
@@ -46,9 +46,8 @@ export async function scanModelConfigs(
     scanCodex(home, env),
     scanPi(home, env),
   ]);
-  const seen = new Set(ccSwitch.map((draft) => existingProviderMatchKey(draft)));
   const extra = [...claude, ...opencode, ...codex, ...pi].filter(
-    (draft) => !seen.has(existingProviderMatchKey(draft)),
+    (draft) => !ccSwitch.some((candidate) => draftMatchesExisting(draft, [candidate])),
   );
   return [...ccSwitch, ...extra];
 }

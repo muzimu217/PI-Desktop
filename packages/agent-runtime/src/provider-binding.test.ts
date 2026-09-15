@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ModelAuth } from "@earendil-works/pi-ai";
 import { convertMessages } from "@earendil-works/pi-ai/api/openai-completions";
+import { modelConfigWithBinding } from "./model-capabilities.js";
+import type { ModelConfig } from "./thinking-level.js";
 import {
   apiBindingForStyle,
   buildProviderModel,
@@ -181,6 +183,126 @@ describe("buildProviderModel OpenAI-compatible role compatibility", () => {
     });
   });
 
+  it("fills missing reasoning_content for DeepSeek models on aggregator URLs", () => {
+    const model = buildProviderModel({
+      ...reasoningProvider,
+      id: "row-uuid",
+      vendorKey: "siliconflow-cn",
+      baseUrl: "https://api.siliconflow.cn/v1",
+      modelId: "deepseek-ai/DeepSeek-V3.2",
+      apiStyle: "chat_completions",
+      modelConfig: {
+        ...reasoningProvider.modelConfig!,
+        name: "DeepSeek V3.2",
+        family: "deepseek",
+        baseUrl: "https://api.siliconflow.cn/v1",
+      },
+    }) as any;
+
+    expect(model.provider).toBe("row-uuid");
+    expect(model.compat).toMatchObject({
+      requiresReasoningContentOnAssistantMessages: true,
+      requiresNonEmptyReasoningReplay: true,
+      supportsDeveloperRole: false,
+    });
+    expect(model.compat.thinkingFormat).toBeUndefined();
+
+    // Empty-string path (#223): this convertMessages call uses a compat WITHOUT
+    // requiresNonEmptyReasoningReplay, so official-style "" fill still works.
+    // The SiliconFlow model itself sets requiresNonEmptyReasoningReplay (above).
+    const messages = convertMessages(
+      model,
+      {
+        systemPrompt: "Follow the workspace rules.",
+        messages: [
+          { role: "user", content: "hello", timestamp: Date.now() },
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "answer without thinking" }],
+            api: "openai-completions",
+            provider: model.provider,
+            model: model.id,
+            usage: {
+              input: 1,
+              output: 1,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 2,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+            },
+            stopReason: "stop",
+            timestamp: Date.now(),
+          },
+        ],
+      },
+      {
+        supportsDeveloperRole: false,
+        requiresReasoningContentOnAssistantMessages: true,
+      } as any,
+    );
+
+    expect(messages).toEqual([
+      { role: "system", content: "Follow the workspace rules." },
+      { role: "user", content: "hello" },
+      {
+        role: "assistant",
+        content: "answer without thinking",
+        reasoning_content: "",
+      },
+    ]);
+  });
+
+  it("fills missing reasoning_content from catalog family when the model id is an endpoint", () => {
+    const model = buildProviderModel({
+      ...reasoningProvider,
+      id: "row-uuid",
+      vendorKey: "volcengine",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      modelId: "ep-20250101-xyz",
+      apiStyle: "chat_completions",
+      modelConfig: {
+        ...reasoningProvider.modelConfig!,
+        name: "DeepSeek V4 Pro",
+        family: "deepseek-thinking",
+        baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      },
+    }) as any;
+
+    expect(model.compat).toMatchObject({
+      requiresReasoningContentOnAssistantMessages: true,
+      requiresNonEmptyReasoningReplay: true,
+    });
+  });
+
+  it("keeps empty-string replay for official deepseek.com endpoints", () => {
+    const model = buildProviderModel({
+      ...reasoningProvider,
+      id: "row-uuid",
+      vendorKey: "deepseek",
+      baseUrl: "https://api.deepseek.com",
+      modelId: "deepseek-chat",
+      apiStyle: "chat_completions",
+    }) as any;
+
+    expect(model.compat).toMatchObject({
+      requiresReasoningContentOnAssistantMessages: true,
+    });
+    expect(model.compat.requiresNonEmptyReasoningReplay).toBeUndefined();
+  });
+
+  it("does not mark unrelated OpenAI-compatible models as DeepSeek reasoning replay", () => {
+    const model = buildProviderModel({
+      ...reasoningProvider,
+      id: "row-uuid",
+      vendorKey: "custom",
+      baseUrl: "https://api.example.com/v1",
+      modelId: "gpt-4.1",
+      apiStyle: "chat_completions",
+    }) as any;
+
+    expect(model.compat.requiresReasoningContentOnAssistantMessages).toBeUndefined();
+  });
+
   it("preserves MiniMax M3 image input on its OpenAI-compatible endpoint", () => {
     const provider: RuntimeProviderConfig = {
       ...keyedProvider,
@@ -278,6 +400,160 @@ describe("createProviderModels auth resolution", () => {
       apiKey: "second-token",
       baseUrl: "https://per-account.acme.test",
     });
+  });
+});
+
+describe("explicit extended thinking levels", () => {
+  it("sends enabled xhigh and max values instead of clamping them to high", async () => {
+    const thinkingLevels = ["off", "low", "medium", "high", "xhigh", "max"] as const;
+    const configuredModel = modelConfigWithBinding(
+      {
+        source: "generic",
+        name: "Explicit reasoning model",
+        baseUrl: "https://api.acme.test/v1",
+        reasoning: true,
+        supportedThinkingLevels: ["low", "medium", "high"],
+        thinkingLevelMap: { xhigh: null, max: null },
+        input: ["text"],
+        contextWindow: 128_000,
+        maxTokens: 8_192,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      },
+      {
+        contextWindow: 128_000,
+        maxTokens: 8_192,
+        thinkingLevels: [...thinkingLevels],
+      },
+    );
+    const provider: RuntimeProviderConfig = {
+      ...keyedProvider,
+      supportsReasoning: true,
+      supportedThinkingLevels: [...thinkingLevels],
+      modelConfig: configuredModel,
+    };
+    const requests: Record<string, unknown>[] = [];
+    const fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return new Response(
+        JSON.stringify({ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+    const model = buildProviderModel(provider);
+
+    for (const reasoning of ["high", "xhigh", "max"] as const) {
+      await createProviderModels(provider, model)
+        .streamSimple(
+          model,
+          {
+            systemPrompt: "system",
+            messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
+            tools: [],
+          },
+          { reasoning, fetch },
+        )
+        .result();
+    }
+
+    expect(requests.map((request) => request.reasoning_effort)).toEqual([
+      "high",
+      "xhigh",
+      "max",
+    ]);
+  });
+});
+
+describe("buildProviderModel model-level wire API", () => {
+  const museCatalog: ModelConfig = {
+    source: "models.dev",
+    name: "Muse Spark 1.3 Contributor",
+    baseUrl: "https://opencode.ai/zen/go/v1",
+    api: "openai-responses",
+    reasoning: true,
+    input: ["text", "image"],
+    contextWindow: 1048576,
+    maxTokens: 131072,
+    compat: { supportsStrictMode: true },
+  };
+  const responsesCatalogProvider: RuntimeProviderConfig = {
+    ...keyedProvider,
+    id: "opencode-go",
+    name: "OpenCode Go",
+    vendorKey: "opencode-go",
+    baseUrl: "https://opencode.ai/zen/go/v1",
+    modelId: "muse-spark-1.3-contributor",
+    apiStyle: "opencode_go",
+    supportsReasoning: true,
+    supportedThinkingLevels: ["off", "low", "medium", "high", "xhigh"],
+    modelConfig: { ...museCatalog },
+  };
+
+  it("routes a responses-only model through the responses API (issue #105)", () => {
+    const model = buildProviderModel(responsesCatalogProvider) as any;
+    expect(model.api).toBe("openai-responses");
+    expect(model.baseUrl).toBe("https://opencode.ai/zen/go/v1");
+    expect(model.compat).toMatchObject({ supportsStrictMode: true });
+  });
+
+  it("keeps the provider-wide style when the catalog pins no wire API", () => {
+    const model = buildProviderModel({
+      ...responsesCatalogProvider,
+      modelId: "deepseek-v4-flash",
+      modelConfig: {
+        source: "models.dev",
+        name: "DeepSeek V4 Flash",
+        baseUrl: "https://opencode.ai/zen/go/v1",
+        reasoning: true,
+        input: ["text"],
+        contextWindow: 1000000,
+        maxTokens: 384000,
+      },
+    }) as any;
+    expect(model.api).toBe("openai-completions");
+  });
+
+  it("leaves the same model on completions under other providers (issue #105)", () => {
+    const model = buildProviderModel({
+      ...responsesCatalogProvider,
+      id: "llmgateway",
+      name: "LLM Gateway",
+      vendorKey: "llmgateway",
+      baseUrl: "https://llmgateway.example/v1",
+      apiStyle: "chat_completions",
+      modelConfig: {
+        source: "models.dev",
+        name: "Muse Spark 1.3 Contributor",
+        baseUrl: "https://llmgateway.example/v1",
+        reasoning: true,
+        input: ["text", "image"],
+        contextWindow: 1048576,
+        maxTokens: 131072,
+      },
+    }) as any;
+    expect(model.api).toBe("openai-completions");
+  });
+
+  it("posts responses models to the responses endpoint", async () => {
+    const provider = responsesCatalogProvider;
+    const model = buildProviderModel(provider);
+    const urls: string[] = [];
+    const fetch = vi.fn(async (input: RequestInfo | URL) => {
+      urls.push(input instanceof Request ? input.url : String(input));
+      return new Response("bad gateway", { status: 502 });
+    });
+    const result = await createProviderModels(provider, model)
+      .streamSimple(
+        model,
+        {
+          systemPrompt: "system",
+          messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
+          tools: [],
+        },
+        { fetch },
+      )
+      .result();
+    expect(result.stopReason).toBe("error");
+    expect(urls).toEqual(["https://opencode.ai/zen/go/v1/responses"]);
   });
 });
 

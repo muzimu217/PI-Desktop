@@ -40,6 +40,7 @@
 - 正在运行的 PI-Desktop 版本；
 - 插件的空文件夹；和
 - 文本编辑器。
+- 若要导入带 npm 依赖的 pi 扩展目录，`PATH` 中必须有系统 `npm` 可执行文件。发布版不附带独立 Node/npm；缺少 npm 时，PI-Desktop 会报告警告，导入扩展的依赖无法加载。
 
 对于存储库 CLI 路径，您还需要 Node.js 22.19 或更高版本、pnpm 10 或
 较新，并签出此存储库。 devkit 和 SDK 目前已
@@ -397,7 +398,8 @@ root 本身。`net.fetch` 接受 HTTP(S)，并且只能到达 `manifest.net.doma
 因为 Electron 没有公开跨平台只读操作系统权限 API；
 `unknown` 表示平台尚未上报结果，且
 `unsupported` 表示桌面通知不可用。原生插件
-通知不会添加到 PI-Desktop 的持久任务通知收件箱中。
+通知不会添加到 PI-Desktop 的持久任务通知收件箱中。点击已交付的通知会恢复并聚焦主窗口，
+但不会激活会话。
 
 面板桥还暴露 `ui.showToast`、`ui.closePanel`、
 `plugin.getSettings` 和 `workspace.get`。主机自己没有实现的通道会被转发到
@@ -578,6 +580,69 @@ unsubscribe = await pi.bus.subscribe("example.build.*", async (message) => {
 消息。将主题视为对任何已安装的具有匹配插件的公共主题
 订阅；切勿将秘密放入有效负载中。
 
+### 6.10 Agent 扩展（pi ExtensionAPI 模块）
+
+插件可以携带直接在 agent 进程内运行的代码：一个面向 pi CLI `ExtensionAPI` 编写的
+模块，与 pi 扩展使用同一契约。它可以注册工具、斜杠命令，以及每个回合、每次工具调用
+和每次 provider 请求上的 hook。声明模块和 `agent.extension` 权限：
+
+```json
+{
+  "contributes": { "agentExtensions": ["src/index.ts"] },
+  "permissions": ["agent.extension"]
+}
+```
+
+```ts
+// src/index.ts
+import { Type } from "typebox";
+import { defineTool } from "@earendil-works/pi-coding-agent";
+
+export default function (pi) {
+  pi.registerTool(defineTool({
+    name: "fx_add", label: "Add", description: "两数相加",
+    parameters: Type.Object({ a: Type.Number(), b: Type.Number() }),
+    async execute(_id, { a, b }) {
+      return { content: [{ type: "text", text: String(a + b) }], details: {} };
+    },
+  }));
+  pi.on("tool_call", (event) =>
+    event.toolName === "Bash" ? { block: true, reason: "这里不允许" } : undefined,
+  );
+  pi.registerCommand("greet", {
+    description: "打个招呼",
+    async handler(args, ctx) {
+      const name = await ctx.ui.input("你的名字？");
+      ctx.ui.notify(`你好 ${name} ${args}`);
+    },
+  });
+}
+```
+
+使用前需要知道：
+
+- **没有沙箱。** 模块在 agent 进程内运行，拥有与 agent 自身工具相同的权限。
+  `agent.extension` 是需要用户显式确认的高风险权限；列出模块却没有它的 manifest
+  会被拒绝。
+- **可以直接写 TypeScript。** 模块由 jiti 加载，`.ts` 不需要构建步骤。`typebox`、
+  `@earendil-works/pi-agent-core`、`@earendil-works/pi-ai` 和
+  `@earendil-works/pi-coding-agent` 解析到应用自带的副本；`@earendil-works/pi-tui`
+  解析到空实现桩，终端 UI 调用不做任何事，只在诊断里出现。
+- **工具是延迟激活的。** 与插件工具一样，模型按需通过 `ToolSearch` 激活。与核心工具
+  或插件工具同名的注册会被拒绝并记诊断。
+- **斜杠命令**出现在 composer 的 `/` 菜单和全局搜索里，行的其余部分作为 `args`。
+  `ctx.ui.input` / `select` / `confirm` 打开原生对话框；`ui.notify` 是 toast。
+- **受支持的成员**见规格 07-plugins/16 §5。不支持的成员（`setWidget`、
+  `registerMessageRenderer`、`navigateTree` 及其他仅终端可用的界面）是空操作，在插件行
+- **已有的 pi 扩展**无需修改：插件页 → 溢出菜单 →“导入 pi 扩展”会把文件或目录包成
+  生成的插件。若目录声明了生产或可选依赖，PI-Desktop 会先运行
+  `npm install --package-lock-only --omit=dev --legacy-peer-deps --no-audit --no-fund
+  --ignore-scripts`，校验生成的 registry-only lockfile，再以相同安全参数运行 `npm ci`。
+  生产、可选、开发和 peer 字段中的直接依赖 spec 都会校验，git 解析会被禁用，绝不运行
+  第三方生命周期脚本。需要构建脚本的原生模块会以诊断形式加载失败——在插件目录内用
+  Electron 头重建（`npx @electron/rebuild -v <electron 版本>`）即可修复。安装失败会清理
+  部分依赖并显示警告 toast，不会阻塞导入；只有扩展实际加载失败时插件行才显示 load error。
+
 ## 7.权限设计
 
 权限均在 `manifest.json` 中声明并由用户授予。
@@ -681,6 +746,30 @@ pnpm pi-plugin pack ../my-first-plugin
 Agent 还可以在每种操作模式下运行 `PluginCheck`。 `PluginScaffold`
 和 `PluginPack` 是代理模式工具，仅限于当前
 工作区。
+
+### 用 `pi-plugin publish` 准备插件中心提交
+
+`publish` 会打包插件，并把包固定到构建它的 git 提交上，
+以便插件中心能够重新构建并比对工件：
+
+```bash
+pnpm pi-plugin publish ../my-first-plugin [--out <dir>] [--ref <ref>] [--channel stable|beta] [--allow-dirty]
+```
+
+该命令先执行与 `check`、`pack` 相同的步骤，然后读取插件仓库的 `origin`
+远程和 `HEAD`。SSH 远程会被改写为规范的 `https://` 形式；内嵌凭据或
+非 HTTPS 协议的远程会被拒绝。除非传入 `--allow-dirty`，否则工作树必须干净；
+传入后生成的提交无法被插件中心复现，并会打印警告。固定的 `ref` 优先取
+`--ref`，否则取指向 `HEAD` 的标签（写成 `refs/tags/<tag>`）；没有标签时提交裸
+commit 并给出警告。插件相对仓库根目录的路径也会被记录，因此插件可以位于子目录中。
+
+结果是 `dist/<id>-<version>.submission.json`（或 `--out` 指定的目录），一个
+`schemaVersion: 1` 的载荷，包含 `pluginId`、`version`、`channel`、`source`
+固定信息（`repository`、`ref`、`commit`、`path`）、`artifact`（`publisher-release`
+模式、文件名、SHA-256、大小）、声明的 `permissions`，以及按插件、版本、提交和工件
+稳定的 `idempotencyKey`，因此重试提交不会成为新的发布。把 `.piplug` 附到该提交
+的 release 上，再把载荷提交给插件中心。插件中心会从代码托管平台重新解析来源，
+不信任载荷中记录的值。
 
 ## 10. 准备发布
 

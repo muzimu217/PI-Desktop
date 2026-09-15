@@ -73,13 +73,32 @@ accept_prompt
  -> turn_end
 ```
 
+A turn reaches one of three terminal reasons — `completed`, `aborted`, or
+`error` — matching the `aborted` / `error` rows in section 1. The terminal
+reason is decided once: an abort records its decision before the cancel request
+is issued, so a later `agent_end` cannot restate an aborted turn as completed.
+Terminal events are attributed by turn identity, not by session: a terminal
+event whose turn no longer owns the session changes neither the current turn's
+state nor its resources, and late message and tool rows are still recorded as
+history. The host announces the terminal state once per started turn through
+the `session:turnEnded` plugin event (see ADR 0252,
+`docs/adr/0252-plugin-host-turn-end-event.md`).
+
+A steering input is judged by the same identity: one that names a turn which was
+cancelled, has started finalizing, or no longer owns the session is refused as a
+turn that has ended.
+
 ## 3. Transition rules
 
 1. Only one active turn per session
 2. A direct host prompt is rejected with `AGENT_BUSY` while
-   running/waiting_permission. The renderer's Send-while-running path stores
-   the next prompt in its per-session in-memory queue instead and releases it
-   only after `agent_end`, so normal user sends do not surface `AGENT_BUSY`.
+   running/waiting_permission. The renderer's Send-while-running path pushes
+   the next prompt into the Host-owned turn queue (schema v15, D375 / D386 /
+   ADR 0213) through `agent/queue/push` and mirrors the durable entries from
+   `agent/event/queueChanged`; the Agent Host module releases one entry after
+   `agent_end`, holds a restored queue until the owner attaches, and moves an
+   entry to the head on `agent/queue/prioritize`, so normal user sends do not
+   surface `AGENT_BUSY`.
 3. A graceful stop completes the current assistant/tool boundary as a normal
    `completed` turn before the renderer releases a queued prompt.
 4. Abort from running or waiting_permission is allowed. Renderer smart Stop
@@ -134,6 +153,9 @@ accept_prompt
     rejected/expired/interrupted checkpoint and
     must create a new immutable artifact rather than overwrite the earlier
     snapshot.
+17. A terminal parent provider/stream error aborts leftover delegates and
+    returns the session to idle so Continue is accepted. Parent idle with
+    running delegates still keeps the turn open (D328 / D352).
 
 ## 4. Persistence points
 

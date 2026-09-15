@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { UserSubagentRecord } from "@pi-desktop/shared";
+import type { SubagentDefinition, UserSubagentRecord } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../stores/app-store";
+import { useHostCollection } from "../../hooks/use-host-collection";
 import {
   AgentCapabilityPage,
   CapabilityButton,
@@ -19,61 +20,59 @@ import {
 } from "./AgentCapabilityLayout";
 import {
   SubagentEditorSheet,
+  draftFromDefinition,
   draftFromRecord,
   emptySubagentDraft,
+  mergeSubagentToolGrant,
+  subagentPresetCopyKey,
   type SubagentDraft,
 } from "./SubagentEditorSheet";
-import { IconBot, IconFolderOpen, IconPencil, IconPlus, IconTrash } from "../icons";
-
+import { EMPTY_SUBAGENT_PAGE, fetchSubagentPageData } from "./subagent-settings";
+import {
+  IconBot,
+  IconCopy,
+  IconFolderOpen,
+  IconPencil,
+  IconPlus,
+  IconTrash,
+} from "../icons";
+import { TooltipButton } from "../ui";
 const GLOBAL_SUBAGENTS_PATH = "~/.agents/subagents";
 
 type SubagentEditorState = {
   draft: SubagentDraft;
   editing: UserSubagentRecord | null;
+  /** Selected template chip; set when Copy as mine pre-fills a builtin. */
+  presetId?: string;
 };
+
+function builtinDisplayName(
+  id: string,
+  t: (key: string) => string,
+): string {
+  const key = subagentPresetCopyKey(id, "name");
+  return key ? t(key) : id;
+}
 
 export function AgentSubagentsPage() {
   const { t } = useTranslation();
   const showToast = useAppStore((state) => state.showToast);
-  const [subagents, setSubagents] = useState<UserSubagentRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const {
+    data: { owned, builtins },
+    setData: setSubagents,
+    loading,
+    refreshing,
+    reload: load,
+  } = useHostCollection(fetchSubagentPageData, EMPTY_SUBAGENT_PAGE, (error) =>
+    showToast(error instanceof Error ? error.message : String(error), { variant: "error" }),
+  );
   const [search, setSearch] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [editor, setEditor] = useState<SubagentEditorState | null>(null);
   const [saving, setSaving] = useState(false);
   const { armed, setArmed } = useArmedDelete();
-  // First paint gets skeletons; everything after keeps the rows on screen.
-  const hydrated = useRef(false);
-
-  const load = useCallback(async () => {
-    if (hydrated.current) setRefreshing(true);
-    else setLoading(true);
-    try {
-      const result = await api.listUserSubagents({ level: "global" });
-      setSubagents(result.subagents ?? []);
-      hydrated.current = true;
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
-      setSubagents([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [showToast]);
-
-  useEffect(() => {
-    void load();
-    const offPluginChanged = api.onPluginChanged(() => void load());
-    const offHostStatus = api.onHostStatus((status) => {
-      if (status.ok) void load();
-    });
-    return () => {
-      offPluginChanged();
-      offHostStatus();
-    };
-  }, [load]);
+  const ownedHandles = useMemo(() => new Set(owned.map((row) => row.id)), [owned]);
 
   /**
    * The switch flips locally first and only reverts if the host refuses, so one
@@ -83,9 +82,12 @@ export function AgentSubagentsPage() {
     if (busyId === subagent.id) return;
     const next = !subagent.enabled;
     setBusyId(subagent.id);
-    setSubagents((rows) =>
-      rows.map((row) => (row.id === subagent.id ? { ...row, enabled: next } : row)),
-    );
+    setSubagents((current) => ({
+      ...current,
+      owned: current.owned.map((row) =>
+        row.id === subagent.id ? { ...row, enabled: next } : row,
+      ),
+    }));
     try {
       await api.setUserSubagentEnabled(subagent.id, next);
       showToast(
@@ -95,11 +97,12 @@ export function AgentSubagentsPage() {
         { variant: "success" },
       );
     } catch (error) {
-      setSubagents((rows) =>
-        rows.map((row) =>
+      setSubagents((current) => ({
+        ...current,
+        owned: current.owned.map((row) =>
           row.id === subagent.id ? { ...row, enabled: subagent.enabled } : row,
         ),
-      );
+      }));
       showToast(error instanceof Error ? error.message : String(error), { variant: "error" });
     } finally {
       setBusyId(null);
@@ -121,6 +124,14 @@ export function AgentSubagentsPage() {
     }
   };
 
+  const copyBuiltin = (definition: SubagentDefinition) => {
+    setEditor({
+      draft: draftFromDefinition(definition),
+      editing: null,
+      presetId: definition.name,
+    });
+  };
+
   const save = async () => {
     if (!editor) return;
     const { draft, editing } = editor;
@@ -128,11 +139,13 @@ export function AgentSubagentsPage() {
       name: draft.name.trim(),
       description: draft.description.trim(),
       body: draft.body,
-      tools: draft.tools,
+      tools: mergeSubagentToolGrant(draft.inheritTools, draft.tools),
       // An empty string clears a pinned model; omitting it would keep the old one.
       model: draft.model.trim(),
+      fallbackModels: draft.fallbackModels.map((pin) => pin.trim()),
       thinkingLevel: draft.thinkingLevel,
-      maxTurns: draft.maxTurns,
+      // `0` clears the output cap, so the delegate follows the model again.
+      maxTokens: draft.maxTokens,
       enabled: draft.enabled,
       scope: draft.scope,
     };
@@ -179,15 +192,70 @@ export function AgentSubagentsPage() {
     }
   };
 
-  const visible = useMemo(
+  const visibleOwned = useMemo(
     () =>
-      subagents.filter((subagent) =>
+      owned.filter((subagent) =>
         matchesCapabilitySearch(search, subagent.name, subagent.id, subagent.description),
       ),
-    [search, subagents],
+    [search, owned],
+  );
+
+  const visibleBuiltins = useMemo(
+    () =>
+      builtins.filter((definition) =>
+        matchesCapabilitySearch(
+          search,
+          builtinDisplayName(definition.name, t),
+          definition.name,
+          definition.description,
+        ),
+      ),
+    [builtins, search, t],
   );
 
   const openCreate = () => setEditor({ draft: emptySubagentDraft(), editing: null });
+  const searching = Boolean(search.trim());
+  const noMatches = searching && visibleOwned.length === 0 && visibleBuiltins.length === 0;
+  const showOwnedGroup = !searching || visibleOwned.length > 0;
+
+  const renderBuiltin = (definition: SubagentDefinition) => {
+    const handle = definition.name;
+    const name = builtinDisplayName(handle, t);
+    const canCopy = !ownedHandles.has(handle);
+    return (
+      <CapabilityRow
+        key={`builtin:${handle}`}
+        glyph={<IconBot size={16} />}
+        name={name}
+        command={t("extensions.subagents.handle", { name: handle })}
+        badges={
+          <span className="agent-capability-badge">{t("extensions.subagents.sourceBuiltin")}</span>
+        }
+        description={definition.description || t("settings.noCapabilityDescription")}
+        meta={
+          definition.tools?.length ? (
+            <>
+              {definition.tools.map((tool) => (
+                <code key={tool}>{tool}</code>
+              ))}
+            </>
+          ) : undefined
+        }
+        actions={
+          canCopy ? (
+            <TooltipButton
+              type="button"
+              className="settings-icon-button"
+              tooltip={t("extensions.subagents.copy")}
+              onClick={() => copyBuiltin(definition)}
+            >
+              <IconCopy size={15} />
+            </TooltipButton>
+          ) : null
+        }
+      />
+    );
+  };
 
   const renderRow = (subagent: UserSubagentRecord) => {
     const name = subagent.name || subagent.id;
@@ -240,16 +308,16 @@ export function AgentSubagentsPage() {
         }
         actions={
           <>
-            <button
+            <TooltipButton
               type="button"
               className="settings-icon-button"
-              aria-label={t("extensions.subagents.rowActions", { name })}
-              title={t("extensions.subagents.edit")}
+              ariaLabel={t("extensions.subagents.rowActions", { name })}
+              tooltip={t("extensions.subagents.edit")}
               disabled={busy}
               onClick={() => void openEdit(subagent)}
             >
               <IconPencil size={15} />
-            </button>
+            </TooltipButton>
             <CapabilityRowMenu
               label={t("extensions.subagents.rowActions", { name })}
               items={items}
@@ -298,27 +366,42 @@ export function AgentSubagentsPage() {
         refreshing={refreshing}
         loadingLabel={t("settings.loadingCapabilities")}
       >
-        <CapabilityGroupHeader
-          label={t("settings.globalLevel")}
-          path={GLOBAL_SUBAGENTS_PATH}
-          count={visible.length}
-        />
-        {visible.length === 0 ? (
-          search.trim() ? (
-            <CapabilityEmpty
-              message={t("settings.capabilityNoMatches")}
-              hint={t("settings.capabilityNoMatchesHint")}
-              icon={<IconBot size={18} />}
-            />
-          ) : (
-            <CapabilityEmpty
-              message={t("settings.subagentsEmpty")}
-              icon={<IconBot size={18} />}
-              action={addButton}
-            />
-          )
+        {noMatches ? (
+          <CapabilityEmpty
+            message={t("settings.capabilityNoMatches")}
+            hint={t("settings.capabilityNoMatchesHint")}
+            icon={<IconBot size={18} />}
+          />
         ) : (
-          visible.map(renderRow)
+          <>
+            {visibleBuiltins.length > 0 ? (
+              <>
+                <CapabilityGroupHeader
+                  label={t("extensions.subagents.sourceBuiltin")}
+                  count={visibleBuiltins.length}
+                />
+                {visibleBuiltins.map(renderBuiltin)}
+              </>
+            ) : null}
+            {showOwnedGroup ? (
+              <>
+                <CapabilityGroupHeader
+                  label={t("settings.globalLevel")}
+                  path={GLOBAL_SUBAGENTS_PATH}
+                  count={visibleOwned.length}
+                />
+                {visibleOwned.length === 0 ? (
+                  <CapabilityEmpty
+                    message={t("settings.subagentsEmpty")}
+                    icon={<IconBot size={18} />}
+                    action={addButton}
+                  />
+                ) : (
+                  visibleOwned.map(renderRow)
+                )}
+              </>
+            ) : null}
+          </>
         )}
       </CapabilityPanel>
 
@@ -327,6 +410,7 @@ export function AgentSubagentsPage() {
           draft={editor.draft}
           setDraft={(draft) => setEditor((current) => (current ? { ...current, draft } : current))}
           editing={editor.editing}
+          initialPresetId={editor.presetId}
           saving={saving}
           onClose={() => {
             if (!saving) setEditor(null);

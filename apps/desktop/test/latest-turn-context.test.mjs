@@ -180,3 +180,39 @@ test("latest turn inspector does not merge compaction-split assistant turns", ()
   assert.equal(inspector?.turnUsage.totalTokens, 28);
   assert.equal(inspector?.responseDurationMs, 1500);
 });
+
+test("latest turn inspector keeps last-request usage beside the turn sum", () => {
+  const inspector = latestTurnContextInspector(
+    [
+      message("u1", "user", "read it"),
+      message("a1", "assistant", "reading", {
+        providerId: "provider",
+        modelId: "catalog-model",
+        usage: {
+          inputTokens: 50_000,
+          outputTokens: 1_000,
+          cacheReadTokens: 1_500,
+          totalTokens: 52_500,
+        },
+      }),
+      message("read", "tool", "ok", { toolName: "Read", toolCallId: "read-1" }),
+      message("a2", "assistant", "done", {
+        providerId: "provider",
+        modelId: "catalog-model",
+        usage: {
+          inputTokens: 7_300,
+          outputTokens: 800,
+          cacheReadTokens: 50_000,
+          totalTokens: 58_100,
+        },
+      }),
+    ],
+    providerModels,
+    providers,
+  );
+
+  assert.equal(inspector?.usage.cacheReadTokens, 50_000);
+  assert.equal(inspector?.usage.inputTokens, 7_300);
+  assert.equal(inspector?.turnUsage.cacheReadTokens, 51_500);
+  assert.equal(inspector?.turnUsage.inputTokens, 57_300);
+});

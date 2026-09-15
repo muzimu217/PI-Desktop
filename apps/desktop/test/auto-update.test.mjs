@@ -1,3 +1,9 @@
+import {
+  readAppSource,
+  readSettingsSource,
+  readMainSource,
+  readSharedTypesSource,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -24,15 +30,15 @@ const [
   changelogSource,
 ] = await Promise.all([
   read("../../../packages/shared/src/protocol.ts"),
-  read("../../../packages/shared/src/types.ts"),
+  readSharedTypesSource(),
   read("../electron/main/updater.ts"),
-  read("../electron/main/index.ts"),
+  readMainSource(),
   read("../electron/main/application-menu.ts"),
   read("../src/lib/api.ts"),
   read("../src/components/UpdateBanner.tsx"),
   read("../src/components/ReleaseNotesDialog.tsx"),
-  read("../src/pages/SettingsPage.tsx"),
-  read("../src/App.tsx"),
+  readSettingsSource(),
+  readAppSource(),
   loadStyles(),
   read("../package.json"),
   read("../../../.github/workflows/release.yml"),
@@ -89,6 +95,7 @@ test("updater gates delivery mode by platform and delivery policy", () => {
   // disabled outright.
   assert.match(updaterSource, /if \(!isPackaged\) return "disabled"/);
   assert.match(updaterSource, /win32.*in-app|in-app.*win32/s);
+  assert.match(updaterSource, /PORTABLE_EXECUTABLE_FILE \? "manual"/);
   assert.match(updaterSource, /APPIMAGE/);
   assert.match(updaterSource, /autoInstallOnAppQuit = true/);
   assert.match(
@@ -97,6 +104,21 @@ test("updater gates delivery mode by platform and delivery policy", () => {
     "prerelease installs must still track the stable GitHub latest release",
   );
   assert.match(updaterSource, /quitAndInstall/);
+  assert.match(
+    updaterSource,
+    /private installRequested = false/,
+    "the install request is latched so the shutdown path can see it",
+  );
+  assert.match(
+    updaterSource,
+    /isInstallingUpdate\(\): boolean/,
+    "the shutdown path must be able to ask whether this quit is an update restart",
+  );
+  assert.match(
+    updaterSource,
+    /this\.installRequested = true;[\s\S]*?autoUpdater\.quitAndInstall\(/,
+    "the latch must be set before quitAndInstall spawns the installer",
+  );
   assert.match(
     updaterSource,
     /state\.status === "downloaded"[\s\S]*return this\.state/,
@@ -212,14 +234,39 @@ test("packaging publishes an electron-updater feed for GitHub Releases", () => {
     assert.match(pkg.scripts[script], /--publish never/, script);
   }
   assert.equal(pkg.build.linux.executableName, "pi-desktop");
-  // Scoped package name is not a valid deb package/file name.
+  const linuxTargets = pkg.build.linux.target.map((entry) => entry.target);
+  assert.deepEqual(
+    linuxTargets,
+    ["AppImage", "deb", "rpm"],
+    "Linux release targets",
+  );
+  // Scoped package name is not a valid deb/rpm package or file name.
   assert.equal(pkg.build.deb.packageName, "pi-desktop");
+  assert.equal(pkg.build.rpm.packageName, "pi-desktop");
   assert.ok(!pkg.build.deb.artifactName.includes("${name}"), "deb artifactName");
-  // GitHub asset URLs mangle spaces; keep the NSIS artifact name space-free.
+  assert.equal(
+    pkg.build.rpm.artifactName,
+    "pi-desktop-${version}-${arch}.${ext}",
+    "rpm artifactName",
+  );
+  assert.deepEqual(
+    pkg.build.rpm.fpm,
+    ["--rpm-rpmbuild-define", "_build_id_links none"],
+    "rpm build-id configuration",
+  );
+  // GitHub asset URLs mangle spaces; keep Windows artifact names space-free.
   assert.equal(pkg.build.nsis.artifactName, "PI-Desktop-Setup-${version}.${ext}");
+  const winTargets = pkg.build.win.target.map((entry) => entry.target);
+  assert.deepEqual(winTargets, ["nsis", "portable"], "Windows release targets");
+  assert.equal(
+    pkg.build.portable.artifactName,
+    "PI-Desktop-Portable-${version}.${ext}",
+  );
+  assert.equal(pkg.build.portable.requestExecutionLevel, "user");
   // The upload step must carry every updater feed, and the release publishes
   // all platforms unfiltered (D126/D285).
   assert.match(releaseWorkflowSource, /release\/\*\.zip/);
+  assert.match(releaseWorkflowSource, /release\/\*\.rpm/);
   assert.match(releaseWorkflowSource, /release\/latest\*\.yml/);
   assert.match(releaseWorkflowSource, /files: dist\/\*/);
 });

@@ -78,11 +78,40 @@
       }
     },
     "defaultModelId": { "type": "string" },
+    "models": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "contextWindow", "maxTokens", "thinkingLevels", "defaultThinkingLevel"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "alias": { "type": "string", "maxLength": 60 },
+          "contextWindow": { "type": "integer", "minimum": 1 },
+          "maxTokens": { "type": "integer", "minimum": 1 },
+          "thinkingLevels": {
+            "type": "array",
+            "items": { "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max"] },
+            "uniqueItems": true
+          },
+          "defaultThinkingLevel": {
+            "type": ["string", "null"],
+            "enum": ["off", "minimal", "low", "medium", "high", "xhigh", "max", null]
+          },
+          "supportsImages": { "type": ["boolean", "null"] },
+          "supportsDocuments": { "type": ["boolean", "null"] },
+          "availableForSubagents": { "type": "boolean", "default": false }
+        }
+      }
+    },
     "createdAt": { "type": "string" },
     "updatedAt": { "type": "string" }
   }
 }
 ```
+
+`models[].alias` 是可选展示标签（ADR 0192）。`models[].id` 仍是发给提供商的
+身份，别名从不用于提供商或模型解析。host-core 会修剪别名、丢弃空白值，
+并在超过 60 个 Unicode 字符时以 `MODEL_ALIAS_TOO_LONG` 拒绝。
 
 `compatibility.supportsReasoning` 和
 `compatibility.supportedThinkingLevels` 对于存储的记录保持可读状态
@@ -94,13 +123,46 @@ JSON 保持隐藏状态。
 
 `authKind: "oauth"` 标记厂商账户行（ADR 0095、D237）：其凭据是保存在
 `secret:provider:<id>:oauth` 下的 OAuth 授权，而不是粘贴的密钥，因此该行
-不为它保存 `secretRef`，并以空密钥启动。最后两个 apiStyle 是厂商账户专用的
+不为它保存 `secretRef`，并以空密钥启动。两种账户专用 apiStyle 是厂商账户专用的
 线路 API —— `openai_codex_responses`（Codex 会话封装）与 `pi_messages`
 （radius 网关）—— 自定义提供商对话框不提供它们，因为二者都无法配合手输的
-base URL 与粘贴的密钥工作。厂商行的样式不由厂商固定：GitHub Copilot 同时
+base URL 与粘贴的密钥工作。新建自定义服务只提供 Chat Completions、Responses、Anthropic
+Messages 和 Google Generative AI；OpenCode Go 仍通过具名服务配置。
+历史非 OAuth 行若保存了上述账户专用格式，编辑时会显示禁选的当前格式和
+说明，并允许原样保存。仅打开编辑器不会根据匹配的端点预设修改协议、名称
+或 URL；选择其他格式才是明确变更。复制此类行时保留草稿中的原格式供
+确认，但在主动选择支持的格式前禁止保存和模型发现，并显示原因。
+不迁移已有认证类型或凭据。厂商行的样式不由厂商固定：GitHub Copilot 同时
 提供 Anthropic、Chat Completions 与 Responses 模型，因此样式跟随所选模型，
 并在每次切换模型时重写。`config_json.oauth.accountLabel` 保存已登录账户的
 非敏感展示标签。
+
+### 将提供商配置复制为独立草稿
+
+模型配置页在普通非 OAuth 提供商行提供**复制**操作，通常打开新的自定义
+服务草稿。草稿中的 API 格式可以修改，便于为同一站点的其他协议复用地址
+和模型绑定。OpenCode Go 是例外：副本保留命名服务与固定的 `opencode_go`
+格式；先切换为自定义服务，才能选择普通 API 格式。OAuth 账户行不提供此操作。
+
+草稿按明确的字段白名单构建：来源名称、`baseUrl`、`apiStyle` 以及 `models`
+中已声明的绑定字段。模型对象及嵌套的 `thinkingLevels` 数组独立复制，编辑
+草稿不能修改来源对象。建议名称可带复制标记，用户可以在保存前修改。
+不复制来源 `id`、凭据或凭据引用、`hasSecret` 状态、OAuth 元数据、自定义
+`headers` 或未知字段。允许使用的自定义请求头也可能包含 token，因此全部
+省略。对话框说明：需要认证信息或自定义请求头时，应为新配置重新填写。
+
+Base URL 格式无效、不是 HTTP(S)，或包含用户名/密码、查询参数、片段时，
+草稿中的地址留空，避免复制历史 URL 中的凭据。
+
+草稿使用正常的新提供商发现路径，不得把来源 provider id 传给模型发现或
+连接测试来解析来源保存的密钥。需要认证的发现请求只使用为新草稿明确
+填写的凭据。复制操作不读取或复制秘密存储中的值。
+
+取消草稿不持久化提供商或配置。保存走现有 `createProvider` /
+`providers.create` 流程，分配新的提供商身份；填写新密钥时创建该提供商
+自己的凭据引用。来源提供商与全局默认提供商、模型选择保持不变。新
+提供商自己的默认模型仍按现有创建规则取首个所选模型。复制操作不新增
+IPC 方法、存储 schema 或权限边界。
 
 ## 3. 内置供应商预设
 
@@ -147,10 +209,14 @@ API 密钥；自定义端点在常见路径上并排显示 API 密钥与接口�
 Together、Fireworks、OpenCode Go、Z.AI。
 
 国内：DeepSeek、通义千问、月之暗面、智谱 / Coding Plan、硅基流动、火山方舟、
-MiniMax、Kimi 编程。
+MiniMax（`anthropic_messages`，`https://api.minimaxi.com/anthropic/v1`）、
+MiniMax (OpenAI)（`chat_completions`，`https://api.minimaxi.com/v1`，别名
+`minimax-openai` / `minimax-compatible`）、Kimi 编程。
 
 智谱 / Z.AI 的 Completions 请求仍使用 `thinkingFormat: "zai"` 与
-`zaiToolStream: true`。
+`zaiToolStream: true`。DeepSeek 系 Completions 在 vendor key、URL、模型 ID 或
+目录 family 能识别为 DeepSeek 时设置
+`requiresReasoningContentOnAssistantMessages: true`，不改 `thinkingFormat`。
 
 ### 厂商账户预设
 

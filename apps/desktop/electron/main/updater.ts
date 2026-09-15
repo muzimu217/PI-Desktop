@@ -7,6 +7,8 @@
  * stables. Delivery mode per install:
  *  - Windows NSIS / Linux AppImage → full in-app flow: silent background
  *    download, "restart to update" prompt, install-on-quit fallback.
+ *  - Windows portable (`PORTABLE_EXECUTABLE_FILE`) → notify + link. The
+ *    NSIS installer must not replace a no-install run.
  *  - macOS → manual discovery and a releases-page link. In-app installation
  *    remains disabled pending a separate delivery-policy qualification.
  *  - Linux deb (no $APPIMAGE in env) → notify + link, like macOS.
@@ -25,9 +27,8 @@ import type { Logger } from "./logger";
 import { parseAllowedExternalUrl } from "./safe-open-external";
 import {
   raceWithTimeout,
-  timingMessage,
   UPDATE_CHECK_TIMEOUT_CODE,
-} from "./boot-timing";
+} from "./update-timeout";
 
 const { autoUpdater } = electronUpdaterPkg;
 
@@ -57,10 +58,13 @@ export type UpdaterOptions = {
 export function resolveUpdateMode(
   platform: NodeJS.Platform,
   isPackaged: boolean,
+  env: NodeJS.ProcessEnv = process.env,
 ): UpdateMode {
   if (!isPackaged) return "disabled";
-  if (platform === "win32") return "in-app";
-  if (platform === "linux" && process.env.APPIMAGE) return "in-app";
+  if (platform === "win32") {
+    return env.PORTABLE_EXECUTABLE_FILE ? "manual" : "in-app";
+  }
+  if (platform === "linux" && env.APPIMAGE) return "in-app";
   // darwin (unsigned) and non-AppImage linux installs
   return "manual";
 }
@@ -74,6 +78,14 @@ export class AppUpdaterController {
   private initialTimer: NodeJS.Timeout | null = null;
   private intervalTimer: NodeJS.Timeout | null = null;
   private listenersAttached = false;
+  /**
+   * Set before a downloaded update is handed to the platform installer.
+   *
+   * electron-updater spawns that installer synchronously and only asks the app
+   * to quit afterwards, so the shutdown path must already know that the quit it
+   * is about to see is the update restart.
+   */
+  private installRequested = false;
 
   constructor(options: UpdaterOptions) {
     this.logger = options.logger;
@@ -113,10 +125,22 @@ export class AppUpdaterController {
     // lands on the next normal quit.
     autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.logger = {
-      info: (m: unknown) => this.logger.app("updater", "info", `updater: ${String(m)}`),
-      warn: (m: unknown) => this.logger.app("updater", "warn", `updater: ${String(m)}`),
-      error: (m: unknown) => this.logger.app("updater", "error", `updater: ${String(m)}`),
-      debug: (m: unknown) => this.logger.app("updater", "debug", `updater: ${String(m)}`),
+      info: (m: unknown) =>
+        this.logger.app("updater", "info", "updater diagnostic", {
+          data: { detail: String(m) },
+        }),
+      warn: (m: unknown) =>
+        this.logger.app("updater", "warn", "updater diagnostic", {
+          data: { detail: String(m) },
+        }),
+      error: (m: unknown) =>
+        this.logger.app("updater", "error", "updater diagnostic", {
+          data: { detail: String(m) },
+        }),
+      debug: (m: unknown) =>
+        this.logger.app("updater", "debug", "updater diagnostic", {
+          data: { detail: String(m) },
+        }),
     };
 
     autoUpdater.on("checking-for-update", () => {
@@ -200,23 +224,6 @@ export class AppUpdaterController {
     const timeoutMs = this.manualRequested
       ? MANUAL_CHECK_TIMEOUT_MS
       : AUTO_CHECK_TIMEOUT_MS;
-    const started = Date.now();
-    this.logger.app(
-      "timing",
-      "info",
-      timingMessage("updater", "check-start", {
-        manual: this.manualRequested,
-        timeoutMs,
-      }),
-      {
-        data: {
-          kind: "updater",
-          phase: "check-start",
-          manual: this.manualRequested,
-          timeoutMs,
-        },
-      },
-    );
     try {
       // Fire-and-forget relative to boot: callers must not await this from the
       // first-window path. The race only bounds *our* wait; electron-updater
@@ -226,47 +233,9 @@ export class AppUpdaterController {
         timeoutMs,
         "update check",
       );
-      this.logger.app(
-        "timing",
-        "info",
-        timingMessage("updater", "check-done", {
-          durationMs: Date.now() - started,
-          outcome: "ok",
-          manual: this.manualRequested,
-        }),
-        {
-          data: {
-            kind: "updater",
-            phase: "check-done",
-            durationMs: Date.now() - started,
-            outcome: "ok",
-            manual: this.manualRequested,
-          },
-        },
-      );
     } catch (error) {
-      const durationMs = Date.now() - started;
       const timedOut =
         (error as { code?: unknown } | null)?.code === UPDATE_CHECK_TIMEOUT_CODE;
-      this.logger.app(
-        "timing",
-        "warn",
-        timingMessage("updater", "check-done", {
-          durationMs,
-          outcome: timedOut ? "timeout" : "error",
-          manual: this.manualRequested,
-        }),
-        {
-          data: {
-            kind: "updater",
-            phase: "check-done",
-            durationMs,
-            outcome: timedOut ? "timeout" : "error",
-            manual: this.manualRequested,
-            error: String(error),
-          },
-        },
-      );
       if (timedOut) {
         if (this.manualRequested) {
           this.setState({ status: "error", error: "update check timed out" });
@@ -301,11 +270,25 @@ export class AppUpdaterController {
     return this.state;
   }
 
+  /**
+   * True once a downloaded update was handed to the platform installer.
+   *
+   * The NSIS/AppImage installer is spawned before `app.quit()` and gives up
+   * after a few seconds when the app is still running, so the quit that follows
+   * must not be deferred — including by the explicit-quit confirmation.
+   */
+  isInstallingUpdate(): boolean {
+    return this.installRequested;
+  }
+
   /** Quit and install a downloaded update (in-app mode). */
   install(): void {
     if (this.state.status !== "downloaded") {
       throw new Error("no downloaded update to install");
     }
+    // Marked before the call: quitAndInstall spawns the installer itself, so
+    // the shutdown handler must already know this quit is the update restart.
+    this.installRequested = true;
     // Fires 'before-quit' first, so host/sidecar shutdown still runs.
     autoUpdater.quitAndInstall(false, true);
   }

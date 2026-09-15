@@ -95,6 +95,17 @@ showing Name, Base URL, or API format on the named-service path. Chat turns
 still use the selected pi-ai adapter (`chat_completions`, `responses`,
 `anthropic_messages`, `google_generative_ai`, or `opencode_go`). Zhipu / Z.AI
 Completions requests use `thinkingFormat: "zai"` and `zaiToolStream: true`.
+DeepSeek-family Completions requests set
+`requiresReasoningContentOnAssistantMessages: true` when the row's `vendorKey`,
+base URL, model id, or catalog `family` identifies DeepSeek. pi-ai only
+auto-detects `provider === "deepseek"` or a `deepseek.com` URL, and PI-Desktop
+stores a UUID as `model.provider`, so aggregators and custom gateways would
+otherwise omit `reasoning_content` on assistant turns that produced no thinking.
+Non-official DeepSeek endpoints also set `requiresNonEmptyReasoningReplay` so
+missing reasoning is filled with a documented placeholder instead of `""`
+(OpenCode / third-party relays reject empty echoes after compaction; see
+ADR 0256 / #296). Official `deepseek.com` rows keep empty-string fill (#223).
+The overlay does not change `thinkingFormat`.
 
 ## 5. Built-in vendor matrix (ship intent)
 
@@ -333,7 +344,14 @@ the next provider write.
 makes the model available for AI-driven subagent delegation. When enabled, the
 model appears in the delegation catalog injected into the parent agent's system
 prompt. The parent agent can then select it via the Task tool's `model`
-parameter.
+parameter. Resolving a model for a definition pin does not imply this opt-in.
+The launch payload carries the permitted override keys separately as
+`subagentModelKeys`; definition-only bindings remain available solely through
+normal pin resolution, including when `Task.model` repeats that definition's
+own pin key. On-demand matching uses unique provider id/vendor/name lookup and
+must not overwrite a pin with another account's credentials. If vendor/model aliases collide across accounts, the
+opted-in account uses its exact provider ID as the override key. Selection priority remains Task.model → definition pin
+→ session model (D278; ADR subagent-model-opt-in).
 
 ## 8. Secrets
 
@@ -397,6 +415,34 @@ Deleting a row calls the normal host `providers.delete` path, which removes its
 OAuth secret and metadata; it never logs out or deletes another row with the
 same vendor key.
 
+### Anthropic token endpoint rate limits
+
+The pinned pi-ai 0.85.1 patch gives Anthropic authorization-code exchange and
+refresh a shared, bounded token-request policy: retry only an explicit HTTP
+429, at most three total requests. Wait at least 1 s then 2 s, or longer when
+`Retry-After` gives delta seconds or an HTTP date. A server delay beyond the
+remaining budget ends the attempt; it is never shortened to fit. Malformed or
+missing hints use the bounded exponential fallback.
+
+One 30 s helper deadline covers requests, response-body reads and waits, and
+all use the original caller signal. An earlier caller deadline wins; pi-ai's
+existing refresh operation has a 15 s limit inside the credential-store lock.
+Cancellation also stops pending waits. The patch does not move refresh outside
+that lock: failed attempts leave the stored credential unchanged, and a
+successful rotated grant is written once.
+
+Network failures, interrupted bodies, 5xx and `invalid_grant` are not replayed:
+the result of a non-idempotent token request may be ambiguous. An explicit
+`invalid_grant` stops even if a response is labelled 429. HTTP/token-JSON
+failures expose a bounded recovery message rather than raw response bodies,
+URLs or embedded stacks. Login guidance tells the user to wait, close the
+failed dialog and start sign-in again; refresh guidance suggests waiting before
+retrying and signing in again if the problem continues. HTTP 429 alone does
+not prove whether a code was consumed, so no expiry claim is made.
+
+This uses the existing repository dependency-patch mechanism; OAuth endpoints,
+PKCE, credential ownership, IPC and storage schemas are unchanged.
+
 ## 9. Model catalog service
 
 ```ts
@@ -455,8 +501,10 @@ type ModelDescriptor = {
 - Settings → Import can copy provider/model rows from Claude Code, Codex,
   OpenCode, Pi, and CC Switch. The scan is explicit. Stored API keys are
   copied into the host secret store; OAuth/subscription grants are not.
-  An equivalent endpoint (normalized URL + API style) is skipped on
-  re-import. No protocol or schema version bump (D342 / ADR 0179).
+  An equivalent provider (normalized URL + API style + same credential) is
+  skipped on re-import. Different credentials at one endpoint remain
+  independent providers. No protocol or schema version bump
+  (D342 / ADR 0179 / ADR 0188).
 
 ### Model selector
 - search all models across enabled providers
@@ -498,7 +546,10 @@ When starting a turn with `(providerId, modelId)`:
    URL. For `anthropic_messages`, the runtime removes a trailing `/v1` from
    that URL before passing it to pi-ai because the Anthropic SDK appends `/v1`
    itself; configured roots with or without `/v1` therefore both reach the
-   same `/v1/messages` route.
+   same `/v1/messages` route. Subagent providers resolved from a definition pin,
+   the delegation model catalog, or `Task.model` use this same binding-aware
+   model configuration before their thinking level is clamped; models.dev is
+   only the baseline and cannot erase explicit binding levels.
 8. execute stream with abort handle and separate answer/thinking events
 9. translate vendor errors into shared `AppError` codes (§15)
 
@@ -590,7 +641,26 @@ including reasoning-model routes. A resolved model record may explicitly set
 `compat.supportsDeveloperRole: true` when its endpoint is known to accept that
 role; this override is model-scoped and does not change other providers.
 
+A catalog entry may additionally pin a model-level wire API (for example,
+`api: "openai-responses"`). When present it wins over the provider-wide
+`apiStyle`, so responses-only models under an `opencode_go` provider are sent
+through the Responses adapter instead of Chat Completions. Without a
+model-level pin the provider-wide style applies unchanged.
+
 This is the **universal escape hatch** guaranteeing market coverage beyond native integrations.
+
+### 16.1 Responses stream termination (pi-ai patch)
+
+The OpenAI Responses adapter must treat `response.completed` (and
+`response.incomplete`) as the end of the stream: after finalizing the
+response, it stops consuming the stream instead of awaiting the server's
+TCP FIN. Upstream pi-ai keeps iterating until the server closes the
+connection, which hangs the turn behind reverse proxies that hold the idle
+connection open. Until the fix ships upstream, `patches/` carries a pnpm
+patch on `@earendil-works/pi-ai@0.85.1` that breaks the event loop on the
+terminal event (the OpenAI SDK aborts the underlying request when the
+consumer stops iterating). Drop the patch once a pi-ai release includes the
+fix.
 
 ## 17. Multi-provider product rules
 

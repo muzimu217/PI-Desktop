@@ -31,6 +31,8 @@ import { GITHUB_COPILOT_MODELS } from "@earendil-works/pi-ai/providers/github-co
 import {
   OPENCODE_GO_API_STYLE,
   OPENCODE_GO_BASE_URL,
+  resolveApiStyle,
+  deepseekRequestCompat,
   zhipuRequestCompat,
   type ThinkingLevel,
 } from "@pi-desktop/shared";
@@ -148,6 +150,17 @@ export function providerRequestKey(provider: RuntimeProviderConfig): string {
 }
 
 /**
+ * Resolve the wire API for one provider row. A catalog entry may pin a wire
+ * API that differs from the provider-wide style (e.g. responses-only models
+ * under an opencode_go provider, which defaults to Chat Completions). Honor
+ * the model-level api when present so such models are not sent through the
+ * wrong adapter (the gateway answers 500, see #105).
+ */
+export function apiBindingForProviderModel(provider: RuntimeProviderConfig): ApiBinding {
+  return apiBindingForStyle(resolveApiStyle(provider.modelConfig?.api) ?? provider.apiStyle);
+}
+
+/**
  * The desktop stores OAuth accounts under local row UUIDs, while pi-ai's
  * native Copilot model records carry the required client identity headers.
  * Preserve those transport defaults without changing the row identity used by
@@ -182,7 +195,7 @@ export function copilotRequestHeaders(
 export function buildProviderModel(
   provider: RuntimeProviderConfig,
 ): Model<Api> {
-  const binding = apiBindingForStyle(provider.apiStyle);
+  const binding = apiBindingForProviderModel(provider);
   const catalog = provider.modelConfig;
   const catalogModel = catalog
     ? (({ source: _source, ...model }) => model)(catalog)
@@ -194,6 +207,12 @@ export function buildProviderModel(
   const zhipuCompat = zhipuRequestCompat({
     vendorKey: provider.vendorKey,
     baseUrl,
+  });
+  const deepseekCompat = deepseekRequestCompat({
+    vendorKey: provider.vendorKey,
+    baseUrl,
+    modelId: provider.modelId,
+    family: catalogModel.family,
   });
   const copilotDefaults =
     provider.vendorKey?.trim().toLowerCase() === "github-copilot"
@@ -207,13 +226,14 @@ export function buildProviderModel(
   // `developer` role, even when the selected model supports reasoning. Keep
   // the broadest Chat Completions wire shape as the default; a catalog/model
   // override may opt into `developer` when the endpoint explicitly supports it.
-  // Zhipu / Z.AI need thinkingFormat + tool-stream even though the row id is a
-  // UUID, so URL/vendorKey detection cannot rely on pi-ai's provider name.
+  // Zhipu / Z.AI and DeepSeek-family Completions flags cannot use pi-ai's
+  // provider-name detection: the row id stored as `model.provider` is a UUID.
   const compat =
     binding.api === "openai-completions"
       ? {
           ...(catalogModel.compat ?? {}),
           ...(zhipuCompat ?? {}),
+          ...(deepseekCompat ?? {}),
           supportsDeveloperRole: catalogModel.compat?.supportsDeveloperRole === true,
         }
       : catalogModel.compat;
@@ -259,7 +279,7 @@ export function createProviderModels(
         },
       },
       models: [model],
-      api: apiBindingForStyle(provider.apiStyle).adapter(),
+      api: apiBindingForProviderModel(provider).adapter(),
     }),
   );
   return models;

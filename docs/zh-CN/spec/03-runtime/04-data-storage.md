@@ -1,4 +1,4 @@
-# 04. 数据存储（架构 v11）
+# 04. 数据存储（架构 v16）
 
 > **翻译说明：** 本页是与 [英文源规格](/spec/03-runtime/04-data-storage) 一一对应的机器辅助翻译。代码、协议字段和标识符保持原文；如翻译与英文源事实有歧义，以英文版本为准。
 
@@ -19,7 +19,7 @@
 ## 1. 目标
 
 本地优先、重启后可恢复、敏感数据隔离 — 另外，对于
-架构 v7、v8 和 v11：
+架构 v7、v8、v11 和 v14：
 
 1. **无损转录** — 存储运行时消息形状（内容块），
    不是 UI 投影； UI 形状是在 RPC 边界处导出的。
@@ -42,9 +42,9 @@
 ~/.pi-desktop/
  ├── pi.sqlite            # index database (WAL: + -wal/-shm) — host-core only
  ├── pi.sqlite.v6.bak     # archived pre-v7 database (D119 breaking reset)
- ├── pi.sqlite.v8.bak     # exact readable backup before v8→v11 destructive work
- ├── pi.sqlite.v9.bak     # exact readable backup before v9→v11 destructive work
- ├── pi.sqlite.v10.bak    # exact readable backup before v10→v11 destructive work
+ ├── pi.sqlite.v8.bak     # exact readable backup before v8→v15 destructive work
+ ├── pi.sqlite.v9.bak     # exact readable backup before v9→v15 destructive work
+ ├── pi.sqlite.v10.bak    # exact readable backup before v10→v15 destructive work
  ├── sessions/            # transcript file store (D119) — host-core only
  │    ├── <sessionId>.jsonl           # live transcript (header + messages)
  │    ├── <sessionId>.revisions.jsonl # regenerate branches, append-only
@@ -142,6 +142,9 @@ commit 不会删除历史审查证据。
   重启后的上下文。活动回合的 `retainedTail` 最多保存最新的用户消息；
   已完成回合的检查点尾部为空。`details.retainedTailMode`（`active_turn` 或
   `completed_turn`）持久化该边界；没有该字段的旧记录归一化为最新的用户消息。
+  当绑定模型需要 DeepSeek 风格推理回放时，`details.retainedReasoning` 可保存有界的
+  先前思考回合（仅 text + thinking），以便压缩后的 Completions 请求能回传可用推理
+  而不恢复 tool-call 对（ADR 0256 / #296）。
   活动消息超过保留限制时，将以标记、截断的形式存储；UI/diagnostics 的原始消息行
   保持完整和权威。
   自动压缩失败可能会存储 `details.fallback = "retained_tail"`
@@ -176,7 +179,7 @@ PRAGMA trusted_schema = ON;       -- required by the FTS triggers (§4.8); the D
 PRAGMA auto_vacuum = INCREMENTAL; -- set at creation, before any table
 ```
 
-- 架构版本位于 `PRAGMA user_version` (v11 = `11`) 中。 v1 `meta`
+- 架构版本位于 `PRAGMA user_version` (v15 = `15`) 中。 v1 `meta`
   桌子不见了。
 - host-core 是**单一作者**；语句使用 `prepare_cached`；每个
   多行写入在一个事务中运行。
@@ -210,6 +213,7 @@ CREATE TABLE kv (
 | `ui` | 渲染器要求主机保留的非关键 UI 状态 |
 | `cache` | 模型刷新标记，最近的模型参考（规范 13 §3） |
 | `plugin:<id>` | 每个插件的设置；卸载=`DELETE WHERE ns = ?` |
+| `projectMemory` | 按规范项目路径键控的持久用户创作上下文；结构化值包含 `format: "entries-v1"`、视觉 `entries`、派生 `content` 与 `updatedAt` |
 
 新的配置域（例如 MCP 服务器）作为命名空间启动；他们毕业到
 仅当表需要关系或索引时才使用它们。
@@ -225,13 +229,13 @@ type SidebarPreferences = {
   sessionMeta: Record<string, {
     pinned?: boolean;
     archived?: boolean;
-    order?: number; // compatibility/future manual order
+    order?: number; // renderer-local manual order
   }>;
   projectMeta: Record<string, {
     pinned?: boolean;
     archived?: boolean;
     collapsed?: boolean;
-    order?: number; // compatibility/future manual order
+    order?: number; // renderer-local manual order
   }>;
   projectSort: "recent" | "created" | "oldest" | "name" | "manual";
   sessionView: {
@@ -244,9 +248,10 @@ type SidebarPreferences = {
 
 - 项目密钥和保留路径使用规范化的完整路径；会话密钥使用
   持久会话 ID。 Duplicate/slash-variant 路径在加载时被丢弃。
-- `sessions.mode = 'agent'`/`PRAGMA incremental_vacuum` 是兼容性字段。该基线没有暴露
-  drag/manual-reorder交互；没有可用顺序的值回落为
-  近期订单稳定。
+- `projectSort: "manual"` 和 `projectMeta[*].order` 保存渲染器本地的项目显示顺序。
+  拖动项目标题或在该标题上使用键盘箭头会为可见的规范化路径写入连续顺序值。
+  缺失或无效值回落到稳定路径顺序；置顶和归档优先级仍在手动顺序之前应用。
+  会话 `manual`/`order` 仍是兼容性字段，侧边栏不会公开会话手动重排。
 - 缺失、格式错误或不可写的首选项回退到空元数据，
   `recent`，存档隐藏，以及主机选择的项目。偏好失败
   永远不会阻止主机操作。
@@ -351,6 +356,7 @@ CREATE TABLE sessions (
   permission_mode TEXT NOT NULL DEFAULT 'inherit' -- D115: inherit follows settings
                 CHECK (permission_mode IN ('inherit', 'ask', 'accept-edits', 'auto')),
   source      TEXT,                            -- import origin: claude-code | codex | opencode | pi
+  deleted_at  INTEGER,                         -- plugin trash marker; null means active
   pinned      INTEGER NOT NULL DEFAULT 0,
   last_seq    INTEGER NOT NULL DEFAULT 0,      -- message ordinal allocator
   created_at  INTEGER NOT NULL,
@@ -358,6 +364,25 @@ CREATE TABLE sessions (
 );
 CREATE INDEX idx_sessions_updated ON sessions(updated_at DESC);
 CREATE INDEX idx_sessions_project ON sessions(project_id) WHERE project_id IS NOT NULL;
+CREATE INDEX idx_sessions_deleted ON sessions(deleted_at) WHERE deleted_at IS NOT NULL;
+```
+
+插件导入增加一个由主机拥有的来源 sidecar。它与核心会话身份分离，
+每次插件读写都必须匹配创建该行的 `plugin_id`：
+
+```sql
+CREATE TABLE session_import_origins (
+  plugin_id    TEXT NOT NULL,
+  source_id    TEXT NOT NULL,
+  external_id  TEXT NOT NULL,
+  session_id   TEXT NOT NULL UNIQUE REFERENCES sessions(id) ON DELETE CASCADE,
+  source_label TEXT,
+  origin_json  TEXT,
+  created_at   INTEGER NOT NULL,
+  UNIQUE(plugin_id, source_id, external_id)
+);
+CREATE INDEX idx_session_import_origins_plugin
+  ON session_import_origins(plugin_id, source_id, created_at DESC);
 ```
 
 - `source='user'`/`kv(cache)` 是**松散引用**（无 FK），就像 `turns` 一样：
@@ -380,6 +405,13 @@ CREATE INDEX idx_sessions_project ON sessions(project_id) WHERE project_id IS NO
   状态。
 - `source` + 确定性导入 id 保持重新导入幂等性并让
   UI 徽章导入会话。
+- `deleted_at` 是插件 `trash` 操作使用的主机时间戳。软删除的插件会话
+  从普通列表和插件读取中隐藏，但其转录本和来源会一直保留到归属插件
+  执行 purge。核心会话删除会级联清理 sidecar；purge 也会移除转录文件。
+- `session_import_origins` 保存插件/来源/外部 id 幂等键，以及原始
+  `projectPath`、`modelId`、`providerId` 历史 JSON；这些值不会成为插件
+  导入会话的活动绑定。插件可以显式提供宿主创建的 `projectId`；只有该 id
+  会成为活动 `project_id`，历史字段保持不变。
 - `project_id` 也是该会话的工具根权限。切换
   可见工作区无法重定向正在进行或稍后的工具调用
 到另一个会话。
@@ -512,6 +544,100 @@ Renderer 重新加载
 服务：中间会话模型开关（“仅下一回合”，规范 13 §4），
 每条消息成本芯片的会话汇总（基准§3.2），failed/aborted 徽章
 （§3.8），并重试谱系。
+
+### 4.6b turn_queue —— Host 拥有的回合队列（架构 v15）
+
+```sql
+CREATE TABLE turn_queue (
+  id               TEXT PRIMARY KEY,
+  session_id       TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  principal        TEXT NOT NULL,
+  idempotency_key  TEXT,
+  input_hash       TEXT NOT NULL,
+  content          TEXT NOT NULL,
+  attachments_json TEXT,
+  permission_mode  TEXT NOT NULL,
+  position         INTEGER NOT NULL,
+  created_at       INTEGER NOT NULL
+);
+CREATE INDEX idx_turn_queue_session ON turn_queue(session_id, position);
+CREATE UNIQUE INDEX idx_turn_queue_idempotency
+  ON turn_queue(session_id, principal, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
+```
+
+- 每条在活动回合之后准入的 prompt 一行（D375 / ADR 0213）。无头 Agent Host 模块是唯一
+  写入方，经 `session.queuePush`、`session.queueList`、`session.queueRemove` 操作；存储
+  本身绝不启动回合。
+- `position` 按会话只增不减，删除一条不会重排其余条目。`principal` 加 `idempotency_key`
+  使重试的 push 返回同一行；同一 key 配不同 `input_hash` 则以 `IDEMPOTENCY_CONFLICT`
+  失败。每个会话最多八条。
+- `attachments_json` 保存 prompt 的附件引用；字节和其他 prompt 附件一样留在会话 scratch
+  或项目根下。
+- 重启后模块列出全部条目，把每个会话的队列挂起到 controller 接入，并在活动回合终止事件
+  之后释放一条。删除会话会级联删除其条目。
+
+### 4.6c 会话协作 ledger —— 宿主拥有的投递状态（架构 v16）
+
+```sql
+CREATE TABLE session_collaboration_links (
+  session_id            TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+  created_by_session_id TEXT NOT NULL,
+  plugin_id             TEXT NOT NULL,
+  created_at            INTEGER NOT NULL
+);
+
+CREATE TABLE session_collaboration_messages (
+  id                    TEXT PRIMARY KEY,
+  plugin_id             TEXT NOT NULL,
+  source_session_id     TEXT NOT NULL,
+  source_title          TEXT NOT NULL,
+  target_session_id     TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  target_title          TEXT NOT NULL,
+  kind                  TEXT NOT NULL CHECK(kind IN ('task', 'message', 'completion')),
+  content               TEXT NOT NULL,
+  status                TEXT NOT NULL CHECK(status IN
+    ('queued', 'running', 'completed', 'failed', 'cancelled', 'interrupted')),
+  notify_on_completion  INTEGER NOT NULL DEFAULT 0,
+  turn_id               TEXT REFERENCES turns(id) ON DELETE SET NULL,
+  reply_to_message_id   TEXT,
+  idempotency_key       TEXT NOT NULL,
+  remaining_hops        INTEGER NOT NULL,
+  permission_ceiling    TEXT NOT NULL CHECK(permission_ceiling IN
+    ('ask', 'accept-edits', 'auto')),
+  result                TEXT,
+  error                 TEXT,
+  created_at            INTEGER NOT NULL,
+  updated_at            INTEGER NOT NULL,
+  UNIQUE(plugin_id, source_session_id, idempotency_key)
+);
+
+CREATE UNIQUE INDEX idx_session_collaboration_turn
+  ON session_collaboration_messages(turn_id) WHERE turn_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_session_collaboration_receipt
+  ON session_collaboration_messages(reply_to_message_id)
+  WHERE kind = 'completion';
+```
+
+- ledger 是插件协作投递的权威身份与生命周期记录。`source_session_id` 和
+  `target_session_id` 是真实的持久 Session ID；标题只是显示快照。目标真正开始投递时
+  才分配 `turn_id`，插件创建记录时不会提前分配。
+  `source_session_id` 有意不设外键，而 `target_session_id` 会级联删除，因此投递记录及其完成回执
+  在发送者被删除后仍然保留。读取投影因此把此类引用报告为 `available: false`，而不是丢弃该行。
+- `turn_queue.session_message_id` 将排队的 Agent Host 准入绑定到 ledger 行。使用相同
+  `(plugin_id, source_session_id, idempotency_key)` 重试会返回原投递；改变目标、正文、
+  类型或回调标志则以 `IDEMPOTENCY_CONFLICT` 失败。
+- 回调是 `kind = 'completion'` 的行，通过 `reply_to_message_id` 指向原投递。部分唯一
+  索引和宿主结算事务使回调最多创建一次。回调正文只含有界的结果/错误投影；目标转录本
+  仍是完整事实来源。
+- 宿主保存发送者的有效权限上限，并拒绝当前有效模式超过该上限的目标。自主链路每跳递减
+  `remaining_hops`；完成行不能再创建自动回调。
+- 启动时，仍有 `turn_queue` 行的排队工作会继续由 Agent Host controller 接管但保持挂起。
+  运行中工作和没有队列准入的排队投递会标记为 `interrupted`；启动栅栏不会在新的
+  controller 准入前重放回合。
+- 协作来源存储在转录行 `meta` 的 `sessionMessage` 中，并以
+  `UiMessage.sessionMessage` 投影到 UI。宿主校验阻止伪造、剥离、编辑或重新生成协作输入
+  变成人类输入。该元数据是增量字段，不需要给 `messages` 增加列。
 
 ### 4.7 messages — 转录索引
 
@@ -769,13 +895,16 @@ CREATE TABLE secrets_meta (
   owner_kind TEXT NOT NULL DEFAULT 'provider',
   owner_id   TEXT,
   kind       TEXT NOT NULL DEFAULT 'api_key',
-  backend    TEXT NOT NULL,                -- safe_storage | file_fallback
+  backend    TEXT NOT NULL,                -- file_fallback (safe_storage reserved)
   updated_at INTEGER NOT NULL
 ) WITHOUT ROWID;
 ```
 
-秘密*值*永远不会进入数据库（D028/D031）：操作系统安全存储主，
-`secrets/` 下的 AES-GCM 文件回退。
+秘密*值*永远不会进入数据库（D028/D031）。实际交付的后端是 host-core 的文件存储：
+`secrets/` 下的 AES-256-GCM 密文，密钥是 host-core 一次性生成并与密文放在一起的
+机器密钥 `secrets/.machine-key`（仅属主可读写的文件模式）。host-core 对每次写入都记录
+`file_fallback`；`safe_storage` 值为尚未实现的操作系统钥匙串后端保留，host-core 与
+Electron main 目前都没有实现它，因此能读取数据目录的同用户进程也能解密这些秘密。
 
 ### 4.13 audit_log
 
@@ -866,13 +995,16 @@ CREATE INDEX idx_notifications_unread
 | 通过 `session.endTurn` 打开终端 | `completed`/`error`：仅当该 id 已索引时才移除进行中检查点，否则留给 outbox 或启动恢复（D327）。`recoverInflight`：最终行从未落盘时，回合已 `completed` 则追加为 `complete`，否则为 `aborted` | 更新 `turns`；对于 completed/error，在同一交易中插入一个通知并修剪至 200 个；中止插入 无；被提升的检查点在该回合下获得一个索引行 |
 | plan/goal 提交 | 主机将准确的 Markdown 字节写入新的唯一 `<workspaceRoot>/.pi/<kind>/*.md` 文件 | 在发出批准请求之前插入一个 `plan_approvals(pending)` 行，其中包含类型、结构化 title/question、工件 path/hash/size 和到期时间 |
 | plan/goal 批准 | 验证不可变工件 path/hash/size | 原子地解析 `plan_approvals`，更新 `sessions.mode` 和显式 `permission_mode`，并设置 `execution_state = 'queued'`； reject/expiry 保持合约模式 |
-| 转录本截断/编辑/无应答智能停止 (`session.replaceMessages`) | 原子记录重写（临时+重命名）；只保留边界仍然存在的检查点 | single tx：删除索引行，批量重新插入携带每个幸存消息所属的 `turn_id`，重置 `last_seq`； smart Stop 仅将其结构化输入框快照保留在渲染器内存中 |
+| 转录本截断/重试/编辑 (`session.truncateFrom`) | 主机拥有的后缀截断：中止残留 running 回合，归档被丢弃的重新生成尾巴，原子前缀重写（临时+重命名）；只保留边界仍然存在的检查点 | 经 `replace_messages` 的 single tx：删除索引行，批量重新插入携带每个幸存消息所属的 `turn_id`，重置 `last_seq`；删除进行中检查点 |
+| 删除消息/无应答智能停止 (`session.replaceMessages`) | 原子记录重写（临时+重命名）；只保留边界仍然存在的检查点 | single tx：删除索引行，批量重新插入携带每个幸存消息所属的 `turn_id`，重置 `last_seq`； smart Stop 仅将其结构化输入框快照保留在渲染器内存中 |
+
 | 会话分叉 (`session.fork`) | 使用重新映射的 message/tool-call id 编写新的转录本； copy/remap 仅当包含其边界时才为检查点 | single tx：克隆会话配置，插入子索引行，设置`last_seq`；失败时删除子文件 |
 | 重新生成分支保存 | 追加修订行（带 `revisionIndex` 时为该已有变体的刷新行） | 带有 `message_count` 的索引行（+ `is_active` 翻转）；刷新只更新 `message_count` |
 | 回合完成分支存档 (`session.saveActiveRevision`) | 附加修订行（活动变体已归档时为刷新行），然后仅重写寻呼机标记的根用户的转录行 | 带有 `message_count` 的索引行（+ `is_active` 翻转）；其他消息的索引行未受影响 |
 | 修订版开关 | 先为实时分支自身的变体追加刷新行，读取目标分支，原子转录重写并保留锚点仍存在的检查点 | 翻转 `is_active`，重建索引行并带上每条幸存消息所属的 `turn_id`，重置 `last_seq` |
 | 导入 | 写入转录文件 | 每个会话一笔交易：会话行 + 索引行；失败时文件将被删除 |
 | 会话删除 | 行删除后删除两个会话文件 | `DELETE FROM sessions`（级联）；Electron 主进程会丢弃该会话的 outbox 条目（D318） |
+| 删除项目（`projects.remove`） | 在删除各自的行之后移除每个所属会话的文件 | 每个会话一笔交易（`DELETE FROM sessions`，级联），外加项目行及其 `projectMemory` kv 条目；磁盘上的项目文件夹从不被触碰 |
 | 孤立会话恢复（启动 / `session.appendMessage`，D318） | 保留现有的 JSONL 文件 | 重新插入缺失的 `sessions` 行，并依据该文件重建索引行；若文件也已不存在，追加操作会在现有 id 下插入一个占位行，使 outbox 能够排空 |
 
 规则：回合开始前用户消息持久（fsync'd 文件行）；
@@ -949,7 +1081,7 @@ outbox 排空。渲染器侧的停止绝不重写已有已开始回复的转录
 - JSON 列在热路径上盲读（按原样发送到渲染器）；
   任何过滤或求和的内容都是按规则提升的列。
 
-## 7. 版本控制、v7 重置和 v8 到 v11 Plan/Goal 迁移
+## 7. 版本控制、v7 重置和 v8 到 v16 迁移
 
 - `PRAGMA user_version` 保留模式权限；未来的结构性变化
   再次添加有序的 Rust 迁移 fns，每个都在一个事务中，并带有一个
@@ -960,9 +1092,15 @@ outbox 排空。渲染器侧的停止绝不重写已有已开始回复的转录
   旧文件中的会话、提供程序和设置不会保留；
   存档仍保留以供手动恢复。所有 v7 之前的迁移代码
   （v1 `settings.sqlite` 导入，v2→v6 链）被删除。
-- 全新安装直接运行完整的 v11 DDL。
+- 全新安装直接运行完整的 v16 DDL。
+- **架构 v15 是增量的。** 它增加 `turn_queue` 表及其两个索引（D386 / ADR 0213），使 Host
+  拥有的回合队列在重启后存活；不改动任何已有行，迁移前保留 `pi.sqlite.v14.bak`。
+- **架构 v16 是增量的。** 它增加会话协作 link 和投递表、生命周期索引，以及可为空的
+  `turn_queue.session_message_id` 绑定（D409 / ADR 0239）。既有会话、回合、队列条目和
+  插件数据保持有效。迁移前保留 `pi.sqlite.v15.bak`；启动恢复保留持久排队投递，但不会
+  自动重放已中断工作。
 - **架构 v7 首先到达 v8，然后使用受保护的路径。** v7→v8
-  迁移之后是相同的受保护的 v8→v11 迁移；架构-v9 和
+  迁移之后是相同的受保护的 v8→v15 迁移；架构-v9 和
   schema-v10 数据库采用相同的受保护路径并接收精确的可读数据
   破坏性工作之前的 `pi.sqlite.v9.bak` / `pi.sqlite.v10.bak`。
 - **v8-to-v11 是就地事务迁移。** 在迁移之前，
@@ -996,6 +1134,10 @@ outbox 排空。渲染器侧的停止绝不重写已有已开始回复的转录
   仍然可以恢复。
   旧版 `planApprovalPermissionMode` 已从应用设置 JSON 中删除
   迁移期间；所有不相关的设置保持不变。
+
+- **架构 v14 是新增迁移。** 它增加可为空的 `sessions.deleted_at`、部分
+  删除索引和 `session_import_origins`。现有会话保持活动状态且没有来源行。
+  迁移使用同一个受保护事务，并在完整性检查通过前保留 v14 之前的备份。
 
 `largePasteThreshold` 是应用设置 JSON 中的新增字段，而不是数据库 schema 字段。
 主机读取设置时会将缺失、格式错误或超出范围的值规范化为 600，设置写入则验证
@@ -1048,7 +1190,7 @@ outbox 排空。渲染器侧的停止绝不重写已有已开始回复的转录
 ## 10. 秘密规则（不变）
 
 1.渲染器从不保守秘密
-2. 操作系统 safeStorage 主；带有风险警告的显式加密文件后备
+2. 操作系统 safeStorage 仍是目标主后端；实际交付的是加密文件后端（`file_fallback`），机器密钥与密文放在一起，设置中必须说明这一风险
 3. SQLite 中不存在秘密值；仅 `secrets_meta` 记账
 4. 导出的会话默认排除机密
 
@@ -1109,3 +1251,23 @@ UI投影损失
 19. 计划的或无人值守的 Plan **或 Goal** 运行在 provider/artifact/ 之前失败
     使用 `PLAN_REQUIRES_INTERACTIVE_SESSION` 进行队列工作；无背景路径
     自动批准任一类型
+20. 架构 v14 插件导入使用主机生成的会话 id；每个会话一个来源行；以
+    `(pluginId, source, externalId)` 幂等；除非显式提供宿主创建的
+    `projectId`，否则不绑定项目或模型；读取和变更按所有权限制，并支持先
+    trash、后 purge。
+21. 架构 v16 协作行在重试时保留源/目标 Session ID 和幂等性，将投递绑定到
+    实际目标回合，持久化转录来源，不创建重复完成回调，执行权限上限和跳数限制，
+    在重启后保留排队工作但不重放，并在取消时保留目标会话。
+## 当前回合补充指令的转录位置预留
+
+已接收的补充输入通过 Electron 现有消息 outbox 写入，带有 `meta.steering: true`，
+并以 `UiMessage.steering` 往返传递。即使渲染器重载丢失提交状态，Smart Stop 仍保留
+该输入。如果助手仍在流式回复，先加入其临时快照，为回复预留位于新用户行之前的位置。
+主机保存临时行和进行中检查点，也保存空预留行，以便崩溃恢复将其落定。
+只要索引中的助手仍为 `status: streaming`，后续流式检查点就仍然有效。
+
+`session.appendMessage` 对已完成消息保持幂等重放，仅允许同一会话和消息 id 的
+终态助手替换索引中的流式助手。更新仅涉及该转录行和搜索文本，保留顺序、所属回合及
+其他所有行。迟到的部分快照和重复终态快照不能覆盖已落定结果。恢复时在原位置应用
+最新检查点。如果主机调用尚未完成时出现更新的追加快照，outbox 同样保留该快照。
+无需存储架构迁移。

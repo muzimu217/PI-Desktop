@@ -8,9 +8,11 @@ import {
   statSync,
   rmSync,
 } from "node:fs";
-import { basename, join, dirname, relative, resolve, sep } from "node:path";
+import type { Stats } from "node:fs";
+import { open as openFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
-import { AsyncLocalStorage } from "node:async_hooks";
 import {
   busTopicAllowed,
   isDeniedFsPath,
@@ -29,8 +31,17 @@ import {
   pluginToolName,
   resolveFsAccess,
   resolveMcpRefs,
+  isExternalThemeAssetPath,
+  normalizeThemeAssetPath,
   sanitizeThemeCss,
   skillIdFromPath,
+  themeAssetUrl,
+  formatPluginThemeVariables,
+  normalizePluginThemeVariableValues,
+  validatePluginThemeVariables,
+  THEME_ASSET_MAX_BYTES,
+  THEME_CSS_MAX_BYTES,
+  WINDOW_BACKGROUND_COLOR_PATTERN,
   resolvePluginLocalizedString,
   validateManifest,
   validateMcpServer,
@@ -49,6 +60,7 @@ import {
   type PluginServiceContrib,
   type PluginSettingContrib,
   type PluginSkillContrib,
+  type PluginThemeVariableContrib,
 } from "@pi-desktop/plugin-sdk";
 import {
   isAllowedKeybinding,
@@ -56,6 +68,7 @@ import {
   normalizeKeybinding,
   type PluginServiceStatus,
   type PluginSettingDefinition,
+  type PluginWorkspaceInfo,
 } from "@pi-desktop/shared";
 import {
   previewFile,
@@ -64,9 +77,11 @@ import {
   resolveWithinRoot,
 } from "./fs-panel";
 import { McpServerClient, type McpServerClientOptions } from "./plugin-mcp";
+import { PluginToolInvocations, type PluginToolInvocation } from "./plugin-tool-invocations";
 import { DevPluginWatcher, type DevPluginWatcherDeps } from "./plugin-watcher";
 import { parseAllowedExternalUrl } from "./safe-open-external";
 import type { PluginAppearance } from "../shared/plugin-panel-chrome";
+import type { McpControlController, McpControlInvokeInput } from "./mcp-control";
 
 export type RegisteredCommand = {
   id: string;
@@ -84,9 +99,26 @@ export type RegisteredPluginTool = {
   description: string;
   risk?: string;
   schema?: unknown;
+  /**
+   * Action names that may run in Plan or Goal mode. Omitted or empty
+   * means the tool is hidden from the model in those modes (ADR 0211).
+   */
+  planSafeActions?: readonly string[];
   execute: (
     args: unknown,
-    ctx?: { sessionId?: string; modelKey?: string; thinkingLevel?: string },
+    ctx?: {
+      sessionId?: string;
+      /**
+       * Runtime turn identity for this tool call. Matches the `turnId` the host
+       * reports through `session:turnEnded`, so a plugin can scope resources
+       * (overlays, caches, helper sessions) to one host turn.
+       */
+      turnId?: string;
+      signal?: AbortSignal;
+      mode?: "agent" | "plan" | "goal";
+      modelKey?: string;
+      thinkingLevel?: string;
+    },
   ) => Promise<unknown>;
 };
 
@@ -94,6 +126,21 @@ export type RegisteredPluginTool = {
  * A skill document a plugin taught the agent (spec 07 §3). Only the metadata
  * travels into the system prompt; the body is loaded on demand by the model.
  */
+/**
+ * One ExtensionAPI module a plugin contributes (spec 07-plugins/16). The
+ * module runs inside the agent sidecar; this record only says where it is
+ * and which plugin owns it.
+ */
+export type RegisteredAgentExtension = {
+  /** Realpath of the module; stable identity for the sidecar and diagnostics. */
+  id: string;
+  pluginId: string;
+  pluginName: string;
+  /** Absolute module path inside the plugin directory. */
+  entry: string;
+  root: string;
+};
+
 export type RegisteredPluginSkill = {
   /** `<pluginId>/<skillId>` — what the model passes to the Skill tool. */
   id: string;
@@ -119,6 +166,14 @@ export type RegisteredPluginTheme = {
   /** Palette the overrides layer on; drives `data-theme` in the renderer. */
   base: "light" | "dark";
   css: string;
+  /** Host-generated declarations from manifest-validated variable values. */
+  variablesCss?: string;
+  /**
+   * Native window background while this theme is selected, per resolved
+   * palette. Absent unless the plugin declared it and holds
+   * `ui.window.appearance` (ADR 0248).
+   */
+  windowBackground?: { light?: string; dark?: string };
 };
 
 export type PluginPanelRequest = {
@@ -131,8 +186,15 @@ export type PluginPanelRequest = {
   theme?: "light" | "dark";
   /** The plugin's egress allowlist; the panel session is confined to it. */
   netDomains?: readonly string[];
+  /** Allows the isolated panel to request microphone audio, never camera access. */
+  allowMicrophone?: boolean;
   /** Development panels show the host drag-band reminder in their chrome. */
   development?: boolean;
+};
+
+export type PluginPanelBridgeContext = {
+  /** Absolute path recorded by the panel preload for a real drop gesture. */
+  droppedPath?: string;
 };
 
 /** Transport to one plugin host process (ADR 0008). */
@@ -169,8 +231,27 @@ export type PluginFsConsentRequest = {
  */
 export type PluginFsConsentAnswer = "once" | "session" | "deny";
 
+/** One dangerous desktop operation a plugin asked the host to run. */
+export type PluginDesktopConsentRequest = {
+  pluginId: string;
+  pluginName: string;
+  /** Operation id from the shared controller catalog, e.g. `session/delete`. */
+  operation: string;
+  /** Catalog description of the operation, for the dialog. */
+  description: string;
+  /** Positional arguments as the plugin supplied them (secret-stripped later). */
+  args: unknown[];
+};
+
 export type PluginHostServices = {
   getWorkspacePath: () => string | null;
+  /**
+   * The workspace plus the project group behind it, when the caller can supply
+   * it. Additive: `workspace.get` falls back to `getWorkspacePath` alone.
+   */
+  getWorkspaceInfo?: () => PluginWorkspaceInfo | null;
+  /** The set of `contributes.agentExtensions` modules changed (load/unload). */
+  agentExtensionsChanged?: () => void;
   getLocale?: () => string;
   getAppVersion?: () => string;
   /**
@@ -180,6 +261,16 @@ export type PluginHostServices = {
    * when it changes. Workspace switches push `workspace:changed` the same way.
    */
   getAppearance?: () => PluginAppearance;
+  /**
+   * Persist and apply `AppSettings.theme`. Used by `pi.app.setTheme` so a
+   * plugin panel can switch the shell theme without opening Settings.
+   */
+  setThemePreference?: (theme: string) => Promise<void>;
+  /**
+   * Broadcast that this plugin's contributed themes changed (runtime upsert /
+   * remove). Host should notify the renderer and refresh panel appearance.
+   */
+  onPluginThemesChanged?: (pluginId: string) => void;
   showToast: (message: string, level?: "info" | "warn" | "error") => void;
   notify: (input: { title: string; body?: string }) => void;
   getNotificationPermission: () => PluginNotificationPermission | Promise<PluginNotificationPermission>;
@@ -204,6 +295,16 @@ export type PluginHostServices = {
     body?: string;
     timeoutMs?: number;
   }) => Promise<{ status: number; headers: Record<string, string>; bodyText: string }>;
+  /** The reviewed desktop operation controller shared with MCP. */
+  desktopControl?: McpControlController;
+  /**
+   * Blocking, native consent for a plugin-originated dangerous desktop
+   * operation (session delete, permission-mode change, tool approval). The
+   * controller's `confirm` flag is only the caller's acknowledgement; the
+   * user decides here. Without this service every dangerous operation from a
+   * plugin is refused, which is the safe default for a headless host.
+   */
+  confirmDesktopControl?: (request: PluginDesktopConsentRequest) => Promise<boolean>;
   audit?: (entry: Record<string, unknown>) => void;
   /**
    * Blocking, native consent for a file access the manifest did not declare.
@@ -280,6 +381,18 @@ export type PluginHostServices = {
     stripToolName?: string;
     signal?: AbortSignal;
   }) => Promise<PluginCompleteResult>;
+  session?: {
+    list: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    get: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    listMessages: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    import: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    importBatch: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    rename: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    delete: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+  };
+  project?: {
+    create: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+  };
 };
 
 /** Host APIs a plugin process may reach. Anything else does not exist (spec 04 §2). */
@@ -287,6 +400,11 @@ const HOST_API_ALLOWLIST = new Set([
   "app.getVersion",
   "app.getLocale",
   "app.getAppearance",
+  "app.setTheme",
+  "themes.upsert",
+  "themes.remove",
+  "themes.list",
+  "themes.setVariables",
   "plugin.getSettings",
   "plugin.setSettings",
   "plugin.getDataPath",
@@ -297,8 +415,12 @@ const HOST_API_ALLOWLIST = new Set([
   "ui.getNotificationPermission",
   "ui.requestNotificationPermission",
   "ui.showNativeNotification",
+  "desktop.listOperations",
+  "desktop.invoke",
   "workspace.get",
   "fs.readText",
+  "fs.stat",
+  "fs.readRange",
   "fs.readPreview",
   "fs.openDefault",
   "fs.reveal",
@@ -330,10 +452,15 @@ const HOST_API_ALLOWLIST = new Set([
   "browser.cdp",
   "models.list",
   "session.getLlmContext",
+  "session.list",
+  "session.get",
+  "session.listMessages",
+  "session.import",
+  "session.importBatch",
+  "session.rename",
+  "session.delete",
   "agent.complete",
 ]);
-
-const toolSession = new AsyncLocalStorage<string>();
 
 /** Load must finish (module eval + onLoad) inside this budget. */
 const PLUGIN_LOAD_TIMEOUT_MS = 15_000;
@@ -371,8 +498,12 @@ const NET_FETCH_MAX_REDIRECTS = 5;
 const MAX_SKILL_BYTES = 128 * 1024;
 /** Catalog lines stay short — the body carries the detail. */
 const MAX_SKILL_DESCRIPTION_CHARS = 240;
-/** A plugin may contribute at most this many themes. */
-const MAX_THEMES_PER_PLUGIN = 8;
+/**
+ * Theme ids accepted by `pi.themes.upsert` / `contributes.themes[].id`.
+ * Namespaced form `plugin:<pluginId>:<themeId>` is built by `pluginThemeId`.
+ */
+const THEME_LOCAL_ID_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/;
+const THEME_VARIABLES_SETTINGS_KEY = "__pi_themeVariables";
 /** A plugin may bring at most this many MCP servers. */
 const MAX_MCP_SERVERS_PER_PLUGIN = 8;
 /** A plugin may keep at most this many resident services alive. */
@@ -410,6 +541,8 @@ export const MAX_COMPLETE_MESSAGE_CHARS = 200_000;
 const MAX_GLOB_MATCHES = 500;
 /** Entries returned for one directory. A tree is walked lazily, not dumped. */
 const MAX_LIST_ENTRIES = 1000;
+/** Maximum bytes one plugin range call may cross the broker with. */
+const MAX_FS_READ_RANGE_BYTES = 8 * 1024 * 1024;
 /** Directories `pi.fs.glob` never walks into; they are noise and are denied anyway. */
 const GLOB_SKIP_DIRS = new Set([".git", "node_modules", ".venv", "__pycache__"]);
 /** Entries in one plugin's write ledger; oldest are dropped past this. */
@@ -436,6 +569,8 @@ type LoadedPlugin = {
   userRoot?: string;
   /** Timestamps of recent deletes, backing the rate brake. */
   deletes: number[];
+  /** Memory-only grants created by a real panel drop gesture. */
+  dropGrants: Map<string, { fullPath: string; requestPath: string }>;
   child?: PluginProcessHandle;
   pending: Map<string, PendingCall>;
   nextCallId: number;
@@ -457,6 +592,178 @@ function apiError(code: string, message: string): PluginApiError {
   const err = new Error(message) as PluginApiError;
   err.code = code;
   return err;
+}
+
+function pluginActionEnum(schema: unknown): readonly string[] | null {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return null;
+  const properties = (schema as { properties?: unknown }).properties;
+  if (!properties || typeof properties !== "object" || Array.isArray(properties)) return null;
+  const action = (properties as Record<string, unknown>).action;
+  if (!action || typeof action !== "object" || Array.isArray(action)) return null;
+  const enumValue = (action as { enum?: unknown }).enum;
+  if (!Array.isArray(enumValue)) return null;
+  const values: string[] = [];
+  for (const entry of enumValue) {
+    if (typeof entry !== "string") return null;
+    values.push(entry);
+  }
+  return values;
+}
+
+/**
+ * Normalize and validate a plugin tools `planSafeActions` declaration
+ * (ADR 0211). Every entry must be a string and, when the schema carries an
+ * `action` enum, must be one of that enum. The validation here is the
+ * final defense in depth: the runtime normally hides unsafe tools from the
+ * model in Plan mode, but a stray call must still be rejected.
+ */
+function normalizePlanSafeActions(
+  raw: unknown,
+  schema: unknown,
+  toolName: string,
+): readonly string[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) {
+    throw apiError(
+      "INVALID_ARGUMENT",
+      `plugin tool ${toolName} planSafeActions must be a string array`,
+    );
+  }
+  const cleaned: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "string" || !entry) {
+      throw apiError(
+        "INVALID_ARGUMENT",
+        `plugin tool ${toolName} planSafeActions entries must be non-empty strings`,
+      );
+    }
+    if (cleaned.includes(entry)) continue;
+    cleaned.push(entry);
+  }
+  const actionEnum = pluginActionEnum(schema);
+  if (actionEnum) {
+    const actionSet = new Set(actionEnum);
+    for (const action of cleaned) {
+      if (!actionSet.has(action)) {
+        throw apiError(
+          "INVALID_ARGUMENT",
+          `plugin tool ${toolName} planSafeActions entry ${action} is not in the schema action enum`,
+        );
+      }
+    }
+  }
+  return cleaned;
+}
+
+const PLUGIN_SESSION_MAX_PAYLOAD_BYTES = 32 * 1024 * 1024;
+const PLUGIN_SESSION_MAX_CONTENT_BYTES = 512 * 1024;
+const PLUGIN_SESSION_MAX_TOOL_VALUE_BYTES = 256 * 1024;
+const PLUGIN_SESSION_MAX_JSON_DEPTH = 8;
+const PLUGIN_SESSION_RFC3339 =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+
+function pluginSessionJsonDepth(value: unknown): number {
+  if (Array.isArray(value)) {
+    return 1 + Math.max(0, ...value.map(pluginSessionJsonDepth));
+  }
+  if (value && typeof value === "object") {
+    return 1 + Math.max(0, ...Object.values(value).map(pluginSessionJsonDepth));
+  }
+  return 1;
+}
+
+function pluginSessionJsonBytes(value: unknown): number {
+  try {
+    const serialized = JSON.stringify(value);
+    return serialized === undefined ? Number.POSITIVE_INFINITY : new TextEncoder().encode(serialized).byteLength;
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
+function validatePluginSessionPayload(input: unknown, kind: "import" | "batch" | "other"): void {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw apiError("INVALID_PARAMS", "session input must be an object");
+  }
+  if (pluginSessionJsonBytes(input) > PLUGIN_SESSION_MAX_PAYLOAD_BYTES) {
+    throw apiError("LIMIT_EXCEEDED", "session payload exceeds 32 MiB");
+  }
+  if (pluginSessionJsonDepth(input) > PLUGIN_SESSION_MAX_JSON_DEPTH) {
+    throw apiError("LIMIT_EXCEEDED", "session JSON depth exceeds 8");
+  }
+  if (kind === "other") return;
+  const value = input as Record<string, unknown>;
+  const entries = kind === "batch" ? value.sessions : [value];
+  if (!Array.isArray(entries)) throw apiError("INVALID_PARAMS", "sessions must be an array");
+  if (kind === "batch" && entries.length > 100) {
+    throw apiError("LIMIT_EXCEEDED", "session batch exceeds 100 items");
+  }
+  if (kind === "import" && entries.length > 1) {
+    throw apiError("INVALID_PARAMS", "session import accepts one item");
+  }
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw apiError("INVALID_PARAMS", "session item must be an object");
+    }
+    const item = entry as Record<string, unknown>;
+    const title = typeof item.title === "string" ? item.title : "";
+    const externalId = typeof item.externalId === "string" ? item.externalId : "";
+    if (!title || [...title].length > 200) throw apiError("LIMIT_EXCEEDED", "title is invalid");
+    if (!externalId || [...externalId].length > 256) {
+      throw apiError("LIMIT_EXCEEDED", "externalId is invalid");
+    }
+    const createdAt = typeof item.createdAt === "string" ? item.createdAt : "";
+    const updatedAt = typeof item.updatedAt === "string" ? item.updatedAt : "";
+    const createdMs = Date.parse(createdAt);
+    const updatedMs = Date.parse(updatedAt);
+    if (!PLUGIN_SESSION_RFC3339.test(createdAt) || Number.isNaN(createdMs)) {
+      throw apiError("INVALID_PARAMS", "createdAt must be RFC3339");
+    }
+    if (!PLUGIN_SESSION_RFC3339.test(updatedAt) || Number.isNaN(updatedMs)) {
+      throw apiError("INVALID_PARAMS", "updatedAt must be RFC3339");
+    }
+    if (createdMs > updatedMs) throw apiError("INVALID_PARAMS", "createdAt is after updatedAt");
+    if (!Array.isArray(item.messages) || item.messages.length > 2000) {
+      throw apiError("LIMIT_EXCEEDED", "messages must contain at most 2000 items");
+    }
+    let previous = Number.NEGATIVE_INFINITY;
+    for (const message of item.messages) {
+      if (!message || typeof message !== "object" || Array.isArray(message)) {
+        throw apiError("INVALID_PARAMS", "message must be an object");
+      }
+      const row = message as Record<string, unknown>;
+      if (!["user", "assistant", "tool"].includes(String(row.role))) {
+        throw apiError("INVALID_PARAMS", "message role is invalid");
+      }
+      if (typeof row.content !== "string" || new TextEncoder().encode(row.content).byteLength > PLUGIN_SESSION_MAX_CONTENT_BYTES) {
+        throw apiError("LIMIT_EXCEEDED", "message content exceeds 512 KiB");
+      }
+      const messageAt = typeof row.createdAt === "string" ? row.createdAt : "";
+      const messageMs = Date.parse(messageAt);
+      if (!PLUGIN_SESSION_RFC3339.test(messageAt) || Number.isNaN(messageMs) || messageMs < previous) {
+        throw apiError("INVALID_PARAMS", "message timestamps must be monotonic RFC3339 values");
+      }
+      previous = messageMs;
+      if (row.role === "tool") {
+        if (!row.toolName || !row.toolCallId || !["success", "error"].includes(String(row.toolStatus))) {
+          throw apiError("INVALID_PARAMS", "tool message fields are invalid");
+        }
+        for (const field of ["toolArgs", "toolResult"]) {
+          if (row[field] !== undefined && pluginSessionJsonBytes(row[field]) > PLUGIN_SESSION_MAX_TOOL_VALUE_BYTES) {
+            throw apiError("LIMIT_EXCEEDED", `${field} exceeds 256 KiB`);
+          }
+        }
+      }
+    }
+  }
+}
+
+function normalizePluginSessionInput(
+  input: unknown,
+  kind: "import" | "batch" | "other",
+): Record<string, unknown> {
+  validatePluginSessionPayload(input, kind);
+  return { ...(input as Record<string, unknown>) };
 }
 
 /** Key for the per-service supervision map. */
@@ -550,11 +857,76 @@ function realpathOrSelf(path: string): string {
  * directory. Manifest validation already rejects `..`, so this is defense in
  * depth against symlinked or oddly-cased contributions.
  */
-function resolveInsidePlugin(pluginPath: string, relative: string): string | null {
+export function resolveInsidePlugin(pluginPath: string, relative: string): string | null {
   const root = resolve(pluginPath);
   const target = resolve(root, relative);
   const prefix = root.endsWith(sep) ? root : root + sep;
   return target !== root && target.startsWith(prefix) ? target : null;
+}
+
+/**
+ * Resolve one theme's declared assets to files inside the plugin package.
+ *
+ * The manifest validator already checked the shape; here each entry has to
+ * exist, stay out of the dependency directory, and fit the declared total. A
+ * theme that asks for more than the budget gets none of its assets, so a sheet
+ * referencing one is refused instead of served from a half-honoured list.
+ */
+function resolveThemeAssets(
+  _pluginPath: string,
+  declared: readonly string[],
+): { files: Map<string, string>; dropped: number } {
+  const files = new Map<string, string>();
+  if (!declared.length) return { files, dropped: 0 };
+  let total = 0;
+  let dropped = 0;
+  for (const asset of declared) {
+    // A theme asset is an absolute path; `normalizeThemeAssetPath` rejects
+    // package-relative references, so nothing is resolved against the package
+    // root any more. The plugin is the one naming the file.
+    const normalized = normalizeThemeAssetPath(asset);
+    if (!normalized) {
+      dropped += 1;
+      continue;
+    }
+    const absolute = normalized;
+    if (!existsSync(absolute)) {
+      dropped += 1;
+      continue;
+    }
+    try {
+      total += statSync(absolute).size;
+    } catch {
+      dropped += 1;
+      continue;
+    }
+    files.set(normalized, absolute);
+  }
+  if (total > THEME_ASSET_MAX_BYTES) return { files: new Map(), dropped: declared.length };
+  return { files, dropped };
+}
+
+/**
+ * Read `contributes.windowAppearance`.
+ *
+ * Only the two palette slots the host honours survive; the shape is the
+ * manifest validator's job, and anything that slips past it is dropped here
+ * rather than handed to `setBackgroundColor`.
+ */
+function resolveWindowBackground(
+  value: unknown,
+): { light?: string; dark?: string } | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const backgroundColor = (value as { backgroundColor?: unknown }).backgroundColor;
+  if (!backgroundColor || typeof backgroundColor !== "object") return undefined;
+  const result: { light?: string; dark?: string } = {};
+  for (const key of ["light", "dark"] as const) {
+    const color = (backgroundColor as Record<string, unknown>)[key];
+    if (typeof color === "string" && WINDOW_BACKGROUND_COLOR_PATTERN.test(color)) {
+      result[key] = color;
+    }
+  }
+  return result.light || result.dark ? result : undefined;
 }
 
 /**
@@ -599,18 +971,20 @@ export class PluginRuntime {
   private commands = new Map<string, RegisteredCommand>();
   private tools = new Map<string, RegisteredPluginTool>();
   private skills = new Map<string, RegisteredPluginSkill>();
+  private agentExtensions = new Map<string, RegisteredAgentExtension>();
   private themes = new Map<string, RegisteredPluginTheme>();
+  /**
+   * Declared theme assets, keyed by plugin id and then by the package-relative
+   * path the sheet writes. The `plugin-asset:` handler answers only from here,
+   * so a path nobody declared has no URL at all (ADR 0248).
+   */
+  private themeAssets = new Map<string, Map<string, string>>();
   private mcpClients = new Map<string, McpServerClient[]>();
   private serviceStates = new Map<string, PluginServiceStatus>();
   private restarts = new Map<string, RestartRecord>();
   private busSubscriptions = new Map<string, BusSubscription>();
   private busRate = new Map<string, { windowStart: number; count: number }>();
-  /**
-   * Session of an in-flight `tool.execute`. Child `pi.browser.*` calls arrive
-   * on a later `handleChildMessage` turn, so ALS around `sendToChild` is empty
-   * there — this map is the durable identity for that round trip.
-   */
-  private executingToolSessions = new Map<string, Array<{ sessionId: string; toolName: string }>>();
+  private readonly toolInvocations = new PluginToolInvocations();
   private completeRate = new Map<string, { windowStart: number; count: number }>();
   /**
    * File accesses the user allowed for the rest of the run, keyed
@@ -699,6 +1073,11 @@ export class PluginRuntime {
     return [...this.tools.values()];
   }
 
+  /** ExtensionAPI modules from loaded plugins holding `agent.extension`. */
+  getAgentExtensions(): RegisteredAgentExtension[] {
+    return [...this.agentExtensions.values()].sort((a, b) => a.id.localeCompare(b.id));
+  }
+
   /** Catalog of active plugin skills, ordered by id for a stable prompt. */
   getSkills(): RegisteredPluginSkill[] {
     return [...this.skills.values()].sort((a, b) => a.id.localeCompare(b.id));
@@ -707,6 +1086,49 @@ export class PluginRuntime {
   /** Themes contributed by loaded plugins, ordered by id for a stable list. */
   getThemes(): RegisteredPluginTheme[] {
     return [...this.themes.values()].sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  /**
+   * Absolute path of one declared theme asset, or null.
+   *
+   * The `plugin-asset:` handler calls this for every request, so a disabled
+   * plugin, an undeclared path, and a path outside the package all answer null
+   * for the same reason.
+   */
+  /**
+   * Serve an absolute local file to a theme that referenced it by path.
+   *
+   * A runtime-registered theme has no manifest entry to declare assets in, so the
+   * reference itself is the authorization: an absolute path on the extension
+   * whitelist that exists on disk is added to this plugin's asset map for as long
+   * as the plugin stays loaded (unloading a plugin clears the whole map).
+   *
+   * The upsert is a message, not a file write, so a theme can pick up a new image
+   * without the plugin reloading.
+   */
+  private externalThemeAsset(loaded: LoadedPlugin, target: string): string | null {
+    const key = normalizeThemeAssetPath(target);
+    if (!key || !isExternalThemeAssetPath(key)) return null;
+    let stats: Stats;
+    try {
+      stats = statSync(key);
+    } catch {
+      return null;
+    }
+    if (!stats.isFile() || stats.size > THEME_ASSET_MAX_BYTES) return null;
+    let registry = this.themeAssets.get(loaded.manifest.id);
+    if (!registry) {
+      registry = new Map();
+      this.themeAssets.set(loaded.manifest.id, registry);
+    }
+    registry.set(key, key);
+    return themeAssetUrl(loaded.manifest.id, key);
+  }
+
+  resolveThemeAsset(pluginId: string, assetPath: string): string | null {
+    const normalized = normalizeThemeAssetPath(assetPath);
+    if (!normalized) return null;
+    return this.themeAssets.get(pluginId)?.get(normalized) ?? null;
   }
 
   /** Supervision state of every resident service, ordered for a stable list. */
@@ -872,7 +1294,20 @@ export class PluginRuntime {
    */
   broadcastEvent(event: string, args: unknown[] = []): void {
     for (const loaded of this.loaded.values()) {
-      loaded.child?.postMessage({ t: "event", event, args });
+      try {
+        loaded.child?.postMessage({ t: "event", event, args });
+      } catch (error) {
+        // One unreachable recipient must not starve the rest of the fan-out. The
+        // event is one-way: whoever is live still receives it.
+        this.services.audit?.({
+          pluginId: loaded.manifest.id,
+          api: "plugin.event.error",
+          ok: false,
+          event,
+          message: (error as Error).message,
+          ts: Date.now(),
+        });
+      }
     }
   }
 
@@ -898,7 +1333,10 @@ export class PluginRuntime {
     const manifest = validated.manifest;
     await this.unload(manifest.id);
 
-    const mainPath = join(pluginPath, manifest.main);
+    const mainPath = resolveInsidePlugin(pluginPath, manifest.main);
+    if (!mainPath) {
+      throw new Error("PLUGIN_INVALID: main entry must stay inside the plugin directory");
+    }
     if (!existsSync(mainPath)) {
       throw new Error("PLUGIN_LOAD_FAILED: main entry missing");
     }
@@ -933,6 +1371,7 @@ export class PluginRuntime {
       fsPolicy: access.policy,
       legacyFs: access.legacy,
       deletes: [],
+      dropGrants: new Map(),
       child,
       pending: new Map(),
       nextCallId: 1,
@@ -978,6 +1417,7 @@ export class PluginRuntime {
     }
 
     this.registerSkills(loaded);
+    this.registerAgentExtensions(loaded);
     this.registerThemes(loaded);
     await this.registerMcpServers(loaded);
     await this.startServices(loaded);
@@ -990,10 +1430,17 @@ export class PluginRuntime {
     return manifest;
   }
 
+  /** Abort this session's invocations without affecting sibling sessions. */
+  cancelSessionTools(sessionId: string, reason = "Session tool execution aborted"): void {
+    this.toolInvocations.cancelSession(sessionId, reason);
+  }
+
   /** Deregister contributions, run `onUnload` in the child, then stop it. */
   async unload(pluginId: string): Promise<void> {
     const loaded = this.loaded.get(pluginId);
     if (loaded) {
+      loaded.disposing = true;
+      this.toolInvocations.cancelOwner(loaded, "Plugin unloaded");
       // An explicit stop ends supervision; a supervisor-driven reload keeps it.
       if (!this.restarting.has(pluginId)) this.cancelRestarts(pluginId);
       await this.stopServices(loaded);
@@ -1077,6 +1524,7 @@ export class PluginRuntime {
     // stopping must already be covered by the guard in `handleChildExit`.
     for (const loaded of loadedPlugins) {
       loaded.disposing = true;
+      this.toolInvocations.cancelOwner(loaded, "Application shutting down");
       this.cancelRestarts(loaded.manifest.id);
     }
     this.disposeWatchers();
@@ -1172,6 +1620,16 @@ export class PluginRuntime {
     pluginId: string,
     channel: string,
     payload?: Record<string, unknown>,
+    context?: PluginPanelBridgeContext,
+  ): Promise<unknown> {
+    return this.toolInvocations.withoutContext(() => this.invokePanelWithoutToolContext(pluginId, channel, payload, context));
+  }
+
+  private async invokePanelWithoutToolContext(
+    pluginId: string,
+    channel: string,
+    payload?: Record<string, unknown>,
+    context?: PluginPanelBridgeContext,
   ): Promise<unknown> {
     const loaded = this.loaded.get(pluginId);
     if (!loaded) throw apiError("NOT_FOUND", `plugin not loaded: ${pluginId}`);
@@ -1211,6 +1669,24 @@ export class PluginRuntime {
         return { ok: true };
       case "fs.readText":
         return api.fs.readText(String(payload?.path ?? ""));
+      case "fs.stat":
+        return api.fs.stat(
+          String(payload?.path ?? ""),
+          typeof payload?.grantId === "string" ? payload.grantId : undefined,
+        );
+      case "fs.readRange":
+        return api.fs.readRange(
+          String(payload?.path ?? ""),
+          Number(payload?.byteOffset),
+          Number(payload?.length),
+          typeof payload?.grantId === "string" ? payload.grantId : undefined,
+        );
+      case "fs.registerDropped":
+        return this.registerDroppedFile(
+          loaded,
+          String(payload?.path ?? ""),
+          context?.droppedPath,
+        );
       case "fs.readPreview":
         return api.fs.readPreview(String(payload?.path ?? ""));
       case "fs.openDefault":
@@ -1252,6 +1728,28 @@ export class PluginRuntime {
         return api.plugin.getSettings();
       case "app.getAppearance":
         return api.app.getAppearance();
+      case "app.setTheme":
+        await api.app.setTheme(String(payload?.themeId ?? ""));
+        return { ok: true };
+      case "themes.upsert":
+        await api.themes.upsert({
+          id: String(payload?.id ?? ""),
+          label: String(payload?.label ?? ""),
+          base: payload?.base === "light" ? "light" : "dark",
+          css: String(payload?.css ?? ""),
+        });
+        return { ok: true };
+      case "themes.remove":
+        await api.themes.remove(String(payload?.themeId ?? payload?.id ?? ""));
+        return { ok: true };
+      case "themes.list":
+        return api.themes.list();
+      case "themes.setVariables":
+        await api.themes.setVariables(
+          String(payload?.themeId ?? ""),
+          (payload?.values as Record<string, number | string> | undefined) ?? {},
+        );
+        return { ok: true };
       case "workspace.get":
         return api.workspace.get();
       case "models.list":
@@ -1306,26 +1804,50 @@ export class PluginRuntime {
     loaded: LoadedPlugin,
     message: Record<string, unknown>,
     timeoutMs: number,
+    signal?: AbortSignal,
   ): Promise<unknown> {
     const child = loaded.child;
     if (!child) {
       return Promise.reject(apiError("NOT_FOUND", `plugin host process gone: ${loaded.manifest.id}`));
     }
+    if (signal?.aborted) return Promise.reject(signal.reason);
     const id = `h${loaded.nextCallId++}`;
     return new Promise((resolvePromise, rejectPromise) => {
-      const timer = setTimeout(() => {
+      const cancelChild = (error: Error) => {
+        if (typeof message.invocationId !== "string") return;
+        try {
+          child.postMessage({ t: "cancel", invocationId: message.invocationId, reason: error.message });
+        } catch {
+          // The process may already be gone; the host still revokes the call.
+        }
+      };
+      const abort = () => {
+        const error = signal?.reason instanceof Error
+          ? signal.reason
+          : apiError("PLUGIN_TOOL_ABORTED", "Plugin tool execution aborted");
+        loaded.pending.get(id)?.reject(error);
+        cancelChild(error);
+      };
+      const cleanup = () => {
+        clearTimeout(timer);
         loaded.pending.delete(id);
-        rejectPromise(
-          apiError("TIMEOUT", `plugin ${loaded.manifest.id} did not answer ${String(message.t)}`),
-        );
+        signal?.removeEventListener("abort", abort);
+      };
+      const timer = setTimeout(() => {
+        const error = apiError("TIMEOUT", `plugin ${loaded.manifest.id} did not answer ${String(message.t)}`);
+        loaded.pending.get(id)?.reject(error);
+        cancelChild(error);
       }, timeoutMs);
-      loaded.pending.set(id, { resolve: resolvePromise, reject: rejectPromise, timer });
+      loaded.pending.set(id, {
+        resolve: (value) => { cleanup(); resolvePromise(value); },
+        reject: (error) => { cleanup(); rejectPromise(error); },
+        timer,
+      });
+      signal?.addEventListener("abort", abort, { once: true });
       try {
         child.postMessage({ ...message, id });
       } catch (error) {
-        clearTimeout(timer);
-        loaded.pending.delete(id);
-        rejectPromise(error instanceof Error ? error : new Error(String(error)));
+        loaded.pending.get(id)?.reject(error instanceof Error ? error : new Error(String(error)));
       }
     });
   }
@@ -1352,7 +1874,12 @@ export class PluginRuntime {
       return;
     }
     if (message.t === "call") {
-      void this.dispatchHostCall(loaded, String(message.api ?? ""), message.args ?? [])
+      void this.toolInvocations.run(loaded, message.invocationId, async () => {
+        if (this.loaded.get(loaded.manifest.id) !== loaded) {
+          throw apiError("PLUGIN_UNLOADED", "Plugin host process is no longer active");
+        }
+        return this.dispatchHostCall(loaded, String(message.api ?? ""), message.args ?? []);
+      })
         .then((value) =>
           loaded.child?.postMessage({ t: "res", id: message.id, ok: true, value: value ?? null }),
         )
@@ -1419,10 +1946,16 @@ export class PluginRuntime {
           description?: string;
           risk?: string;
           schema?: unknown;
+          planSafeActions?: unknown;
         };
         const name = String(descriptor.name ?? "");
         if (!name) throw apiError("INVALID_ARGUMENT", "tool.name is required");
         const fullName = pluginToolName(pluginId, name);
+        const planSafeActions = normalizePlanSafeActions(
+          descriptor.planSafeActions,
+          descriptor.schema,
+          name,
+        );
         this.tools.set(fullName, {
           fullName,
           pluginId,
@@ -1430,34 +1963,67 @@ export class PluginRuntime {
           description: String(descriptor.description ?? ""),
           risk: descriptor.risk,
           schema: descriptor.schema,
+          planSafeActions,
           execute: async (toolArgs, ctx) => {
+            // Plan/Goal mode only allows declared plan-safe actions. The
+            // runtime normally hides unsafe tools from the model, but the
+            // host must still reject a stray call (ADR 0211).
+            if (ctx?.mode === "plan" || ctx?.mode === "goal") {
+              const allowed = planSafeActions;
+              if (allowed.length === 0) {
+                throw apiError(
+                  "PERMISSION_DENIED",
+                  `plugin tool ${name} is not available in ${ctx.mode} mode`,
+                );
+              }
+              const action =
+                toolArgs && typeof toolArgs === "object" && !Array.isArray(toolArgs)
+                  ? (toolArgs as { action?: unknown }).action
+                  : undefined;
+              if (typeof action !== "string" || !allowed.includes(action)) {
+                throw apiError(
+                  "PERMISSION_DENIED",
+                  `plugin tool ${name} action ${JSON.stringify(action)} is not allowed in ${ctx.mode} mode`,
+                );
+              }
+            }
             const target = this.loaded.get(pluginId);
-            if (!target?.child) throw apiError("NOT_FOUND", `plugin not loaded: ${pluginId}`);
+            if (!target?.child || target !== loaded || target.disposing) {
+              throw apiError("NOT_FOUND", `plugin not loaded: ${pluginId}`);
+            }
             const sessionId = String(ctx?.sessionId ?? "");
-            const stack = this.executingToolSessions.get(pluginId) ?? [];
-            stack.push({ sessionId, toolName: name });
-            this.executingToolSessions.set(pluginId, stack);
+            const invocation = this.toolInvocations.begin(target, {
+              pluginId,
+              sessionId,
+              toolName: name,
+              turnId: ctx?.turnId,
+              signal: ctx?.signal,
+            });
             try {
-              return await toolSession.run(sessionId, () =>
-                this.sendToChild(
+              return await this.sendToChild(
                   target,
                   {
                     t: "call",
                     method: "tool.execute",
+                    invocationId: invocation.id,
                     payload: {
                       name,
                       args: toolArgs,
                       sessionId,
+                      turnId: ctx?.turnId,
+                      mode: ctx?.mode,
                       modelKey: ctx?.modelKey,
                       thinkingLevel: ctx?.thinkingLevel,
                     },
                   },
                   PLUGIN_TOOL_TIMEOUT_MS,
-                ),
+                  invocation.signal,
               );
+            } catch (error) {
+              this.toolInvocations.cancel(invocation, error);
+              throw error;
             } finally {
-              stack.pop();
-              if (stack.length === 0) this.executingToolSessions.delete(pluginId);
+              this.toolInvocations.finish(invocation);
             }
           },
         });
@@ -1481,6 +2047,91 @@ export class PluginRuntime {
       }
       case "session.getLlmContext": {
         return this.readSessionContext(loaded);
+      }
+      case "session.import": {
+        this.assertPermission(loaded, "session.import");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "import");
+        if (input.projectId !== undefined && input.projectId !== null) {
+          this.assertPermission(loaded, "project.create");
+        }
+        const source = this.sessionSource(loaded, input.source);
+        input.sourceLabel = source.label;
+        if (!this.services.session?.import) {
+          throw apiError("UNSUPPORTED", "host api not available: session.import");
+        }
+        return this.services.session.import(loaded.manifest.id, input);
+      }
+      case "session.importBatch": {
+        this.assertPermission(loaded, "session.import");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "batch");
+        const items = Array.isArray(input.sessions) ? input.sessions : [];
+        if (items.some((item) => item && typeof item === "object" &&
+          (item as Record<string, unknown>).projectId !== undefined &&
+          (item as Record<string, unknown>).projectId !== null)) {
+          this.assertPermission(loaded, "project.create");
+        }
+        const source = this.sessionSource(loaded, input.source);
+        input.sourceLabel = source.label;
+        if (!this.services.session?.importBatch) {
+          throw apiError("UNSUPPORTED", "host api not available: session.importBatch");
+        }
+        return this.services.session.importBatch(loaded.manifest.id, input);
+      }
+      case "project.create": {
+        this.assertPermission(loaded, "project.create");
+        const input = args[0];
+        if (!input || typeof input !== "object" || Array.isArray(input)) {
+          throw apiError("INVALID_PARAMS", "project input must be an object");
+        }
+        const path = (input as Record<string, unknown>).path;
+        if (typeof path !== "string" || !path.trim() || [...path].length > 4096) {
+          throw apiError("INVALID_PARAMS", "project path must be a non-empty string");
+        }
+        if (!this.services.project?.create) {
+          throw apiError("UNSUPPORTED", "host api not available: project.create");
+        }
+        return this.services.project.create(loaded.manifest.id, { path: path.trim() });
+      }
+      case "session.list": {
+        this.assertPermission(loaded, "session.read.own");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "other");
+        if (input.source !== undefined) this.sessionSource(loaded, input.source);
+        if (!this.services.session?.list) {
+          throw apiError("UNSUPPORTED", "host api not available: session.list");
+        }
+        return this.services.session.list(loaded.manifest.id, input);
+      }
+      case "session.get": {
+        this.assertPermission(loaded, "session.read.own");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "other");
+        if (!this.services.session?.get) {
+          throw apiError("UNSUPPORTED", "host api not available: session.get");
+        }
+        return this.services.session.get(loaded.manifest.id, input);
+      }
+      case "session.listMessages": {
+        this.assertPermission(loaded, "session.read.own");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "other");
+        if (!this.services.session?.listMessages) {
+          throw apiError("UNSUPPORTED", "host api not available: session.listMessages");
+        }
+        return this.services.session.listMessages(loaded.manifest.id, input);
+      }
+      case "session.rename": {
+        this.assertPermission(loaded, "session.update.own");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "other");
+        if (!this.services.session?.rename) {
+          throw apiError("UNSUPPORTED", "host api not available: session.rename");
+        }
+        return this.services.session.rename(loaded.manifest.id, input);
+      }
+      case "session.delete": {
+        this.assertPermission(loaded, "session.delete.own");
+        const input = normalizePluginSessionInput(args[0] ?? {}, "other");
+        if (!this.services.session?.delete) {
+          throw apiError("UNSUPPORTED", "host api not available: session.delete");
+        }
+        return this.services.session.delete(loaded.manifest.id, input);
       }
       case "agent.complete": {
         return this.runAgentComplete(loaded, (args[0] ?? {}) as PluginCompleteInput);
@@ -1507,6 +2158,7 @@ export class PluginRuntime {
   }
 
   private handleChildExit(loaded: LoadedPlugin, code: number): void {
+    this.toolInvocations.cancelOwner(loaded, "Plugin host process exited");
     if (loaded.disposing) return;
     if (this.loaded.get(loaded.manifest.id) !== loaded) return;
     const pluginId = loaded.manifest.id;
@@ -1626,9 +2278,20 @@ export class PluginRuntime {
     for (const [id, skill] of this.skills) {
       if (skill.pluginId === pluginId) this.skills.delete(id);
     }
+    let droppedExtension = false;
+    for (const [id, extension] of this.agentExtensions) {
+      if (extension.pluginId === pluginId) {
+        this.agentExtensions.delete(id);
+        droppedExtension = true;
+      }
+    }
+    if (droppedExtension) this.services.agentExtensionsChanged?.();
     for (const [id, theme] of this.themes) {
       if (theme.pluginId === pluginId) this.themes.delete(id);
     }
+    // A gone plugin must stop serving its assets; the handler resolves through
+    // this map only, so clearing it revokes every `plugin-asset:` URL at once.
+    this.themeAssets.delete(pluginId);
     // Closing the client kills the stdio child / drops the HTTP session, so a
     // disabled plugin leaves no process behind.
     for (const client of this.mcpClients.get(pluginId) ?? []) {
@@ -1655,6 +2318,58 @@ export class PluginRuntime {
    * Skills predate the permission gate, so a plugin that declares them without
    * `agent.prompt.inject` still loads — it just teaches the agent nothing.
    */
+  /**
+   * Index `contributes.agentExtensions`. The modules are loaded by the agent
+   * sidecar at the next turn, so this only validates paths and records
+   * ownership. Without `agent.extension` the plugin loads but contributes no
+   * module, mirroring how skills behave without `agent.prompt.inject`.
+   */
+  private registerAgentExtensions(loaded: LoadedPlugin): void {
+    const declared = loaded.manifest.contributes?.agentExtensions ?? [];
+    if (!declared.length) return;
+    const pluginId = loaded.manifest.id;
+    if (!loaded.permissions.has("agent.extension")) {
+      this.services.audit?.({
+        pluginId,
+        api: "plugin.agentExtensions.skipped",
+        ok: false,
+        errorCode: "PERMISSION_DENIED",
+        count: declared.length,
+        ts: Date.now(),
+      });
+      return;
+    }
+    let changed = false;
+    for (const relative of declared) {
+      const entry = resolveInsidePlugin(loaded.path, String(relative ?? "").trim());
+      if (!entry || !existsSync(entry)) {
+        this.services.audit?.({
+          pluginId,
+          api: "plugin.agentExtensions.skipped",
+          ok: false,
+          errorCode: "NOT_FOUND",
+          ts: Date.now(),
+        });
+        continue;
+      }
+      let id = entry;
+      try {
+        id = realpathSync(entry);
+      } catch {
+        // Fall back to the resolved path; the sidecar reports a load error.
+      }
+      this.agentExtensions.set(id, {
+        id,
+        pluginId,
+        pluginName: loaded.manifest.name,
+        entry,
+        root: loaded.path,
+      });
+      changed = true;
+    }
+    if (changed) this.services.agentExtensionsChanged?.();
+  }
+
   private registerSkills(loaded: LoadedPlugin): void {
     const declared = loaded.manifest.contributes?.skills ?? [];
     if (!declared.length) return;
@@ -1774,22 +2489,34 @@ export class PluginRuntime {
       return;
     }
 
+    // The native window background is a separate grant: a plugin may contribute
+    // themes and ask for neither, and a plugin that asked without the grant is
+    // audited rather than silently ignored.
+    const windowAppearanceDeclared =
+      loaded.manifest.contributes?.windowAppearance !== undefined;
+    const windowBackground = loaded.permissions.has("ui.window.appearance")
+      ? resolveWindowBackground(loaded.manifest.contributes?.windowAppearance)
+      : undefined;
+    if (windowAppearanceDeclared && !loaded.permissions.has("ui.window.appearance")) {
+      this.services.audit?.({
+        pluginId,
+        api: "plugin.themes.skipped",
+        ok: false,
+        errorCode: "PERMISSION_DENIED",
+        message: "contributes.windowAppearance requires ui.window.appearance",
+        ts: Date.now(),
+      });
+    }
+
     let accepted = 0;
     for (const contrib of declared) {
-      if (accepted >= MAX_THEMES_PER_PLUGIN) {
-        this.services.audit?.({
-          pluginId,
-          api: "plugin.themes.skipped",
-          ok: false,
-          errorCode: "LIMIT_EXCEEDED",
-          count: declared.length - accepted,
-          ts: Date.now(),
-        });
-        break;
-      }
       const themeId = String(contrib?.id ?? "").trim();
       const relative = String(contrib?.path ?? "").trim();
       if (!themeId || !relative) continue;
+      if (!THEME_LOCAL_ID_PATTERN.test(themeId)) {
+        this.skipTheme(pluginId, themeId, "INVALID_ID");
+        continue;
+      }
       const cssPath = resolveInsidePlugin(loaded.path, relative);
       if (!cssPath || !existsSync(cssPath)) {
         this.skipTheme(pluginId, themeId, "NOT_FOUND");
@@ -1802,7 +2529,23 @@ export class PluginRuntime {
         this.skipTheme(pluginId, themeId, "READ_FAILED");
         continue;
       }
-      const sanitized = sanitizeThemeCss(raw);
+      // Declared assets are the only relative references this theme may make;
+      // each one is rewritten to the host scheme so the sheet never carries a
+      // path the renderer would resolve itself.
+      const assets = resolveThemeAssets(loaded.path, contrib.assets ?? []);
+      if (assets.dropped) {
+        this.skipTheme(
+          pluginId,
+          themeId,
+          "INVALID_ASSET",
+          `${assets.dropped} declared asset(s) ignored`,
+        );
+      }
+      const sanitized = sanitizeThemeCss(raw, THEME_CSS_MAX_BYTES, (target) => {
+        const normalized = normalizeThemeAssetPath(target);
+        if (!normalized || !assets.files.has(normalized)) return null;
+        return themeAssetUrl(pluginId, normalized);
+      });
       if (!sanitized.ok) {
         this.skipTheme(pluginId, themeId, "INVALID_CSS", sanitized.error);
         continue;
@@ -1812,6 +2555,15 @@ export class PluginRuntime {
         this.skipTheme(pluginId, themeId, "DUPLICATE");
         continue;
       }
+      // The registry is per plugin and the resolver above is per theme: a sheet
+      // only reaches its own declarations, while the handler can serve any
+      // asset this plugin is allowed to have.
+      let registry = this.themeAssets.get(pluginId);
+      if (!registry) {
+        registry = new Map();
+        this.themeAssets.set(pluginId, registry);
+      }
+      for (const [assetPath, absolute] of assets.files) registry.set(assetPath, absolute);
       this.themes.set(id, {
         id,
         pluginId,
@@ -1819,6 +2571,10 @@ export class PluginRuntime {
         label: String(contrib.label ?? "").trim() || themeId,
         base: contrib.base === "light" ? "light" : "dark",
         css: sanitized.css,
+        ...(contrib.variables?.length
+          ? { variablesCss: this.themeVariablesCss(loaded, id, contrib.variables) }
+          : {}),
+        ...(windowBackground ? { windowBackground } : {}),
       });
       accepted += 1;
     }
@@ -1830,6 +2586,41 @@ export class PluginRuntime {
         count: accepted,
         ts: Date.now(),
       });
+    }
+  }
+
+  private themeVariablesCss(
+    loaded: LoadedPlugin,
+    themeId: string,
+    declarations: readonly PluginThemeVariableContrib[],
+  ): string {
+    const values = this.readThemeVariableValues(loaded, themeId);
+    try {
+      return formatPluginThemeVariables(
+        themeId,
+        declarations,
+        normalizePluginThemeVariableValues(declarations, values),
+      );
+    } catch {
+      // An old/corrupt private record cannot make a declared theme unavailable.
+      return formatPluginThemeVariables(
+        themeId,
+        declarations,
+        normalizePluginThemeVariableValues(declarations, {}),
+      );
+    }
+  }
+
+  private readThemeVariableValues(loaded: LoadedPlugin, themeId: string): Record<string, unknown> {
+    try {
+      const file = join(this.pluginDataDir(loaded.manifest.id), "settings.json");
+      const settings = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {};
+      const all = settings?.[THEME_VARIABLES_SETTINGS_KEY];
+      return all && typeof all === "object" && !Array.isArray(all) && all[themeId] && typeof all[themeId] === "object"
+        ? all[themeId] as Record<string, unknown>
+        : {};
+    } catch {
+      return {};
     }
   }
 
@@ -2320,8 +3111,9 @@ export class PluginRuntime {
     );
   }
 
-  private inFlightTool(pluginId: string): { sessionId: string; toolName: string } | undefined {
-    return this.executingToolSessions.get(pluginId)?.at(-1);
+  private inFlightTool(pluginId: string): PluginToolInvocation | undefined {
+    const loaded = this.loaded.get(pluginId);
+    return loaded ? this.toolInvocations.current(loaded) : undefined;
   }
 
   private completeRateExceeded(pluginId: string): boolean {
@@ -2390,7 +3182,7 @@ export class PluginRuntime {
         errorCode: "RATE_LIMITED",
         ts: Date.now(),
       });
-      throw apiError("RATE_LIMITED", "advisor complete rate exceeded");
+      throw apiError("RATE_LIMITED", "plugin completion rate exceeded");
     }
     const includeSessionContext = input.includeSessionContext === true;
     if (includeSessionContext) {
@@ -2428,7 +3220,7 @@ export class PluginRuntime {
           errorCode: "TIMEOUT",
           ts: Date.now(),
         });
-        throw apiError("TIMEOUT", "advisor complete timed out");
+        throw apiError("TIMEOUT", "plugin completion timed out");
       }
       throw error;
     } finally {
@@ -2457,11 +3249,7 @@ export class PluginRuntime {
   }
 
   private browserSessionId(pluginId?: string): string | undefined {
-    const als = toolSession.getStore()?.trim();
-    if (als) return als;
-    if (!pluginId) return undefined;
-    const stack = this.executingToolSessions.get(pluginId);
-    return stack?.at(-1)?.sessionId?.trim() || undefined;
+    return pluginId ? this.inFlightTool(pluginId)?.sessionId.trim() || undefined : undefined;
   }
 
   private async invokeBrowser(
@@ -2523,6 +3311,7 @@ export class PluginRuntime {
   }
 
   private assertPermission(loaded: LoadedPlugin, perm: string): void {
+    this.toolInvocations.current(loaded);
     if (!loaded.permissions.has(perm)) {
       this.services.audit?.({
         pluginId: loaded.manifest.id,
@@ -2533,6 +3322,62 @@ export class PluginRuntime {
       });
       throw apiError("PERMISSION_DENIED", `missing permission: ${perm}`);
     }
+  }
+
+  private sessionSource(
+    loaded: LoadedPlugin,
+    rawSource: unknown,
+  ): { id: string; label?: string } {
+    const source = typeof rawSource === "string" ? rawSource.trim() : "";
+    const entry = (loaded.manifest.contributes?.sessionSources ?? []).find(
+      (candidate) => candidate.id === source,
+    );
+    if (!entry) {
+      throw apiError("PERMISSION_DENIED", "session source is not declared by the manifest");
+    }
+    return {
+      id: entry.id,
+      label: resolvePluginLocalizedString(entry.label, this.services.getLocale?.(), entry.id),
+    };
+  }
+
+  /**
+   * Turn a real panel drop into a one-file, read-only grant. The panel host
+   * proves the gesture; this method still re-resolves and rechecks the path so
+   * a symlink or a protected file cannot turn that gesture into broader reach.
+   */
+  private registerDroppedFile(
+    loaded: LoadedPlugin,
+    requestPath: string,
+    droppedPath?: string,
+  ): { grantId: string } {
+    this.assertPermission(loaded, "fs.read");
+    if (!droppedPath || !isAbsolute(requestPath) || resolve(requestPath) !== resolve(droppedPath)) {
+      this.auditFs(loaded, "read", requestPath, "PERMISSION_DENIED");
+      throw apiError("PERMISSION_DENIED", "file was not dropped into this plugin panel");
+    }
+    let full: string;
+    try {
+      full = realpathSync(requestPath);
+      if (!statSync(full).isFile()) throw new Error("not a file");
+    } catch {
+      this.auditFs(loaded, "read", requestPath, "NOT_FOUND");
+      throw apiError("NOT_FOUND", `cannot register dropped file: ${requestPath}`);
+    }
+    if (this.isProtectedPath(full) || isDeniedFsPath(normalizeFsPath(full))) {
+      this.auditFs(loaded, "read", requestPath, "PERMISSION_DENIED");
+      throw apiError("PERMISSION_DENIED", "dropped path is reserved by the app");
+    }
+    const grantId = randomUUID();
+    loaded.dropGrants.set(grantId, { fullPath: full, requestPath: resolve(requestPath) });
+    this.services.audit?.({
+      pluginId: loaded.manifest.id,
+      api: "fs.registerDropped",
+      ok: true,
+      ts: Date.now(),
+      path: `<dropped>/${basename(full)}`,
+    });
+    return { grantId };
   }
 
   /**
@@ -2548,9 +3393,46 @@ export class PluginRuntime {
     loaded: LoadedPlugin,
     mode: PluginFsMode,
     requestPath: string,
-    options: { create?: boolean } = {},
+    options: { create?: boolean; dropGrantId?: string } = {},
   ): Promise<{ full: string; rel: string; root: string }> {
     this.assertPermission(loaded, `fs.${mode}`);
+    if (typeof options.dropGrantId === "string") {
+      if (mode !== "read") {
+        throw apiError("PERMISSION_DENIED", "dropped-file grants are read-only");
+      }
+      const grant = loaded.dropGrants.get(options.dropGrantId);
+      if (!grant) {
+        this.auditFs(loaded, mode, requestPath, "PERMISSION_DENIED");
+        throw apiError("PERMISSION_DENIED", "dropped-file grant is missing or expired");
+      }
+      if (!isAbsolute(requestPath) || resolve(requestPath) !== grant.requestPath) {
+        this.auditFs(loaded, mode, requestPath, "PERMISSION_DENIED");
+        throw apiError("PERMISSION_DENIED", "path does not match the dropped-file grant");
+      }
+      let full = grant.fullPath;
+      try {
+        full = realpathSync(full);
+      } catch {
+        this.auditFs(loaded, mode, requestPath, "NOT_FOUND");
+        throw apiError("NOT_FOUND", `path not found: ${requestPath}`);
+      }
+      let requestedFull: string;
+      try {
+        requestedFull = realpathSync(requestPath);
+      } catch {
+        this.auditFs(loaded, mode, requestPath, "NOT_FOUND");
+        throw apiError("NOT_FOUND", `path not found: ${requestPath}`);
+      }
+      if (full !== grant.fullPath || requestedFull !== grant.fullPath || !statSync(full).isFile()) {
+        this.auditFs(loaded, mode, requestPath, "PERMISSION_DENIED");
+        throw apiError("PERMISSION_DENIED", "dropped file was replaced");
+      }
+      if (this.isProtectedPath(full) || isDeniedFsPath(normalizeFsPath(full))) {
+        this.auditFs(loaded, mode, requestPath, "PERMISSION_DENIED");
+        throw apiError("PERMISSION_DENIED", "dropped path is reserved by the app");
+      }
+      return { full, rel: `<dropped>/${basename(full)}`, root: dirname(full) };
+    }
     const rule: PluginFsRule = loaded.fsPolicy[mode] ?? { root: "workspace", scope: [] };
     const root =
       rule.root === "userSelected" ? loaded.userRoot : this.services.getWorkspacePath();
@@ -2610,6 +3492,67 @@ export class PluginRuntime {
 
     await this.requestFsConsent(loaded, mode, rel, full, "scope");
     return { full, rel, root: rootReal };
+  }
+
+  /**
+   * Resolve a request that names a file in another folder of the open project
+   * (ADR 0249, ADR 0252, ADR 0253). A view browsing a sibling folder can only
+   * address that folder's entries absolutely, and the two host-mediated actions
+   * it offers for them (fs.openDefault, fs.reveal) are the only requests that
+   * arrive that way. The widening is narrow: only for a plugin whose declared
+   * root is the workspace, only for an absolute path already inside one of the
+   * project's registered folder roots (resolved through links, so a symlink
+   * cannot carry it out of the folder that contains it), with the declared scope
+   * matched against the path relative to the folder that answered, and with the
+   * same protected-path and credential guards every other request passes. No
+   * file content travels back through this route: it asks the OS to show a file
+   * the user right-clicked. Null means it is not such a request, and the caller
+   * falls back to the ordinary rooted resolution and its refusal.
+   */
+  private async resolveRegisteredFolderRequest(
+    loaded: LoadedPlugin,
+    requestPath: string,
+  ): Promise<{ full: string; rel: string; root: string } | null> {
+    if (!isAbsolute(String(requestPath ?? ""))) return null;
+    const rule: PluginFsRule = loaded.fsPolicy.read ?? { root: "workspace", scope: [] };
+    if (rule.root !== "workspace") return null;
+    const roots = (this.services.getWorkspaceInfo?.()?.roots ?? [])
+      .map((entry) => entry?.path)
+      .filter((path): path is string => Boolean(path));
+    if (roots.length === 0) return null;
+    this.assertPermission(loaded, "fs.read");
+
+    const wanted = resolve(String(requestPath));
+    const matches: Array<{ full: string; rel: string; root: string }> = [];
+    for (const candidate of roots) {
+      const base = resolve(candidate);
+      const lexical = relative(base, wanted);
+      if (!lexical || lexical.startsWith("..") || isAbsolute(lexical)) continue;
+      const resolved = await resolveRealPathWithinRoot(base, lexical);
+      if (!resolved) continue;
+      const rootReal = realpathOrSelf(base);
+      matches.push({
+        full: resolved,
+        rel: normalizeFsPath(relative(rootReal, resolved)),
+        root: rootReal,
+      });
+    }
+    if (matches.length === 0) return null;
+    // Folders may be nested in one another; the innermost is the one the user is
+    // actually looking at.
+    const hit = matches.reduce((best, current) => (current.rel.length < best.rel.length ? current : best));
+    if (this.isProtectedPath(hit.full) || isDeniedFsPath(hit.rel)) {
+      this.auditFs(loaded, "read", requestPath, "PERMISSION_DENIED");
+      throw apiError(
+        "PERMISSION_DENIED",
+        `credentials and repository internals are never readable by plugins: ${hit.rel}`,
+      );
+    }
+    if (!isFsPathInScope(hit.rel, rule.scope)) {
+      this.auditFs(loaded, "read", requestPath, "PERMISSION_DENIED");
+      throw apiError("PERMISSION_DENIED", `outside manifest.fs.read.scope: ${hit.rel}`);
+    }
+    return hit;
   }
 
   /**
@@ -2790,6 +3733,142 @@ export class PluginRuntime {
             locale: this.services.getLocale?.() ?? "en",
             pluginTheme: null,
           },
+        setTheme: async (themeId: string) => {
+          this.assertPermission(loaded, "ui.theme");
+          const raw = String(themeId ?? "").trim();
+          const isBuiltin =
+            raw === "system" || raw === "light" || raw === "dark";
+          if (!isBuiltin && !this.themes.has(raw)) {
+            throw apiError("INVALID_ARGUMENT", `unknown theme id: ${raw || "(empty)"}`);
+          }
+          if (!this.services.setThemePreference) {
+            throw apiError("UNSUPPORTED", "host api not available: app.setTheme");
+          }
+          await this.services.setThemePreference(raw);
+          this.services.audit?.({
+            pluginId,
+            api: "app.setTheme",
+            ok: true,
+            theme: raw,
+            ts: Date.now(),
+          });
+        },
+      },
+      themes: {
+        upsert: async (input: {
+          id: string;
+          label: string;
+          base: "light" | "dark";
+          css: string;
+        }) => {
+          this.assertPermission(loaded, "ui.theme");
+          const themeId = String(input?.id ?? "").trim();
+          if (!THEME_LOCAL_ID_PATTERN.test(themeId)) {
+            throw apiError(
+              "INVALID_ARGUMENT",
+              `theme id must match [a-zA-Z][a-zA-Z0-9_-]{0,63}: ${themeId}`,
+            );
+          }
+          const base = input?.base === "light" ? "light" : "dark";
+          const label = String(input?.label ?? "").trim() || themeId;
+          const rawCss = String(input?.css ?? "");
+          const sanitized = sanitizeThemeCss(rawCss, THEME_CSS_MAX_BYTES, (target) =>
+            this.externalThemeAsset(loaded, target),
+          );
+          if (!sanitized.ok) {
+            throw apiError("INVALID_ARGUMENT", sanitized.error);
+          }
+          const id = pluginThemeId(pluginId, themeId);
+          const previous = this.themes.get(id);
+          this.themes.set(id, {
+            id,
+            pluginId,
+            themeId,
+            label,
+            base,
+            css: sanitized.css,
+            ...(previous?.windowBackground ? { windowBackground: previous.windowBackground } : {}),
+          });
+          this.services.onPluginThemesChanged?.(pluginId);
+          this.services.audit?.({
+            pluginId,
+            api: "themes.upsert",
+            ok: true,
+            themeId,
+            ts: Date.now(),
+          });
+        },
+        remove: async (themeId: string) => {
+          this.assertPermission(loaded, "ui.theme");
+          const local = String(themeId ?? "").trim();
+          const id = local.startsWith("plugin:") ? local : pluginThemeId(pluginId, local);
+          const existing = this.themes.get(id);
+          if (!existing || existing.pluginId !== pluginId) {
+            throw apiError("NOT_FOUND", `theme not found: ${local}`);
+          }
+          this.themes.delete(id);
+          this.services.onPluginThemesChanged?.(pluginId);
+          this.services.audit?.({
+            pluginId,
+            api: "themes.remove",
+            ok: true,
+            themeId: existing.themeId,
+            ts: Date.now(),
+          });
+        },
+        list: async () => {
+          this.assertPermission(loaded, "ui.theme");
+          return this.getThemes()
+            .filter((theme) => theme.pluginId === pluginId)
+            .map((theme) => ({
+              id: theme.id,
+              themeId: theme.themeId,
+              label: theme.label,
+              base: theme.base,
+            }));
+        },
+        setVariables: async (themeId: string, values: Record<string, number | string>) => {
+          this.assertPermission(loaded, "ui.theme");
+          const localThemeId = String(themeId ?? "").replace(`plugin:${pluginId}:`, "");
+          const contribution = (loaded.manifest.contributes?.themes ?? []).find(
+            (theme) => theme.id === localThemeId,
+          );
+          if (!contribution) throw apiError("NOT_FOUND", `theme not found: ${themeId}`);
+          const declarations = contribution.variables ?? [];
+          if (!declarations.length) throw apiError("INVALID_ARGUMENT", "theme declares no runtime variables");
+          let patch: Record<string, number | string>;
+          try {
+            patch = validatePluginThemeVariables(declarations, values);
+          } catch (error) {
+            throw apiError("INVALID_ARGUMENT", error instanceof Error ? error.message : "invalid theme variables");
+          }
+          const id = pluginThemeId(pluginId, localThemeId);
+          // Read the raw private record here. `plugin.getSettings()` intentionally
+          // removes host-reserved state before exposing it to plugin code.
+          const settingsFile = join(this.pluginDataDir(pluginId), "settings.json");
+          let current: Record<string, unknown> = {};
+          try {
+            if (existsSync(settingsFile)) current = JSON.parse(readFileSync(settingsFile, "utf8"));
+          } catch {
+            current = {};
+          }
+          const existing = current[THEME_VARIABLES_SETTINGS_KEY];
+          const stored = existing && typeof existing === "object" && !Array.isArray(existing) ? existing as Record<string, unknown> : {};
+          const previous = stored[id] && typeof stored[id] === "object" && !Array.isArray(stored[id]) ? stored[id] as Record<string, unknown> : {};
+          const next = {
+            ...current,
+            [THEME_VARIABLES_SETTINGS_KEY]: { ...stored, [id]: { ...previous, ...patch } },
+          };
+          const dir = this.pluginDataDir(pluginId);
+          mkdirSync(dir, { recursive: true });
+          writeFileSync(settingsFile, JSON.stringify(next, null, 2), "utf8");
+          const registered = this.themes.get(id);
+          if (registered) {
+            registered.variablesCss = this.themeVariablesCss(loaded, id, declarations);
+            this.services.onPluginThemesChanged?.(pluginId);
+          }
+          this.services.audit?.({ pluginId, api: "themes.setVariables", ok: true, themeId: localThemeId, ts: Date.now() });
+        },
       },
       plugin: {
         getId: () => pluginId,
@@ -2802,7 +3881,9 @@ export class PluginRuntime {
           const file = join(dataPath(), "settings.json");
           if (!existsSync(file)) return defaults;
           try {
-            return { ...defaults, ...JSON.parse(readFileSync(file, "utf8")) };
+            const stored = JSON.parse(readFileSync(file, "utf8"));
+            if (stored && typeof stored === "object") delete stored[THEME_VARIABLES_SETTINGS_KEY];
+            return { ...defaults, ...stored };
           } catch {
             return defaults;
           }
@@ -2819,7 +3900,10 @@ export class PluginRuntime {
           this.assertPermission(loaded, "ui.panel");
           const panel = loaded.manifest.ui?.panel;
           if (!panel) throw apiError("NOT_FOUND", "plugin does not declare ui.panel");
-          const htmlPath = join(pluginPath, panel);
+          const htmlPath = resolveInsidePlugin(pluginPath, panel);
+          if (!htmlPath) {
+            throw apiError("INVALID_PARAMS", `panel html must stay inside the plugin: ${panel}`);
+          }
           if (!existsSync(htmlPath)) {
             throw apiError("NOT_FOUND", `panel html missing: ${panel}`);
           }
@@ -2836,6 +3920,7 @@ export class PluginRuntime {
             height: loaded.manifest.ui?.height ?? 360,
             htmlPath,
             netDomains: this.netDomains(loaded),
+            allowMicrophone: loaded.permissions.has("ui.microphone"),
             ...(loaded.development ? { development: true } : {}),
           });
           this.services.audit?.({
@@ -2870,9 +3955,149 @@ export class PluginRuntime {
       },
       workspace: {
         get: async () => {
+          // The enriched payload carries the project group behind the visible
+          // workspace (ADR 0252); the path-only fallback keeps `get` working for
+          // any caller whose services never bound the richer provider.
+          const info = this.services.getWorkspaceInfo?.();
+          if (info !== undefined) return info;
           const path = this.services.getWorkspacePath();
           if (!path) return null;
           return { path, name: path.split(/[\\/]/).filter(Boolean).at(-1) || path };
+        },
+      },
+      desktop: {
+        listOperations: async () => {
+          this.assertPermission(loaded, "desktop.control");
+          const controller = this.services.desktopControl;
+          if (!controller) {
+            throw apiError("UNSUPPORTED", "host api not available: desktop.listOperations");
+          }
+          const operations = controller.operations;
+          this.services.audit?.({
+            pluginId,
+            api: "desktop.listOperations",
+            ok: true,
+            count: operations.length,
+            ts: Date.now(),
+          });
+          return operations.map(({ id, description, risk }) => ({ id, description, risk }));
+        },
+        invoke: async (rawInput: unknown) => {
+          this.assertPermission(loaded, "desktop.control");
+          if (!rawInput || typeof rawInput !== "object" || Array.isArray(rawInput)) {
+            throw apiError("INVALID_PARAMS", "desktop.invoke input must be an object");
+          }
+          const input = rawInput as Record<string, unknown>;
+          const operation = typeof input.operation === "string" ? input.operation : "";
+          const args = input.args === undefined ? [] : input.args;
+          if (!Array.isArray(args)) {
+            throw apiError("INVALID_PARAMS", "desktop.invoke args must be an array");
+          }
+          if (!this.services.desktopControl) {
+            throw apiError("UNSUPPORTED", "host api not available: desktop.invoke");
+          }
+          if (operation === "session/create") {
+            const createInput = args[0];
+            const inheritedParent =
+              createInput && typeof createInput === "object" && !Array.isArray(createInput)
+                ? (createInput as Record<string, unknown>).inheritPermissionFromSessionId
+                : undefined;
+            if (inheritedParent !== undefined && inheritedParent !== null) {
+              const callerSessionId = this.inFlightTool(pluginId)?.sessionId?.trim();
+              if (
+                typeof inheritedParent !== "string" ||
+                !callerSessionId ||
+                inheritedParent.trim() !== callerSessionId
+              ) {
+                throw apiError(
+                  "PERMISSION_DENIED",
+                  "permission inheritance must name the current parent session",
+                );
+              }
+            }
+          }
+          const operationInfo = this.services.desktopControl.operations.find(
+            (candidate) => candidate.id === operation,
+          );
+          // The controller's `confirm` flag is an acknowledgement by the
+          // caller, not a decision by the user. A plugin can set it at will,
+          // so a dangerous operation additionally needs the host's native
+          // consent; a host without that service refuses outright.
+          if (operationInfo?.risk === "dangerous") {
+            if (input.confirm !== true) {
+              throw apiError(
+                "CONFIRMATION_REQUIRED",
+                `confirm=true is required for ${operation}`,
+              );
+            }
+            const consent = this.services.confirmDesktopControl;
+            const granted = consent
+              ? await consent({
+                  pluginId,
+                  pluginName: resolvePluginLocalizedString(
+                    loaded.manifest.name,
+                    this.services.getLocale?.(),
+                    pluginId,
+                  ),
+                  operation,
+                  description: operationInfo.description,
+                  args,
+                })
+              : false;
+            if (!granted) {
+              this.services.audit?.({
+                pluginId,
+                api: "desktop.invoke",
+                operation,
+                risk: operationInfo.risk,
+                ok: false,
+                errorCode: "PERMISSION_DENIED",
+                ts: Date.now(),
+              });
+              throw apiError(
+                "PERMISSION_DENIED",
+                consent
+                  ? `user declined ${operation}`
+                  : `${operation} needs a user confirmation this host cannot show`,
+              );
+            }
+          }
+          try {
+            const invocation = this.inFlightTool(pluginId);
+            const result = await this.services.desktopControl.invoke({
+              operation,
+              args,
+              confirm: input.confirm === true,
+              source: "plugin",
+              pluginContext: {
+                pluginId,
+                ...(invocation?.sessionId ? { sessionId: invocation.sessionId } : {}),
+                ...(invocation?.turnId ? { turnId: invocation.turnId } : {}),
+                ...(invocation ? { invocationId: invocation.id } : {}),
+              },
+              ...(invocation ? { signal: invocation.signal } : {}),
+            } satisfies McpControlInvokeInput);
+            this.services.audit?.({
+              pluginId,
+              api: "desktop.invoke",
+              operation,
+              risk: operationInfo?.risk,
+              ok: true,
+              ts: Date.now(),
+            });
+            return result;
+          } catch (error) {
+            this.services.audit?.({
+              pluginId,
+              api: "desktop.invoke",
+              operation,
+              risk: operationInfo?.risk,
+              ok: false,
+              errorCode: (error as { code?: unknown })?.code,
+              ts: Date.now(),
+            });
+            throw error;
+          }
         },
       },
       fs: {
@@ -2892,6 +4117,77 @@ export class PluginRuntime {
           });
           return content;
         },
+        stat: async (pathFromRoot: string, grantId?: string) => {
+          const { full, rel } = await this.resolveFsRequest(loaded, "read", pathFromRoot, {
+            dropGrantId: grantId,
+          });
+          let info: ReturnType<typeof statSync>;
+          try {
+            info = statSync(full);
+          } catch (error) {
+            this.auditFs(loaded, "read", rel, "NOT_FOUND");
+            throw apiError("NOT_FOUND", error instanceof Error ? error.message : String(error));
+          }
+          if (!info.isFile()) {
+            this.auditFs(loaded, "read", rel, "INVALID_ARGUMENT");
+            throw apiError("INVALID_ARGUMENT", "only files can be stated");
+          }
+          this.services.audit?.({
+            pluginId,
+            api: "fs.stat",
+            ok: true,
+            ts: Date.now(),
+            path: rel,
+          });
+          return { size: info.size, mtimeMs: info.mtimeMs };
+        },
+        readRange: async (
+          pathFromRoot: string,
+          byteOffset: number,
+          length: number,
+          grantId?: string,
+        ) => {
+          const { full, rel } = await this.resolveFsRequest(loaded, "read", pathFromRoot, {
+            dropGrantId: grantId,
+          });
+          if (
+            !Number.isSafeInteger(byteOffset) ||
+            byteOffset < 0 ||
+            !Number.isSafeInteger(length) ||
+            length < 0 ||
+            length > MAX_FS_READ_RANGE_BYTES
+          ) {
+            this.auditFs(loaded, "read", rel, "INVALID_ARGUMENT");
+            throw apiError(
+              "INVALID_ARGUMENT",
+              `byte range must be a non-negative offset and a length up to ${MAX_FS_READ_RANGE_BYTES} bytes`,
+            );
+          }
+          const info = statSync(full);
+          if (!info.isFile()) {
+            this.auditFs(loaded, "read", rel, "INVALID_ARGUMENT");
+            throw apiError("INVALID_ARGUMENT", "only files can be read by range");
+          }
+          const handle = await openFile(full, "r");
+          try {
+            const buffer = Buffer.alloc(length);
+            const { bytesRead } = await handle.read(buffer, 0, length, byteOffset);
+            this.services.audit?.({
+              pluginId,
+              api: "fs.readRange",
+              ok: true,
+              ts: Date.now(),
+              path: rel,
+              data: { byteOffset, length: bytesRead, totalSize: info.size },
+            });
+            return {
+              bytes: Uint8Array.from(buffer.subarray(0, bytesRead)),
+              totalSize: info.size,
+            };
+          } finally {
+            await handle.close().catch(() => {});
+          }
+        },
         readPreview: async (pathFromRoot: string) => {
           const { full, rel } = await this.resolveFsRequest(
             loaded,
@@ -2909,7 +4205,7 @@ export class PluginRuntime {
             });
             throw apiError("INVALID_ARGUMENT", "only files can be previewed");
           }
-          const preview = previewFile(full, rel);
+          const preview = await previewFile(full, rel);
           this.services.audit?.({
             pluginId,
             api: "fs.readPreview",
@@ -2921,11 +4217,9 @@ export class PluginRuntime {
           return preview;
         },
         openDefault: async (pathFromRoot: string) => {
-          const { full, rel } = await this.resolveFsRequest(
-            loaded,
-            "read",
-            pathFromRoot,
-          );
+          const { full, rel } =
+            (await this.resolveRegisteredFolderRequest(loaded, pathFromRoot)) ??
+            (await this.resolveFsRequest(loaded, "read", pathFromRoot));
           if (!statSync(full).isFile()) {
             this.services.audit?.({
               pluginId,
@@ -2959,11 +4253,9 @@ export class PluginRuntime {
           });
         },
         reveal: async (pathFromRoot: string) => {
-          const { full, rel } = await this.resolveFsRequest(
-            loaded,
-            "read",
-            pathFromRoot,
-          );
+          const { full, rel } =
+            (await this.resolveRegisteredFolderRequest(loaded, pathFromRoot)) ??
+            (await this.resolveFsRequest(loaded, "read", pathFromRoot));
           if (!statSync(full).isFile()) {
             this.services.audit?.({
               pluginId,
@@ -3041,6 +4333,7 @@ export class PluginRuntime {
             path: string;
             isDirectory: boolean;
             size?: number;
+            mtimeMs?: number;
           }> = [];
           for (const name of names.sort()) {
             if (entries.length >= MAX_LIST_ENTRIES) break;
@@ -3069,6 +4362,7 @@ export class PluginRuntime {
               path: childRel,
               isDirectory: false,
               size: st.size,
+              mtimeMs: st.mtimeMs,
             });
           }
           this.services.audit?.({

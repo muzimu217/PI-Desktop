@@ -49,6 +49,7 @@ crates/host-core (tool execution + permissions)
 ```ts
 interface AgentRuntime {
  prompt(input: PromptInput): Promise<{ turnId: string }>
+ steer(input: RuntimePrompt, expectedTurnId: string, message: UiMessage): { accepted: boolean; turnId: string }
  requestGracefulStop(): { requested: boolean }
  abort(turnId?: string): Promise<void>
  getStatus(): RuntimeStatus
@@ -63,6 +64,24 @@ interface AgentRuntime {
 工具。空闲的运行时返回 `{ requested: false }`；立即生效的 `abort()` 仍然是另
 一条独立的取消路径。
 
+### 4.0 当前回合补充指令
+
+`steer` 在改变任何状态之前验证当前回合标识，再通过 pi-agent-core 原生 steering 队列的
+`all` 模式加入用户输入。当前提供商请求和已启动的一批工具先完成；所有已接收输入在
+同一个持久回合的下一次模型请求边界进入上下文。进行中的请求不会被改写或中止。
+与普通提示相同，主进程负责附件验证和转录持久化。
+
+pi 消费排队输入时保留渲染器提供的消息 id；即使补充输入早于最初用户消息被消费，
+也遵循这一规则。如果输入在 pi 最后一次检查队列后才获准进入，运行时抑制终态事件，
+等 pi 释放执行后沿用同一回合继续，不再次公开发出 `agent_start`。现有上下文和提供商
+恢复流程优先于这次继续执行。补充指令也会唤醒正在空闲等待后台委托的父代理，
+不会取消这些委托。
+
+中止、优雅停止、致命错误和终态落定都会关闭接收入口。已接收但尚未消费的输入保留在
+转录和上下文历史中，并从 pi steering 队列移除，避免在后续回合独立执行。
+普通 follow-up 仍留在独立的 Host FIFO 中，直到当前持久回合最终落定。
+补充指令失败不得终止当前运行。
+
 ## 5. 提示流程
 
 1. 加载持久会话，会话缺失则拒绝
@@ -75,7 +94,7 @@ interface AgentRuntime {
 5. 会话繁忙则拒绝；渲染器会把面向用户的下一条提示排入队列，在当前会话到达
    `agent_end` 之前不会调用这条路径
 6. 在 Electron main 的会话绑定路径边界上校验结构化附件，按 SHA-256 持久化
-   图片字节，持久用户消息中只保留附件引用。只有处于视觉模型 20 MiB 内联上限
+   图片字节，持久用户消息中只保留附件引用。只有处于视觉模型 10 MB 内联上限
    之内的图片才会被读进内存；更大的图片走流式哈希/复制以及既有的安全路径回退
 7. 为本回合快照有效的 shell ID 与方言
 8. 用解析出的会话配置和有效思考级别启动 pi 回合；HTTP 429 的建连与流式失败
@@ -92,11 +111,13 @@ interface AgentRuntime {
 12. 独立地收尾并持久化成功的 answer/thinking 块
 
 当一个进行中的回合还没有产生新的转录行时，运行时会发出一个规范化的 `status`
-事件，附带以下解释之一：`waiting-model` 表示某次提供商请求正在等待它的第一个
-助手事件，`retrying` 表示正处于一次有界的提供商退避中，`waiting-subagents`
-表示父级正在等待被委托出去的工作。渲染器把这个阶段限定在该会话内，并在助手
-或工具活动开始时、或回合终止时清除它。这纯粹是可观测性，它不会引入第二个
-agent 循环，也不会给出完成百分比。
+事件来命名这段安静间隔：`starting` 表示提示交接，`waiting-model` 表示某次
+提供商请求正在等待它的第一个助手事件，`preparing` 表示工具批次结束后、下一次
+请求发出前，`compacting` 表示正在做上下文检查点，`recovering` 表示正在补救
+空回复，`retrying` 表示正处于一次有界的提供商退避中，`waiting-subagents`
+表示父级正在等待被委托出去的工作（并带上每个仍在运行的目标的粗粒度子动作）。
+渲染器把这个阶段限定在该会话内，并在助手或工具活动开始时、或回合终止时清除它。
+这纯粹是可观测性，它不会引入第二个 agent 循环，也不会给出完成百分比。
 
 运行时为每个持久会话恰好构造一个 pi `Agent`。Plan 不会另选第二个模型、
 规划器服务、权限实现或运行时。同一个 Agent 在一次由主机确认的转换之后，
@@ -454,7 +475,7 @@ Goal 批准所承诺的内容与 Plan 批准所承诺的内容完全相同：`mo
   获得合成的仅呼叫辅助运营商，以便 call/result 对保留
 格式良好，适用于每个提供商 API。
 - 视觉运行时只从会话绑定的附件、scratch 与项目根目录中水合持久化的图片引用。
-  处于 20 MiB 内联安全上限之内的图片会成为临时的 pi-ai 图片块；超限或不可用的
+  处于 10 MB 内联安全上限之内的图片会成为临时的 pi-ai 图片块；超限或不可用的
   图片则退化为安全的 `@path` 回退。超限历史的水合会直接复制文件，不会先把内容
   读进内存。Base64 绝不会被还原进持久的 UI 消息或转录记录。
 - 失败的助理消息仍然是持久的诊断记录条目，但
@@ -478,8 +499,8 @@ Goal 批准所承诺的内容与 Plan 批准所承诺的内容完全相同：`mo
 会话 Agent 可以把可拆分的工作交给在独立上下文中后台运行的委托，
 并按需取回报告。
 
-**目录。** 定义是来自两个来源的 Markdown 文档：`agent-runtime` 中内嵌的四个
-内置函数（`explorer`、`code-reviewer`、`test-runner`、`fixer`），以及
+**目录。** 定义是来自两个来源的 Markdown 文档：`agent-runtime` 中内嵌的五个
+内置函数（`explorer`、`code-reviewer`、`test-runner`、`fixer`、`ui-designer`），以及
 `~/.agents/subagents/*.md` 下的全局用户文档。没有项目级子代理目录，`.pi/agents`
 不会作为能力来源被扫描。用户文档在进入加载器前会根据应用本地启用状态过滤。
 Electron main 每次启动加载全局目录，并在 sidecar 参数中传递
@@ -492,9 +513,9 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
 委托使用会话的有效权限模式；因此父会话为 `auto` 时，明确的外部路径也不会再次
 弹出授权卡。只有内置定义和用户定义可以声明非 `inherit` 作用域；项目定义随仓库
 一起到来，声明会在解析时被丢弃并留下警告，其委托仍在会话的有效模式下运行 ——
-想要该作用域的用户把文档复制到自己的 agents 目录。唯一可写的内置 `fixer` 也
-默认继承父会话：`auto` 下跟随父会话自动放行，而 `ask` 和 `accept-edits` 仍保留
-各自的审批边界。显式声明的内置或用户作用域仍然是一次有意的覆盖。
+想要该作用域的用户把文档复制到自己的 agents 目录。可写的内置 `fixer` 与
+`ui-designer` 也默认继承父会话：`auto` 下跟随父会话自动放行，而 `ask` 和
+`accept-edits` 仍保留各自的审批边界。显式声明的内置或用户作用域仍然是一次有意的覆盖。
 
 **工具（ADR 0089）。** 委托是四个工具的生命周期，仅在 Agent 模式下且目录
 非空时构建，四个工具都属于 Agent 核心集而不是第 7.1 节的按需目录：
@@ -509,8 +530,15 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
   运行中覆盖该委托的模型。解析优先级：Task.model 参数 → 定义 frontmatter 的
   引脚 → 会话模型。父 agent 会在系统提示中看到一份模型摘要，列出提供商设置里
   所有标记为 `availableForSubagents` 的模型。若委托目录为空，提示会告诉模型
-  省略 `model` 并继承会话模型；显式给出的键如果正好就是当前会话的
+  省略 `model`，使用定义的固定模型，无固定模型时继承会话模型；显式给出的键如果正好就是当前会话的
   provider/model，同样按继承处理。其他显式模型键必须已配置并已为委托启用。
+  Electron 单独传递 `subagentModelKeys` 与 `subagentProviders`：后者可含仅供定义
+  固定使用的模型，只有前者授权缓存覆盖并生成模型摘要。缺省列表为空；按需解析成功
+  写入独立覆盖缓存，不得覆盖定义固定模型或改变运行时复用判断。按需匹配使用与
+  固定模型相同的唯一 id/vendor/name 规则。许可列表变化会在下一次启动时替换空闲运行时。
+  省略 `model`，或 `Task.model` 重复该定义自己的固定模型键时，定义仍可使用未勾选自动调度的固定模型。Task 的定义目录展示
+  每项默认模型，并提示省略或重复该键以保留默认值。参见
+  [ADR subagent-model-opt-in](/adr/subagent-model-opt-in)。
   当某个模型键没有被预先解析时，运行时会请求 Electron main 通过
   `provider.resolveSubagentModel` RPC 按需解析。已启动的 `Task` 结果详情会记录
   本次运行实际使用的 `modelId`。
@@ -531,12 +559,18 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
 **委托循环。** `SubagentRun` 是同一 sidecar 进程中的第二个 pi `Agent`，
 使用该定义的系统提示、其（可能已固定的）provider/model、其声明的工具，
 以及与父级相同的主机连接，并遵循与父级相同的有界提供程序重试策略。
-`maxTurns` 是可选的按定义兜底（最大 80）；省略、`none` 或 `0` 表示不限轮数。
-内置委托各自声明与其工作量相称的值 —— `explorer` 60、`code-reviewer` 50、
-`test-runner` 40、`fixer` 80 —— 因此始终无法收敛的委托会以 `truncated`
-连同其部分报告结束，而不是一直跑到时长上限。内置的 `explorer` 声明 `Read`、
-`Glob`、`Grep` 和 `Bash`，而 `code-reviewer` 保持只读。其状态为 `completed`、
-`truncated`、`failed`、`aborted`、`timed_out` 以及仅存在于注册表的
+委托没有轮次上限：它会在自己结束时、父级调用 `TaskStop` 时、用户 Stop 时结束，
+或因父级终态错误而被中止（ADR 0253）。仍声明 `maxTurns` 的文档会正常加载，该键
+会像其他任何无法识别的 frontmatter 键一样被忽略。
+`maxTokens` 是可选的按定义输出上限（最大 200000）；省略、`none` 或 `0` 表示跟随模型
+已发布的上限。它会覆盖为该委托构建的模型上的 `maxTokens`，因此适配器派生出的
+`max_tokens` / `max_completion_tokens` / `max_output_tokens` 都会带上它；它只约束该
+委托自身的响应 —— 会话自己的请求仍沿用模型绑定。超过天花板的值属于笔误，会被钳制
+而不会转发给 provider。
+内置的 `explorer` 声明 `Read`、
+`Glob`、`Grep` 和 `Bash`，而 `code-reviewer` 保持只读；`fixer` 与 `ui-designer`
+会在工作区内写入，`ui-designer` 另外声明 `BrowserPreview`，以便在报告前检查渲染结果。
+其状态为 `completed`、`failed`、`aborted`、`timed_out` 以及仅存在于注册表的
 `stopped`；终态通过 `TaskWait` 呈现，其文本是报告（上限为
 `MAX_SUBAGENT_REPORT_CHARS`，12k），其 details 携带 `delegationId`、`agent`、
 `status`、`startedAt`、结算后的 `completedAt`、`turns`、`toolCalls`，以及失败或
@@ -546,22 +580,30 @@ Frontmatter 新增 `permission: inherit | ask | accept-edits | auto`（默认
 
 **委托生命周期（D328）。** 运行时不再用空闲或总时长掐死委托。
 `idle-timeout` / `max-duration` 仍会解析以便旧文档能加载，但不会被武装。
-委托一直跑到自己结束、碰到显式 `maxTurns`、失败、被 `TaskStop`，或用户
+委托一直跑到自己结束、失败、被 `TaskStop`，或用户
 Stop / 运行时销毁。主 Agent 用 `TaskStop` 判断要不要取消；运行中只能看到
 一行心跳（谁、状态、已用时、轮数、最后工具）。
 
 当父级在委托仍在跑时停止调用工具，运行时吞掉这次 `agent_end`，保持持久
 回合打开，等委托完成后再把报告塞回父级。父级收工不会中止它们。
 
-致命的 provider/stream 错误、父级中止以及显式的 `maxTurns`，仍分别保留它们
-既有的 `failed`、`aborted` 和 `truncated` 结果。
+致命的 provider/stream 错误（包括耗尽的 HTTP 429）、父级中止，仍分别保留它们既有的
+`failed` 和 `aborted` 结果。
+父级终态错误还会中止残留委托、跳过续跑提示，并把会话恢复为空闲，这样
+“继续”不会变成 `AGENT_BUSY`（D352）。
 
 **模型引脚。** Frontmatter 中的 `model: <provider>/<model>` 在每次启动时于
 Electron main 里解析一次——凭据与 models.dev 快照都在那里——匹配提供商 id、
 厂商键或显示名称，且最多 `MAX_SUBAGENT_PROVIDERS`（8）个不同的提供商。无法
 解析的引脚会被有意地排除在绑定映射之外；运行时把这个缺失的条目转成一个点名
 该引脚的工具错误，绝不回退到会话模型。定义中的 `thinkingLevel` 会按第 5c 节
-同样的"就近支持"规则，对照解析出的模型做钳制。
+同样的"就近支持"规则，对照解析出的模型做钳制；特殊值 `omit` 故意
+不发送思考覆盖，把控制权留给提供商适配器自己的默认行为。
+`agents.create` 和 `agents.update` 只接受这种 `<provider>/<model>` 形状的引脚；
+缺少提供商部分的值会被拒绝并返回 `SUBAGENT_INVALID`，而不是被写入，因为运行时
+永远无法解析它。只有斜杠是结构性字符——提供商部分按归一化别名匹配，
+因此包含空格的显示名是合法的。
+
 
 **事件与上下文。** 委托发出的每个事件都在信封上携带 `parentToolCallId` 和
 `agentName`，Electron main 会把这两者一并复制到持久化的行上。运行时重建模型
@@ -571,8 +613,8 @@ Electron main 里解析一次——凭据与 models.dev 快照都在那里——
 
 **回合所有权。** 委托的生命周期永远不会轮到 Electron main
 处理。父级可以在 `Task` 之后继续自己的主线或对用户说话。如果它在委托仍在
-跑时停止调用工具，运行时保持持久回合打开，并在它们完成时交回报告。只有
-用户 Stop、`TaskStop` 或运行时销毁才会中止仍在运行的委托。
+跑时停止调用工具，运行时保持持久回合打开，并在它们完成时交回报告。用户
+Stop、`TaskStop`、运行时销毁或父级终态错误（D352）会中止仍在运行的委托。
 
 ### 5f.1 委托权限作用域（ADR 0089）
 
@@ -716,13 +758,15 @@ sidecar 构建了一个完整的工具注册表，但它不会序列化每个工
 该模式的核心集：
 
 - Agent：`Read`、`Bash`、`Edit` 和 `Write`（匹配 pi 的编码代理核心）
+- Agent：只要技能目录非空，`Skill` 也在核心集中（D404、ADR 0230）——`# Skills`
+  段落与用户输入的 `/skill-id` 都要求模型调用它，而模式中缺失的工具根本无法被调用
 - Agent：当子代理目录非空时，`Task`、`TaskWait`、`TaskList` 和
   `TaskStop` 也是如此 (§5f) — 模型必须寻找的能力是它不会使用的能力，
   委托生命周期值得每个请求的额外模式
 - Plan：`Read`、`Glob`、`Grep`、`BrowserPreview` 和 `Bash`
 - 两种模式：`ToolSearch`（当至少存在一种延迟功能时）
 
-在Agent模式下，`Glob`和`Grep`加入`BrowserPreview`、插件工具、`Skill`，
+在Agent模式下，`Glob`和`Grep`加入`BrowserPreview`、插件工具，
 以及延迟集中的插件开发助手。两种合约模式均保留
 他们的 read/inspection 核心可用，而该类的提交工具
 （`SubmitPlan` 或 `SubmitGoal`）仅在规划状态期间公开，并且
@@ -842,10 +886,8 @@ sidecar 无法选择不同的根。在一次提示期间，路径解析
 源路径标记在 `# Project instructions` 下。
 sidecar 从不直接读取工作区指令。改变的根链
 在下一个提示时重新创建空闲运行时；嵌套指令已解决
-当相关文件工具运行时再次。 sidecar 计时线记录
-`instructionResolveMs`、`instructionCacheHit` 和 `instructionFallback`
-与 `hostRttMs` 分开，因此慢速预检不能被误认为是慢速预检
-指挥机构。
+当相关文件工具运行时再次。解析器的超时和 fallback 是运行时保护措施；
+它们不会输出独立的 timing 日志记录。
 
 设置为固定全局路径提供专门的管理。项目
 查看项目列表菜单为其相应的项目提供了 `AGENTS.md` 编辑器

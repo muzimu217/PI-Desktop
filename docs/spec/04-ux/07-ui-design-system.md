@@ -52,6 +52,9 @@ selection is suppressed for chrome by default. The selection contract is:
   users can edit drafts, search, and use native `Cmd/Ctrl+A/C/V` behavior.
 - Transcript message bodies, rendered Markdown, code blocks, and tool
   input/output remain selectable for copy and inspection.
+- Transient surfaces whose text a user may need to keep — toast messages in
+  particular — remain selectable; a toast's icon and dismiss control stay
+  non-selectable chrome.
 - New document-like surfaces must opt into the shared `.selectable` class (or
   an equivalent explicit `user-select: text` rule).
 - The Electron renderer sets both `user-select` and `-webkit-user-select`;
@@ -173,6 +176,7 @@ All color references in components use **semantic token names**, never raw hex v
 |---|---|---|---|
 | `--color-bg-primary` | `#181818` | Codex `gray-900` | Main surface |
 | `--color-bg-sidebar` / under | `#000000` (dark) / `#f3f3f3` (light) | Codex `surface-under` / gray-75 | Sidebar rail |
+| `--ds-bg-sidebar-image` | `none` (optional `<image>`) | — | Sidebar `background-image` only (gradients / pictures). `--ds-bg-sidebar` stays a color for glass tint, borders, and `color-mix` |
 | `--color-bg-secondary` | `#212121` | Codex `gray-800` | Elevated surfaces, composer |
 | `--color-bg-tertiary` | `#282828` | Codex `gray-750` | Hover / opaque elevated |
 | `--color-bg-inset` | `#0d0d0d` | Codex `gray-1000` | Code blocks, deepest inset |
@@ -219,6 +223,7 @@ opacity-only changes, so actions remain legible in dark and light themes.
 Light-surface polish (D148):
 
 - Docked work panel uses quiet inset paper (`#fafafa`) with a white header band and a combined create trigger in the header so the tool column stays on content without any divider (D297 removed the remaining edge rules).
+- The work-panel header keeps its add-tab action in a separated rail: a tokenized 60px safe lane reserves the viewport-fixed panel toggle, with at least 24px of visual separation between the two hit targets on supported window sizes.
 - Shared form fields, browser URL, settings segment tracks, and shortcut keycaps use `--ds-tile` fills with no stroke (D297); focus lifts to white with an accent-tinted ring. An Unbound shortcut uses a localized text state instead of an empty keycap and keeps its recorder and restore controls keyboard-focusable.
 - Settings toggles keep a near-black on-track and force a white knob in light mode.
   Off/on track and knob colours come from the `--ds-switch-*` theme tokens; a
@@ -471,29 +476,29 @@ build/version chip is right-aligned and remains the update check/release entry
 point. Hover and active states use semantic sidebar surfaces; neither side adds
 a persistent card fill.
 
-Every scroll container in the renderer uses one quiet scrollbar: 8px,
+Every scroll container in the renderer uses one quiet scrollbar: 6px,
 trackless, with a thumb that is transparent at rest. The thumb appears only
-while the pointer is over the owning scroll region or while that region is
-scrolling (the renderer marks the scrolling element with `data-scrolling` for
-a short hold after the last scroll event, so wheel, trackpad, keyboard, and
-pinned-follow scrolls all reveal it); it strengthens under the pointer and
-while dragged. Scrollbars are styled only through the `::-webkit-scrollbar`
-pseudo-elements. Partials never set `scrollbar-width` or `scrollbar-color`,
-because WebKit and Chromium then ignore the pseudo-elements and the surface
-falls back to an always-visible native bar. Reserved gutters
+while the pointer is over the owning scroll region, the region contains the
+keyboard focus, or the region is scrolling (the renderer marks the scrolling
+element with `data-scrolling` for 300ms after the last scroll event, so wheel,
+trackpad, keyboard, and pinned-follow scrolls all reveal it); it strengthens
+under the pointer and while dragged. Scrollbars are styled only through the
+`::-webkit-scrollbar` pseudo-elements. Partials never set `scrollbar-width` or
+`scrollbar-color`, because WebKit and Chromium then ignore the pseudo-elements
+and the surface falls back to an always-visible native bar. Reserved gutters
 (`scrollbar-gutter: stable`) stay where layout needs them; they are simply
-empty at rest.
+empty at rest. Sidebar lists use this same rule without a narrower or darker
+override, so the navigation tree, conversation, and work-panel scrollbars
+remain visually consistent on Windows as well as macOS and Linux.
 
-Sidebar list scrollers narrow that scrollbar to 6px, also reveal it while a
-row has keyboard focus, and use a 20% semantic-ink thumb in every revealed
-state. This keeps the navigation tree visually quiet while preserving a
-discoverable control during interaction.
+The preload-owned document for a docked or detached plugin panel applies the
+same 6px contract and scroll-reveal mark. This keeps first-party surfaces such
+as the Files view aligned with the host renderer; the external page loaded
+inside the Browser guest remains page-owned and keeps its own scrollbar style.
 
-The expanded sidebar's resize handle keeps its 8px hit area transparent when
-the sidebar surface is merely hovered. Direct handle hover reveals only a
-centered 32px semantic-ink marker; keyboard focus and active dragging may use
-the accent marker. The handle never paints a full-height hover rail or changes
-the sidebar layout.
+The expanded sidebar is a fixed 275px column. Collapse/open changes only whether
+the column is present; the historical resize handle is hidden and legacy width
+preferences are not persisted.
 
 The profile menu is `280px` wide, opens `8px` above the footer, and uses the
 standard opaque elevated-menu surface, subtle border, and dialog shadow. Its
@@ -501,26 +506,42 @@ first block repeats the local identity with the same glyph and two-line text,
 followed by a divider and compact Settings / Logs / Theme rows.
 
 Toolbar rows are 46px. macOS places traffic lights at `{x:16,y:16}` and keeps
-the expanded sidebar's Search and Collapse sidebar icon buttons right-aligned
+the expanded sidebar's Collapse sidebar icon button right-aligned
 in that same row. The macOS row omits the sidebar logo/title, reserves `76px`
 on the left for native chrome in windowed mode, and reclaims that padding in
 fullscreen. Windows/Linux keep the identity and sidebar actions in their first
 row and reserve the rightmost 120px for three frameless-window controls. The
 controls retain 112px of full-height hit targets, while the outer band adds an
-8px visual buffer and a divider before adjacent work-panel actions. The band
-paints an opaque `bg-primary` surface so page content never shows through the
-controls, and its leading and bottom edges use the same `border-subtle` rule as
-the adjacent titlebar so the 46px chrome reads as one continuous surface. Main,
-Settings, and work-panel drag regions must terminate before
-this reservation rather than overlap it and rely only on descendant `no-drag`,
-so every visible control pixel remains clickable. The band floats over the
-destination pages, so on Windows/Linux a page frame and any right-edge detail
-sheet start below it instead of placing their own header actions or close
-control under the window controls. No application menu is rendered inside the
-window.
+8px visual buffer before adjacent work-panel actions. The band paints an opaque
+`bg-primary` surface so page content never shows through the controls, and its
+leading and bottom edges use the same `border-subtle` rule as the adjacent
+titlebar so the 46px chrome reads as one continuous surface. Main, Settings,
+and work-panel drag regions must terminate before this reservation rather than
+overlap it and rely only on descendant `no-drag`, so every visible control
+pixel remains clickable. Termination is geometric: a region ends where the
+element's border box ends, so an element that only pads its content clear of
+the band still covers the controls with its rectangle. The open work-panel
+header uses a horizontally scrollable tab strip with a fixed `+` add trigger;
+each tab owns its close action and the header does not add a second `×` beside
+the native Windows close control. The band
+floats over the destination pages, so on Windows/Linux a page frame and any
+right-edge detail sheet start below it instead of placing their own header
+actions or close control under the window controls. No application menu is
+rendered inside the window.
 Other menu popovers use the standard opaque elevated-menu surface, `radius-sm`,
 subtle border, and dialog shadow; they are never translucent over readable
 content.
+
+All renderer-owned custom dropdowns and menus are viewport-fixed floating layers:
+they are body-portaled (or use the shared anchored-menu primitive), measured
+before reveal, clamped to the viewport, and repositioned when the anchor or
+viewport moves. Opening one never adds to or squeezes its parent layout. The
+work-panel header has no dropdown: its `+` action creates a real New launcher
+tab, and the tool choices live in that tab's body. Native plugin surfaces such
+as Browser therefore keep their full measured bounds while the user creates a
+new page or selects another tab.
+Native `<select>` popups remain OS-owned and are outside this renderer
+contract.
 
 Composer elevation (Codex `elevation-prominent`):
 
@@ -546,6 +567,30 @@ floating layers where an edge is an elevation cue rather than a partition.
 | Page | `--ds-bg-primary` | The route or dialog body itself |
 | Tile | `--ds-tile` (3.5% text mix); hover `--ds-tile-hover` (6%); deep `--ds-tile-deep` (8%) | Panels, list rows, cards, form fields, chips, code blocks, empty states |
 | Raised | `--ds-raised` + `--ds-raised-shadow` | The active pill of a segmented control, a disclosed detail block, a recorder keycap |
+| Dock | `--ds-bg-dock` (the column), `--ds-bg-dock-raised` (its header and viewer strips) | The work-panel column and the bars inside it. Both are tokens, not literals, so a contributed theme can move them (D419) |
+| Settings rail | `--ds-settings-rail-bg` (light `#f4f4f4`, dark `#000000`) | Full-window settings navigation column |
+| Settings search | `--ds-settings-field-bg` (light `#ffffff`, dark `#212121`) | Search pill on the settings rail |
+| Active settings item | `--ds-settings-nav-active` (light 12% `#1a1c1f` mixed over white; dark 10% `--gray-0` over transparent) | Selected navigation pill |
+| Inset search | `--ds-field-inset-bg`, `--ds-field-inset-focus-bg` (light `#f3f3f3` / white; dark 5% / 7% primary-text mix over transparent) | Plugin search and Agent capability search, including focus |
+
+The dark composer shell consumes `--ds-bg-elevated-primary` directly; light
+continues to use `--ds-bg-composer`. Switch on-state knobs consume
+`--ds-switch-knob-on` in both palettes. These fills keep their built-in paint,
+focus rings, and shadows while allowing a contributed stylesheet to override
+the variables. Theme-specific component rules may retain their existing shadow
+or layout differences, but must not replace a token-driven fill with a literal.
+
+Every surface colour the shell paints must come from a token. A
+`:root[data-theme="light"]` override that writes a literal raises specificity
+above the base token rule and does not read a variable, so it silently pins that
+surface out of every theme's reach — see D419.
+
+`pnpm lint` also guards `background` / `background-color` on the migrated
+settings rail, search, navigation item, switch thumb, capability search, plugin
+search, and composer-shell families against bare hex, CSS color functions,
+`white`, and `black`. The guard is intentionally scoped; it does not establish
+full color-token coverage of prose, scrims, other chrome, or plugin CSS. Real
+rendered theme checks remain necessary to verify cascade and focus behavior.
 
 | Context | Treatment |
 |---|---|
@@ -782,14 +827,21 @@ transcript paints those same references as composer-matching leaf-name chips
 rather than full-path text (D320).
 
 Large text pastes use a second presentation: text-only input at or below the
-configured `largePasteThreshold` remains native textarea content, while input
+configured `largePasteThreshold` remains native editor content, while input
 above it is written as UTF-8 under the active session's scratch `pasted/`
-directory. The textarea receives a generated `@<temporary-name>` token at the
-paste caret, including when pasted in the middle of an existing draft. The
-renderer keeps the token-to-canonical-path mapping out of the visible text and
-resolves that token exactly once immediately before dispatch. The threshold is
-an AI → Defaults setting, defaults to 600 characters, and applies only to
-text-only pastes; clipboard files and images retain their chip presentation.
+directory and rendered as one sentinel-backed `pasted-text-*.txt` chip at the
+paste caret. The chip remains atomic until the user clicks it or presses
+Enter/Space; the composer then reads the bounded text file, replaces the
+sentinel at its current position with editable text, removes the reference, and
+places the caret after the inserted content. A failed or unsupported read keeps
+the chip in place. The renderer resolves any remaining sentinel references
+exactly once immediately before dispatch. The threshold is an AI → Defaults
+setting, defaults to 600 characters, and applies only to text-only pastes;
+clipboard files and images retain their chip presentation. Word's mixed
+`text/plain` plus generated `image/*` copies selects the text representation
+when the text is not whitespace-only and no file has a native path. That text
+uses the same threshold. Native files, non-image files, and image-only or
+whitespace-plus-image pastes retain their chips.
 
 ## 8.2 Composer runtime controls
 
@@ -870,8 +922,10 @@ query still ranks relevance first and uses recency only as a tiebreaker.
   Sparkles cue, rotating chevron, secondary text, and a subtle left rule only
   around expanded reasoning. It uses semantic theme and focus-ring tokens in
   light and dark modes; it must not introduce a separate inset card.
-- The disclosure is open while a thinking-only response is streaming and may
-  be toggled independently afterward.
+- The latest thinking disclosure opens while a thinking-only response is
+  streaming and closes when the turn settles if it was not touched. A manual
+  toggle owns the disclosure and remains effective through later deltas and
+  completion.
 - The trigger is a button with `aria-expanded`, `aria-controls`, and localized
   Show/Hide labels. Collapsed reasoning is hidden from focus and accessibility
   traversal; reduced-motion mode disables the running marker pulse and
@@ -900,6 +954,10 @@ Rules:
 - Never use `z-index: 9999` or similar arbitrary high values
 - Each layer is a fixed offset; no custom z-index outside these layers
 - Stacking within a layer uses DOM order, not higher z-values
+- Browser-preview and plugin views are native surfaces composited above every
+  renderer layer, so no `z-index` in the table above can raise a popover over
+  them. A body-portaled popover clamps to the conversation pane, which ends
+  where the work panel begins, instead of to the viewport.
 
 ## 10. Layout shell metrics
 
@@ -910,31 +968,48 @@ Codex parity decisions (D034/D070) supersede any older value here.
 |---|---|---|
 | Titlebar row height | 46px | Codex toolbar rhythm (D034); traffic lights {x:16,y:16} |
 | Sidebar width (collapsed) | 48px | Icon-only rail |
-| Sidebar width (expanded) | `240px–520px` (default 275px) | Right-edge resize handle; persisted preferred width |
-| Main pane minimum readable width | 360px | Target when the panel is closed; an open internal panel may reduce MainChat below this target on small windows |
+| Sidebar width (expanded) | 275px | Fixed column; collapse/open does not resize it |
+| Main pane minimum readable width | 450px | The MainChat hard floor; the sidebar yields before it is breached (ADR 0238) |
 | Work panel width (closed) | 0px | Hidden by default |
-| Work panel width (open) | `244px–720px` (default 280px), fixed at the committed width | the panel is an in-flow column whose width is taken from the existing client area; the renderer owns its divider (ADR 0151) |
+| Work panel width (open) | `≥244px` (new-profile default 360px), capped by `client width - 450px - expanded sidebar` with no fixed pixel cap | the panel is an in-flow column whose width is taken from the existing client area; the renderer owns its divider (ADR 0033 / ADR 0151 / ADR 0238); saved widths remain unchanged |
 | Composer shell minimum | ~80px | One-line draft + toolbar padding |
+| Composer toolbar | MainChat `≥450px` | Left/right control groups stay on one row and do not shrink; mode/permission labels stay single-line and ellipsize |
 | Composer draft height | 1–7 text lines | Auto-grow; internal scroll beyond line 7 |
 | Chat message max width | 720px assistant / 560px user plate | Prevent eye-span over-stretch; user turns stay compact |
 | Window min width | 1040px | Enforced by Electron for the whole app; opening the panel never changes native bounds |
 | Window min height | 700px | Enforced by Electron |
 
 An open work panel is a fixed-width in-flow column inside the existing client
-area (ADR 0151). Its flex allocation comes from MainChat, and the renderer's
+area (ADR 0033 / ADR 0151). Its flex allocation comes from MainChat, but MainPane
+retains a 450px hard minimum and the panel's effective maximum is the remaining
+client width after the expanded sidebar and that floor (ADR 0238). When the
+budget is exhausted the expanded sidebar collapses immediately, and the shared
+budget keeps counting it while `sidebar-out` occupies flex space. Side-dock
+allocation therefore cannot paint over or claim MainChat's floor. The renderer's
 measured panel rect continues to position the native Browser view. Opening and
 collapsing do not request a positive native reservation or change persisted
-window bounds. Before collapse motion starts, any native Browser preview surface
-is detached because it cannot participate in renderer CSS animation; macOS,
-Windows, and Linux retain the fade-and-slide exit.
+window bounds. Before
+collapse motion starts, any native Browser preview surface is detached because
+it cannot participate in renderer CSS animation; macOS, Windows, and Linux
+retain the fade-and-slide exit.
+
+Preview mode is a transient shell state: MainChat is unmounted and the work
+panel occupies the client width beside the sidebar. A window-level 46px chrome
+row owns the drag area, New Task/sidebar actions, and native window controls.
+Collapsed-sidebar preview reserves 76px on the left for macOS traffic lights in
+windowed mode and 8px in fullscreen. The maximized panel header retains that
+native reserve, then adds the preview action lane and an 8px gap before its
+first tab.
 
 ### 10.1 Responsive collapse
 
 - The work panel never participates in responsive collapse. It keeps its
-  committed `244..720px` width (default 280px) while visible.
+  committed preferred width of at least `244px` (new-profile default 360px)
+  while visible, capped by the shared budget; saved widths remain unchanged.
 - The inner panel divider changes the panel width in the renderer. Moving it
-  left takes more internal space from MainChat; moving it right returns that
-  space. Native window edges resize only the fixed app window.
+  left takes internal space from MainChat until the 450px floor is reached, at
+  which point the expanded sidebar yields; moving it right returns that space.
+  Native window edges resize only the fixed app window.
 - Panel open and collapse change only the in-flow flex allocation. No positive
   native reservation is requested, and the panel's preferred width remains a
   renderer-local setting.

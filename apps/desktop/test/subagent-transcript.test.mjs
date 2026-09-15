@@ -1,11 +1,13 @@
+import {
+  readStoreModule,
+  readStoreSource,
+  readTranscriptSource,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const transcriptSource = await readFile(
-  new URL("../src/components/ChatTranscript.tsx", import.meta.url),
-  "utf8",
-);
+const transcriptSource = await readTranscriptSource();
 const detailSource = transcriptSource.slice(
   transcriptSource.indexOf("function delegateTaskDescription"),
   transcriptSource.indexOf("/**\n * A truthful one-level graph", transcriptSource.indexOf("function delegateTaskDescription")),
@@ -22,10 +24,9 @@ const followScrollSource = await readFile(
   new URL("../src/hooks/use-follow-scroll.ts", import.meta.url),
   "utf8",
 );
-const storeSource = await readFile(
-  new URL("../src/stores/app-store.ts", import.meta.url),
-  "utf8",
-);
+const storeSource = await readStoreSource();
+const eventsSource = await readStoreModule("slices/events-slice.ts");
+const sessionRuntimeSource = await readStoreModule("runtime/session-runtime.ts");
 const messagesCss = await readFile(
   new URL("../src/styles/messages.css", import.meta.url),
   "utf8",
@@ -118,21 +119,25 @@ test("a live delegate row keeps the attribution its stream carried", () => {
 });
 
 test("a terminal tool event repairs a row lost during renderer reload", () => {
-  assert.match(storeSource, /const toolStartsByCallId = new Map/);
-  assert.match(storeSource, /const existing = s\.messages\.some\(/);
+  assert.match(sessionRuntimeSource, /const toolStartsByCallId = new Map/);
+  assert.match(eventsSource, /const existing = state\.messages\.some\(/);
   assert.match(
-    storeSource,
-    /messages: existing\s*\? s\.messages\.map\([\s\S]*?: \[\.\.\.s\.messages, completed\]/,
+    eventsSource,
+    /messages: existing\s*\? state\.messages\.map\([\s\S]*?: \[\.\.\.state\.messages, completed\]/,
   );
-  assert.match(storeSource, /toolDurationMs: toolStart\s*\n\s*\? Math\.max/);
-  assert.match(storeSource, /toolName: message\.toolName \?\? completed\.toolName/);
+  assert.match(eventsSource, /toolDurationMs: toolStart\s*\n\s*\? Math\.max/);
+  assert.match(eventsSource, /toolName: message\.toolName \?\? completed\.toolName/);
 });
 
 test("the shared side-panel detail keeps the live conversation process", () => {
   assert.match(transcriptSource, /delegate\?: SubagentRun/);
   assert.match(detailSource, /function delegateTaskDescription\(message: UiMessage\)/);
-  assert.match(detailSource, /className="subagent-task-message"/);
-  assert.match(detailSource, /panel\.subagentTask/);
+  assert.match(detailSource, /className="subagent-detail-hero"/);
+  assert.match(detailSource, /className="subagent-detail-task-card"/);
+  assert.match(detailSource, /taskOverflow/);
+  assert.match(detailSource, /setTaskOverflow\(\(current\) => \(taskExpanded \? current : overflowing\)\)/);
+  assert.match(detailSource, /aria-expanded=\{taskExpanded\}/);
+  assert.match(detailSource, /aria-controls=\{taskBodyId\}/);
   assert.match(detailSource, /<SubagentRunRows/);
   assert.match(detailSource, /scrollable=\{false\}/);
   assert.match(transcriptSource, /className=\{`subagent-run-rows\$\{scrollable \? "" : " is-panel-flow"\}`\}/);
@@ -163,15 +168,42 @@ test("a Task node shows the effective model after the subagent name", () => {
   );
   assert.match(
     transcriptSource,
-    /className="subagent-topology-node-model" title=\{modelId\}/,
+    /className="subagent-topology-node-model"[\s\S]*?title=\{modelLabel\}/,
   );
   assert.match(
     toolPresentationSource,
-    /key !== "agent" && key !== "error" && key !== "modelId"/,
+    /key !== "agent" &&[\s\S]*?key !== "error" &&[\s\S]*?key !== "modelId" &&[\s\S]*?key !== "thinkingLevel"/,
   );
   assert.match(
     messagesCss,
     /\.subagent-topology-node-model \{[^}]*font-family: var\(--font-mono\)/,
+  );
+});
+
+test("a Task node and detail header show the effective thinking level", () => {
+  assert.match(
+    runtimeSource,
+    /modelId: provider\.modelId,\s*\n\s*thinkingLevel,/,
+  );
+  assert.match(
+    runtimeSource,
+    /modelId: record\.modelId,\s*\n\s*thinkingLevel: record\.thinkingLevel,/,
+  );
+  assert.match(transcriptSource, /function delegateThinkingLevel\(message: UiMessage\)/);
+  assert.match(transcriptSource, /value === "off"/);
+  assert.match(transcriptSource, /const thinkingLabel = thinkingLevel \?\? "";/);
+  assert.doesNotMatch(transcriptSource, /thinkingLevel\./);
+  assert.match(
+    transcriptSource,
+    /const modelLabel = \[modelId, thinkingLabel\]\.filter\(Boolean\)\.join\(" "\);/,
+  );
+  assert.match(
+    transcriptSource,
+    /className="subagent-topology-node-model"[\s\S]*?title=\{modelLabel\}[\s\S]*?aria-label=\{modelLabel\}/,
+  );
+  assert.match(
+    transcriptSource,
+    /className="subagent-detail-model"[\s\S]*?title=\{modelLabel\}[\s\S]*?aria-label=\{modelLabel\}/,
   );
 });
 
@@ -219,7 +251,7 @@ test("every Task row renders as one accessible delegation topology", () => {
   );
   assert.match(
     transcriptSource,
-    /<SubagentTopology\s+key="subagent-topology"\s+items=\{delegateItems\}\s+delegationStatuses=\{delegationStatuses\}\s+delegationTimings=\{delegationTimings\}\s*\/>/,
+    /<SubagentTopology\s+key="subagent-topology"\s+items=\{delegateItems\}\s+delegationStatuses=\{delegationStatuses\}\s+delegationTimings=\{delegationTimings\}\s+onUserInteraction=\{claimDisclosure\}\s*\/>/,
   );
   assert.match(transcriptSource, /className="subagent-topology" aria-labelledby=/);
   assert.match(transcriptSource, /className="subagent-topology-agents"/);
@@ -228,7 +260,27 @@ test("every Task row renders as one accessible delegation topology", () => {
   assert.match(transcriptSource, /className="subagent-topology-node-header"/);
   assert.match(transcriptSource, /aria-expanded=\{panelOpen\}/);
   assert.match(transcriptSource, /aria-controls=\{hasDetails \? "subagent-panel" : undefined\}/);
-  assert.match(transcriptSource, /onClick=\{\(\) => hasDetails && openSubagentPanel\(panelSelectionId\)\}/);
+  const topologyNode = transcriptSource.slice(
+    transcriptSource.indexOf('className="subagent-topology-node-header"'),
+    transcriptSource.indexOf(
+      "</button>",
+      transcriptSource.indexOf('className="subagent-topology-node-header"'),
+    ),
+  );
+  assert.doesNotMatch(topologyNode, /tool-row-caret/);
+  assert.match(
+    topologyNode,
+    /onClick=\{\(\) => \{\s*if \(!hasDetails\) return;\s*onUserInteraction\?\.\(\);\s*toggleSubagentPanel\(panelSelectionId\);\s*\}\}/,
+  );
+  assert.match(
+    transcriptSource,
+    /const toggleSubagentPanel = useAppStore\(\(s\) => s\.toggleSubagentPanel\)/,
+  );
+  assert.match(storeSource, /toggleSubagentPanel:\s*\(delegationId\) => \{/);
+  assert.match(
+    storeSource,
+    /state\.subagentPanel\?\.sessionId === sessionId[\s\S]*?state\.subagentPanel\.delegationId === id[\s\S]*?set\(\{ subagentPanel: null \}\)/,
+  );
   assert.match(transcriptSource, /const inlineOpen = variant !== "topology" && open;/);
 });
 
@@ -298,7 +350,7 @@ test("a delegate's rows scroll in place instead of growing the page (D271)", () 
   );
   assert.match(
     transcriptSource,
-    /className="subagent-run-heading" id=\{headingId\}/,
+    /className=\{dock \? "subagent-run-heading is-dock" : "subagent-run-heading"\}[\s\S]*?id=\{headingId\}/,
   );
   assert.match(
     messagesCss,

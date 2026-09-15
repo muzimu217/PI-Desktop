@@ -1,12 +1,15 @@
+import {
+  readSettingsSource,
+  readPluginsSource,
+  readMainSource,
+  readSharedTypesSource,
+} from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
 
-const settingsPageSource = await readFile(
-  new URL("../src/pages/SettingsPage.tsx", import.meta.url),
-  "utf8",
-);
+const settingsPageSource = await readSettingsSource();
 const settingsSearchSource = await readFile(
   new URL("../src/lib/settings-search.ts", import.meta.url),
   "utf8",
@@ -19,10 +22,7 @@ const scheduledSource = await readFile(
   new URL("../src/pages/ScheduledPage.tsx", import.meta.url),
   "utf8",
 );
-const pluginsPageSource = await readFile(
-  new URL("../src/pages/PluginsPage.tsx", import.meta.url),
-  "utf8",
-);
+const pluginsPageSource = await readPluginsSource();
 const marketplaceSettingsSource = await readFile(
   new URL(
     "../src/components/plugins/MarketplaceSourceSettings.tsx",
@@ -78,18 +78,12 @@ const mainSource = await readFile(
   new URL("../src/main.tsx", import.meta.url),
   "utf8",
 );
-const electronMainSource = await readFile(
-  new URL("../electron/main/index.ts", import.meta.url),
-  "utf8",
-);
+const electronMainSource = await readMainSource();
 const preloadSource = await readFile(
   new URL("../electron/preload/index.ts", import.meta.url),
   "utf8",
 );
-const sharedTypesSource = await readFile(
-  new URL("../../../packages/shared/src/types.ts", import.meta.url),
-  "utf8",
-);
+const sharedTypesSource = await readSharedTypesSource();
 const stylesSource = await loadStyles();
 
 test("Basics and AI tabs expose their respective app and AI controls", () => {
@@ -115,6 +109,23 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   assert.match(aiSource, /CommandShellRow/);
   assert.match(aiSource, /enterToSend: !settings\.enterToSend/);
   assert.match(aiSource, /LargePasteThresholdRow/);
+  assert.match(aiSource, /ContextUsageDisplayRow/);
+  assert.match(
+    settingsPageSource,
+    /saveSettings\(\{ contextUsageDisplay: value \}\)/,
+  );
+  for (const key of [
+    "settings.contextUsageDisplay",
+    "settings.contextUsageDisplayRemaining",
+    "settings.contextUsageDisplayUsed",
+  ]) {
+    assert.match(settingsSearchSource, new RegExp(key.replaceAll(".", "\\.")));
+    assert.match(enLocaleSource, new RegExp(`${key.split(".").at(-1)}:`));
+    assert.match(zhLocaleSource, new RegExp(`${key.split(".").at(-1)}:`));
+    assert.match(trLocaleSource, new RegExp(`${key.split(".").at(-1)}:`));
+  }
+  assert.match(sharedTypesSource, /contextUsageDisplay\?: ContextUsageDisplay/);
+  assert.match(sharedTypesSource, /ContextUsageDisplay = "remaining" \| "used"/);
   assert.match(settingsPageSource, /largePasteThreshold/);
   assert.match(settingsPageSource, /saveSettings\(\{ largePasteThreshold: next \}\)/);
   assert.doesNotMatch(settingsPageSource, /commandShellConfigured/);
@@ -175,7 +186,7 @@ test("stored language drives i18n and native labels at startup and on settings c
   assert.match(languageSource, /changeLanguage/);
   assert.match(languageSource, /resolveLocale/);
   assert.match(mainSource, /initLanguageSync\(\)/);
-  assert.match(electronMainSource, /catalogs\[resolveLocale\(updaterLocale\)\]/);
+  assert.match(electronMainSource, /catalogs\[resolveLocale\(locale\)\]/);
 });
 
 test("date copy follows the active application locale", () => {

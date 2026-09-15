@@ -39,6 +39,14 @@ test("failed turns expose a localized continuation prompt", () => {
     chinese["chat.continueUnfinishedTaskPrompt"],
     "继续用户未完成的任务",
   );
+  assert.equal(
+    english["errors.MUTATION_RETRY_BUDGET_EXHAUSTED"],
+    "The same edit failed three times, so this turn stopped instead of retrying blind. Ask again to continue.",
+  );
+  assert.equal(
+    chinese["errors.MUTATION_RETRY_BUDGET_EXHAUSTED"],
+    "同一处修改连续失败三次，本轮已停止，不再盲目重试。再说一次即可继续。",
+  );
 });
 
 test("common setup and marketplace copy avoid developer jargon", () => {
@@ -75,6 +83,8 @@ test("common setup and marketplace copy avoid developer jargon", () => {
 test("Plan mode and Auto permission copy stay explicit in both locales", () => {
   assert.equal(english["settings.modePlan"], "Plan");
   assert.equal(chinese["settings.modePlan"], "规划");
+  assert.equal(chinese["chat.permissionAcceptEdits"], "允许编辑");
+  assert.equal(traditional["chat.permissionAcceptEdits"], "允許編輯");
   assert.equal(english["plan.approvalRegion"], "Plan approval");
   assert.equal(
     english["plan.readyAnnouncement"],

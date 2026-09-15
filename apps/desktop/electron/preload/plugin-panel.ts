@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import {
   PLUGIN_PANEL_TITLEBAR_HEIGHT,
   PLUGIN_PANEL_CHROME_META_NAME,
@@ -11,6 +11,9 @@ import {
   type PluginPanelWindowControlAction,
   type PluginPanelTheme,
 } from "../shared/plugin-panel-chrome";
+// Bundled into the preload like everything else here, so the panel reads the
+// built-in window palette from the same table main and the panel host use.
+import { builtinWindowBackground } from "@pi-desktop/shared/theme";
 
 const bridge = {
   invoke: async (channel: string, payload?: Record<string, unknown>) => {
@@ -25,9 +28,30 @@ const bridge = {
     ipcRenderer.on(`pi-plugin-panel-event:${event}`, wrapped);
     return () => ipcRenderer.removeListener(`pi-plugin-panel-event:${event}`, wrapped);
   },
+  /** Resolve a real dropped File without exposing Node or Electron to the page. */
+  getDroppedFilePath: (file: File): string | null => {
+    try {
+      return webUtils.getPathForFile(file) || null;
+    } catch {
+      return null;
+    }
+  },
 };
 
 contextBridge.exposeInMainWorld("pluginBridge", bridge);
+
+// Record the gesture before page code handles it. The host consumes one of
+// these short-lived paths when the panel asks for fs.registerDropped.
+window.addEventListener(
+  "drop",
+  (event) => {
+    const paths = [...(event.dataTransfer?.files ?? [])]
+      .map((file) => bridge.getDroppedFilePath(file))
+      .filter((path): path is string => Boolean(path));
+    if (paths.length) ipcRenderer.send("pi-plugin-panel-drop", paths);
+  },
+  true,
+);
 
 type ChromeLabels = {
   toolbar: string;
@@ -81,7 +105,7 @@ function pageColor(property: "backgroundColor" | "color", fallback: string): str
 }
 
 function pageSurface(theme: PluginPanelTheme): string {
-  return pageColor("backgroundColor", theme === "light" ? "#ffffff" : "#181818");
+  return pageColor("backgroundColor", builtinWindowBackground(theme));
 }
 
 function publishTitlebarHeight(): void {
@@ -93,6 +117,67 @@ function publishTitlebarHeight(): void {
 
 function pluginOwnsTitlebarSpacing(): boolean {
   return pluginChromeMode() !== "legacy";
+}
+
+/**
+ * Keep plugin-owned panel documents aligned with the app renderer's compact
+ * scrollbar contract. A docked view is a separate WebContentsView, so it
+ * cannot inherit `styles/base.css`; without this host-owned rule Windows falls
+ * back to its wide classic scrollbar. The external page inside Browser is a
+ * different WebContentsView and intentionally keeps the page's own styling.
+ */
+function installPluginScrollbarStyle(): void {
+  if (!document.documentElement || document.getElementById("pi-plugin-scrollbars")) {
+    return;
+  }
+
+  const style = document.createElement("style");
+  style.id = "pi-plugin-scrollbars";
+  style.textContent = `
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      background-clip: content-box;
+    }
+    :hover::-webkit-scrollbar-thumb,
+    :focus-within::-webkit-scrollbar-thumb,
+    [data-scrolling]::-webkit-scrollbar-thumb {
+      background: color-mix(in oklab, currentColor 16%, transparent);
+      background-clip: content-box;
+    }
+    ::-webkit-scrollbar-thumb:hover,
+    ::-webkit-scrollbar-thumb:active {
+      background: color-mix(in oklab, currentColor 28%, transparent);
+      background-clip: content-box;
+    }
+  `;
+  document.documentElement.append(style);
+
+  const timers = new Map<HTMLElement, number>();
+  const onScroll = (event: Event) => {
+    const element =
+      event.target instanceof HTMLElement ? event.target : document.documentElement;
+    if (!element) return;
+    element.setAttribute("data-scrolling", "");
+    const pending = timers.get(element);
+    if (pending !== undefined) window.clearTimeout(pending);
+    timers.set(
+      element,
+      window.setTimeout(() => {
+        timers.delete(element);
+        element.removeAttribute("data-scrolling");
+      }, 300),
+    );
+  };
+  document.addEventListener("scroll", onScroll, { capture: true, passive: true });
 }
 
 type PluginPanelChromeMode = "legacy" | "safe-area" | "paint-through";
@@ -392,6 +477,8 @@ function createControlButton(
 function installPanelChrome(): void {
   const body = document.body;
   if (!body || document.querySelector("pi-plugin-panel-chrome")) return;
+
+  installPluginScrollbarStyle();
 
   // Publish this before the page's DOMContentLoaded handlers run so modern
   // plugin CSS can resolve its variable without an extra reflow or a second

@@ -2,6 +2,73 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const esEntries: ChangelogEntry[] = [
   {
+    "version": "0.14.8",
+    "date": "2026-09-14",
+    "highlights": [
+      "Explora e instala servidores MCP del registro oficial y de fuentes configuradas por el usuario en el mercado MCP.",
+      "Explora e instala skills de catálogos curados y GitHub en el mercado de Skills, con HTTPS público y límites de tamaño.",
+      "Incluye la vista de archivos como el plugin File Manager integrado, y permite que un plugin empaquetado conserve una actualización del marketplace.",
+      "Añade un modo de vista previa del panel de trabajo, eleva el suelo de la columna de chat a 450px y prioriza MainChat en el diseño de tres columnas.",
+      "Descubre sesiones independientes, envía mensajes de colaboración del host y abre enlaces de colaboración.",
+      "Los subagentes pueden heredar las herramientas del padre, los builtins incluidos aparecen en Ajustes, se añade un builtin de diseñador de UI y el estado de creación es distinto.",
+      "Dirige un turno activo con Alt+Enter y expande archivos de texto pegados en el compositor para editarlos.",
+      "Rediseña la creación de proyectos con espacios de trabajo de varias carpetas, memoria del proyecto y un editor visual de memoria.",
+      "Instala dependencias y skills declaradas de paquetes pi importados detrás de un límite de seguridad del host.",
+      "Añade chips predefinidos para la ventana de contexto y la salida máxima, muestra rangos de líneas de Read en los chips de herramientas y mantiene el contexto recuperable tras una compactación fallida.",
+    ],
+  },
+  {
+    "version": "0.14.6",
+    "date": "2026-09-10",
+    "highlights": [
+      "Avisa cuando esta versión es más antigua que tus datos locales o es la versión Intel en Apple Silicon, en lugar de fallar en silencio.",
+      "Añade un plano de control de escritorio MCP local; los plugins revisados controlan el escritorio solo tras consentimiento nativo.",
+      "Añade plantillas de subagentes, un selector de modelos acotado por proveedor y el nivel de razonamiento efectivo en las tarjetas de delegación.",
+      "Asigna alias a modelos configurados, copia IDs de modelo y prioriza la API propia del modelo sobre el estilo del proveedor.",
+      "Sustituye la coincidencia textual de Edit por operaciones ancladas a líneas, con guía de recuperación específica por error.",
+      "Reintenta proveedores hasta diez veces con cuenta atrás visible y recupera turnos autónomos de solo progreso.",
+      "Rediseña el instalador de macOS, añade un exe portátil para Windows y un paquete RPM para Linux, y restaura los iconos de bandeja y dock de GNOME.",
+      "Copia IDs de conversación y abre carpetas de sesión desde la barra lateral, con tooltips localizados en acciones de solo icono.",
+      "Muestra el estado del proceso en vivo y los intervalos de silencio en la fila de actividad, y añade un conmutador fijo del panel de trabajo.",
+      "Aplica reglas de ignorado del espacio de trabajo, resuelve enlaces simbólicos colgantes y revalida la salida de red de plugins en cada redirección.",
+      "Respeta reglas de omisión de proxy, conserva glifos de uso privado pegados y carga vistas previas sin bloquear el editor.",
+    ],
+  },
+  {
+    "version": "0.14.5",
+    "date": "2026-09-09",
+    "highlights": [
+      "Identifique cada DMG y ZIP de macOS con su arquitectura nativa arm64 o x64."
+    ]
+  },
+  {
+    "version": "0.14.4",
+    "date": "2026-09-09",
+    "highlights": [
+      "Añada lecturas por rangos acotadas para archivos grandes y permisos de archivos vinculados a gestos reales de arrastrar y soltar para los complementos.",
+      "Convierta la firma y notarización de macOS en una opción explícita e incluya instrucciones para abrir compilaciones sin firmar de confianza."
+    ]
+  },
+  {
+    "version": "0.14.3",
+    "date": "2026-09-09",
+    "highlights": [
+      "Identifique claramente las descargas de macOS para Intel para que la arquitectura del instalador sea evidente."
+    ]
+  },
+  {
+    "version": "0.14.2",
+    "date": "2026-09-08",
+    "highlights": [
+      "Añada un inspector de uso del contexto que siga al modelo seleccionado y muestre indicaciones de compactación.",
+      "Mejore la configuración de proveedores y modelos con selección buscable, acciones masivas y errores de obtención más claros.",
+      "Resuma automáticamente los títulos de las sesiones y permita usar nombres de proyecto persistentes.",
+      "Rediseñe el panel lateral de subagentes con estado en vivo, burbujas de tareas compactas, identidad del modelo y navegación a la salida más reciente.",
+      "Envíe notificaciones nativas para preguntas y aprobaciones interactivas, manteniendo las finalizaciones normales fuera de la bandeja.",
+      "Añada la localización de interfaz en coreano y mejore los ajustes localizados, el historial del portapapeles y los enlaces seguros.",
+    ]
+  },
+  {
     "version": "0.14.1",
     "date": "2026-09-08",
     "highlights": [
@@ -25,7 +92,6 @@ export const esEntries: ChangelogEntry[] = [
     "version": "0.13.11",
     "date": "2026-09-07",
     "highlights": [
-      "Habilite el complemento Advisor incluido para que un segundo modelo revise la conversación actual.",
       "Permita que los complementos enumeren modelos, lean el contexto de la sesión en curso y soliciten finalizaciones propiedad del host sin recibir credenciales."
     ]
   },

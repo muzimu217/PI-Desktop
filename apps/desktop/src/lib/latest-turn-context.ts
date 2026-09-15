@@ -54,6 +54,8 @@ export function latestTurnContextInspector(
     .find((message) => message.usage);
 
   return {
+    // Occupancy and provider cache/input/output use this last request.
+    // turnUsage remains the visual-turn sum for completed-turn speed.
     usage: latestUsage,
     turnUsage:
       (latestTurn ? assistantTurnUsage(latestTurn) : undefined) ?? latestUsage,

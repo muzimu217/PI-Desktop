@@ -1,10 +1,13 @@
+import { readAppSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
+import { readMainSource } from "./helpers/main-source.mjs";
 
-const mainSource = await readFile(
-  new URL("../electron/main/index.ts", import.meta.url),
+const mainSource = await readMainSource();
+const activationSource = await readFile(
+  new URL("../electron/main/bootstrap/app-activation.ts", import.meta.url),
   "utf8",
 );
 const menuSource = await readFile(
@@ -15,10 +18,7 @@ const shortcutSource = await readFile(
   new URL("../../../packages/shared/src/keyboard-shortcuts.ts", import.meta.url),
   "utf8",
 );
-const appSource = await readFile(
-  new URL("../src/App.tsx", import.meta.url),
-  "utf8",
-);
+const appSource = await readAppSource();
 const stylesSource = await loadStyles();
 const controlsSource = await readFile(
   new URL("../src/components/WindowControls.tsx", import.meta.url),
@@ -120,7 +120,7 @@ test("developer mode gates every devtools entry point in the main process", () =
   );
   assert.match(
     mainSource,
-    /before-input-event[\s\S]*!developerMode[\s\S]*input\.code === "F12"/,
+    /before-input-event[\s\S]*!windowState\.developerMode[\s\S]*input\.code === "F12"/,
   );
   assert.match(
     mainSource,
@@ -152,8 +152,8 @@ test("Windows and Linux use menu-free frameless chrome with window controls", ()
   }
   assert.match(appSource, /nativeMenuAction\(id\)/);
   assert.match(controlsSource, /windowControl\("getState"\)/);
-  assert.match(controlsSource, /aria-label=\{t\("window\.minimize"/);
-  assert.match(controlsSource, /aria-label=\{t\("window\.close"/);
+  assert.match(controlsSource, /ariaLabel=\{t\("window\.minimize"/);
+  assert.match(controlsSource, /ariaLabel=\{t\("window\.close"/);
   assert.match(controlsSource, /window-controls-in-pane/);
   assert.match(
     appSource,
@@ -161,7 +161,7 @@ test("Windows and Linux use menu-free frameless chrome with window controls", ()
   );
   assert.match(
     stylesSource,
-    /\.window-controls\.window-controls-in-pane\s*\{[^}]*position:\s*absolute;/s,
+    /\.window-controls\.window-controls-in-pane\s*\{[^}]*position:\s*fixed;/s,
   );
   assert.match(
     stylesSource,
@@ -188,9 +188,25 @@ test("Windows and Linux use menu-free frameless chrome with window controls", ()
   );
   assert.match(
     stylesSource,
-    /:root\[data-platform="win32"\] \.main-titlebar\.work-panel-open,[\s\S]*:root\[data-platform="linux"\] \.main-titlebar\.work-panel-open\s*\{[^}]*right:\s*var\(--ds-window-controls-width\);/,
+    /:root\[data-platform="win32"\] \.main-titlebar\.work-panel-open,[\s\S]*:root\[data-platform="linux"\] \.main-titlebar\.work-panel-open\s*\{[^}]*right:\s*0;/,
   );
-  assert.doesNotMatch(stylesSource, /\.work-panel-header\s*\{[^}]*margin-right:/s);
+  // The base header rule stays platform-neutral; the win32/linux reservation
+  // ends the header's *box*, so its native drag rectangle stops before the
+  // control band instead of covering the window controls.
+  assert.doesNotMatch(
+    stylesSource,
+    /^\.work-panel-header\s*\{[^}]*margin-right:/ms,
+    "the base header rule stays platform-neutral",
+  );
+  assert.match(
+    stylesSource,
+    /:root\[data-platform="win32"\] \.work-panel-header,[\s\S]*:root\[data-platform="linux"\] \.work-panel-header\s*\{[^}]*margin-right:\s*var\(--ds-window-controls-width\);/,
+  );
+  assert.doesNotMatch(
+    stylesSource,
+    /padding-right:\s*calc\(var\(--ds-window-controls-width\)/,
+    "padding does not exclude an Electron draggable region",
+  );
   assert.match(
     stylesSource,
     /:root\[data-platform="(win32|linux)"\] \.thread-content[\s\S]*?padding-top:\s*var\(--ds-toolbar-height\);/,
@@ -295,7 +311,7 @@ test("Windows taskbar minimize keeps the taskbar entry", () => {
   );
   assert.match(
     minimizeHandler,
-    /if \(quitting \|\| !tray \|\| process\.platform !== "darwin"\) return;/,
+    /if \(windowState\.quitting \|\| !windowState\.tray \|\| process\.platform !== "darwin"\) return;/,
   );
   assert.match(
     mainSource,
@@ -308,14 +324,18 @@ test("Windows taskbar minimize keeps the taskbar entry", () => {
 });
 
 test("macOS activation resurfaces a tray-hidden window", () => {
-  assert.match(mainSource, /app\.on\("activate", \(\) => \{\s*restoreMainWindow\(\);/);
   assert.match(
     mainSource,
+    /registerApplicationActivation\(\{[\s\S]*restoreMainWindow,/,
+  );
+  assert.match(activationSource, /app\.on\("activate", restoreMainWindow\)/);
+  assert.match(
+    activationSource,
     /app\.on\("did-become-active", \(\) => \{[\s\S]*restoreMainWindow\(\);/,
   );
   assert.match(
-    mainSource,
-    /if \(quitting \|\| !applicationBooted \|\| hasVisibleWindow\(\)\) return;/,
+    activationSource,
+    /if\s*\(\s*isQuitting\(\)\s*\|\|\s*!isApplicationBooted\(\)\s*\|\|\s*hasVisibleWindow\(\)\s*\)\s*return;/,
   );
   assert.match(
     mainSource,

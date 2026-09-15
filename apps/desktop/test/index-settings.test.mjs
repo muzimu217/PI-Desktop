@@ -5,15 +5,16 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-const [search, settingsPage, api, protocol, main, page, enLocale, sharedTypes] = await Promise.all([
+const [search, settingsPage, api, protocol, main, page, enLocale, settingsTypes, statsTypes] = await Promise.all([
   read("src/lib/settings-search.ts"),
-  read("src/pages/SettingsPage.tsx"),
+  read("src/features/settings/SettingsPage.tsx"),
   read("src/lib/api.ts"),
   read("../../packages/shared/src/protocol.ts"),
-  read("electron/main/index.ts"),
+  read("electron/main/ipc/session-ipc.ts"),
   read("src/components/settings/IndexPage.tsx"),
   read("../../packages/i18n/src/locales/en/index.ts"),
-  read("../../packages/shared/src/types.ts"),
+  read("../../packages/shared/src/types/settings.ts"),
+  read("../../packages/shared/src/types/stats.ts"),
 ]);
 
 test("workspace index is a workspace-group settings destination", () => {
@@ -46,7 +47,7 @@ test("index page renders host lifecycle state without promising Grep changes", a
   assert.match(page, /setInterval\(poll, 1000\)/);
   assert.match(enLocale, /grepBoost: "Grep index boost"/);
   assert.match(enLocale, /"?newFolders"?: "Index new folders"/);
-  assert.match(sharedTypes, /indexNewFolders\?: boolean/);
+  assert.match(settingsTypes, /indexNewFolders: boolean/);
   assert.match(page, /index\.status\.\$\{root\.status\}/);
   // The page must not claim the fast path is active: P2-A only builds the
   // cache, so the copy has to describe the index as a rebuildable cache.

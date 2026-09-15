@@ -1,5 +1,19 @@
 # 02. Plugin Manifest Schema
 
+## Appearance extensions
+
+`contributes.themes[].variables` declares typed custom properties that the same
+plugin may change at runtime. A declaration has a safe custom-property name and
+exactly one type: `length` (`unit: "px"`, numeric `min`, `max`, and `default`),
+`number` (finite default and optional range), `color` (hex default), or `select`
+(fixed safe `values` and default). Host-reserved prefixes are refused. Values
+are not CSS fragments.
+
+`contributes.settingsDestinations` declares sandboxed Settings entries with a
+stable `id`, localized `label`, closed icon token, optional localized keywords,
+and a plugin-relative `.html` `entry`. An entry requires `ui.settings`; it is
+rendered only in the host-owned Extensions group.
+
 ## 1. Purpose
 
 Freeze the plugin manifest fields to guarantee:
@@ -72,12 +86,15 @@ type PluginContributes = {
  commands?: PluginCommandContrib[];
  agentTools?: PluginAgentToolContrib[];
  skills?: Array<string | PluginSkillContrib>; // relative paths, or metadata overrides
+ agentExtensions?: string[]; // ExtensionAPI modules run in the agent sidecar; needs `agent.extension` (spec 16)
  settings?: PluginSettingContrib[];
  themes?: PluginThemeContrib[];
+ windowAppearance?: PluginWindowAppearanceContrib; // native window background; needs `ui.window.appearance`
  mcpServers?: PluginMcpServerContrib[];
- services?: PluginServiceContrib[];
- bus?: PluginBusContrib;
- views?: PluginViewContrib[];
+  services?: PluginServiceContrib[];
+  bus?: PluginBusContrib;
+  views?: PluginViewContrib[];
+  sessionSources?: PluginSessionSourceContrib[];
 };
 
 type PluginCommandContrib = {
@@ -117,7 +134,12 @@ type PluginViewContrib = {
  title: string | { en: string; "zh-CN": string };
  icon?: string; // token from the host icon set; unknown tokens draw a letter tile
  entry: string; // relative path to the view's HTML entry
- order?: number; // ascending sort key in the plugin-views menu group, default 0
+  order?: number; // ascending sort key in the plugin-views menu group, default 0
+};
+
+type PluginSessionSourceContrib = {
+  id: string; // ^[a-zA-Z][a-zA-Z0-9._-]{0,63}$, unique within the plugin
+  label?: string | { en: string; "zh-CN": string };
 };
 
 type PluginThemeContrib = {
@@ -125,6 +147,12 @@ type PluginThemeContrib = {
  label: string;
  path: string; // relative `.css` file
  base?: "light" | "dark"; // palette the overrides layer on, default `dark`
+ assets?: string[]; // absolute png/jpg/jpeg/webp/avif/svg/woff2, 4 MB summed;
+                    // each matching `url()` is rewritten to `plugin-asset://`
+};
+
+type PluginWindowAppearanceContrib = {
+ backgroundColor?: { light?: string; dark?: string }; // #rrggbb | #rrggbbaa
 };
 
 type PluginSkillContrib = {
@@ -166,6 +194,7 @@ type PluginPermission =
  | "ui.panel"
  | "ui.view"
  | "ui.theme"
+ | "ui.window.appearance"
  | "clipboard.read"
  | "clipboard.write"
  | "notify"
@@ -181,7 +210,14 @@ type PluginPermission =
  | "background.service"
  | "bus.publish"
  | "bus.subscribe"
- | "browser.cdp";
+ | "browser.cdp"
+ | "desktop.control"
+ | "ui.microphone"
+ | "project.create"
+ | "session.import"
+ | "session.read.own"
+ | "session.update.own"
+ | "session.delete.own";
 ```
 
 Unknown permission = validation failure.
@@ -280,7 +316,8 @@ MVP may implement only:
 6. `main` / `ui.panel` / skills / `views[].entry` paths must exist
 7. tool `name` allows only `[a-zA-Z][a-zA-Z0-9_]*`
 8. Contribution ids (`themes`, `mcpServers`, `services`, `views`) must match
-   `[a-zA-Z][a-zA-Z0-9_-]{0,63}` and be unique within their own list
+   `[a-zA-Z][a-zA-Z0-9_-]{0,63}` and be unique within their own list;
+   `sessionSources` uses the same rule with `.` additionally allowed
 9. `themes[].path` must exist and end in `.css`; `themes[].base` may only be
    `light` or `dark`
 10. `mcpServers[]` must set exactly one transport's fields: `stdio` requires
@@ -308,6 +345,8 @@ MVP may implement only:
     on `delete` only, and `root` only on `workspace` / `userSelected`
 15. `net.domains` entries must be bare hostnames, optionally prefixed `*.`; a
     bare `*` is refused
+17. `sessionSources` ids may also contain `.`; labels are optional, localized
+    labels must provide both `en` and `zh-CN`, and duplicate ids are rejected
 16. `views[].title` is required and, when localized, must carry both `en` and
     `zh-CN`. `views[].icon` is **not** validated against the token list: an
     unknown token degrades to a letter tile, so refusing one would break a

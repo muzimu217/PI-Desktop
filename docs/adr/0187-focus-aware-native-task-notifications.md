@@ -2,6 +2,9 @@
 
 - Status: Accepted
 - Date: 2026-09-08
+- Related: ADR 0107, D117, D350, E2E-065, E2E-065a
+- Note: The native IPC field is `kind` (`task` | `interactive`). A duplicate
+  0187 that named the same field `source` was withdrawn.
 
 ## Context
 

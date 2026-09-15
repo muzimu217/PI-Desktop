@@ -3,13 +3,15 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
+import { readComposerSource } from "./helpers/composer-source.mjs";
+import { readMainSource } from "./helpers/main-source.mjs";
 
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
 const [composer, api, main, attachments, saver, protocol, sidecar, picker] = await Promise.all([
-  read("../src/components/Composer.tsx"),
+  readComposerSource(),
   read("../src/lib/api.ts"),
-  read("../electron/main/index.ts"),
+  readMainSource(),
   read("../electron/main/prompt-attachments.ts"),
   read("../electron/main/composer-paste.ts"),
   read("../../../packages/shared/src/protocol.ts"),
@@ -51,6 +53,16 @@ test("composer converts oversized text paste and materializes clipboard files", 
   assert.doesNotMatch(composer, /<textarea/);
   assert.doesNotMatch(composer, /setSelectionRange\(/);
   assert.match(composer, /await materializeDraftSession\(\)/);
+});
+
+test("expanding a pasted text chip preserves it when the bounded read fails", () => {
+  assert.match(composer, /if \(result\.kind !== "text" \|\| result\.content === undefined\)/);
+  assert.match(composer, /showToast\(message, \{ variant: "error" \}\)/);
+  assert.match(
+    composer,
+    /if \([\s\S]*?liveReference\.sessionId !== sourceSessionId[\s\S]*?liveReference\.path !== reference\.path[\s\S]*?\) \{\s*return;/,
+  );
+  assert.match(composer, /if \(index === -1\) return;/);
 });
 
 test("chip sentinels stay unique inside the private-use range", () => {
@@ -126,7 +138,7 @@ test("picker attachments materialize a session before importing paths", () => {
 
 test("composer opens one unified file picker directly from the plus button", () => {
   const leftStart = composer.indexOf('<div className="composer-left">');
-  const plusIndex = composer.indexOf('title={t("chat.addFiles")}', leftStart);
+  const plusIndex = composer.indexOf('tooltip={t("chat.addFiles")}', leftStart);
   const modeIndex = composer.indexOf("composer-mode-chip", leftStart);
   assert.ok(leftStart >= 0 && plusIndex > leftStart && modeIndex > leftStart);
   assert.ok(plusIndex < modeIndex, "upload must precede the agent mode chip");

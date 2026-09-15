@@ -19,6 +19,7 @@ const hookSource = await read("../src/components/settings/useProviderModels.ts")
 const pageSource = await read("../src/components/settings/ModelConfigPage.tsx");
 const vendorDialogSource = await read("../src/components/settings/VendorAccountDialog.tsx");
 const pickerSource = await read("../src/components/settings/ModelSelectionPanes.tsx");
+const filterSource = await read("../src/components/settings/model-chosen-filter.ts");
 const vendorAccountsSource = await read("../src/components/settings/VendorAccountsSection.tsx");
 const apiSource = await read("../src/lib/api.ts");
 const catalogContractSource = await read("../../../packages/shared/src/model-catalog.ts");
@@ -93,6 +94,11 @@ test("custom API format is a common-path choice, named services skip it", () => 
   assert.match(setupSource, /custom \? \(/);
   assert.match(setupSource, /provider-advanced-dialog/);
   assert.doesNotMatch(setupSource, /provider-setup-advanced-toggle/);
+});
+
+test("editing a provider with an unknown persisted API style stays renderable", () => {
+  assert.match(setupSource, /normalizeApiStyle\(provider\?\.apiStyle\)/);
+  assert.match(setupSource, /default:\s*return \["\/chat\/completions", "\/models"\]/);
 });
 
 test("both credential kinds share one live list and one binding shape", () => {
@@ -209,4 +215,71 @@ test("the rejected catalog-browser styles are gone from the cascade", () => {
   // Only the dialog body scrolls, so the action bar stays reachable.
   assert.match(styles, /\.provider-setup-body\s*\{[\s\S]*?overflow-y: auto;/);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+});
+
+test("model ids are copyable and a configured model can carry an alias", () => {
+  // The shell is non-selectable, so the id/name text opts back in.
+  assert.match(pickerSource, /provider-models-row-copy selectable/);
+  assert.match(pickerSource, /provider-chosen-row-id font-mono selectable/);
+  // A drag-selection inside the row is a copy gesture, not a checkbox toggle.
+  // The guard is row-scoped, so a stale selection elsewhere on the page cannot
+  // cancel a plain click or the Space key's synthetic click.
+  assert.match(pickerSource, /selection\.isCollapsed/);
+  assert.match(pickerSource, /row\.contains\(selection\.anchorNode\)/);
+  assert.match(pickerSource, /row\.contains\(selection\.focusNode\)/);
+  // Keyboard activation reports detail 0 and must still toggle.
+  assert.match(pickerSource, /event\.detail === 0/);
+  // A selection left behind by copying must not block an explicit checkbox click.
+  assert.match(pickerSource, /event\.target instanceof HTMLInputElement/);
+  assert.match(pickerSource, /event\.preventDefault\(\)/);
+  assert.doesNotMatch(pickerSource, /window\.getSelection\(\)\?\.toString\(\)/);
+  // The alias is edited in the Advanced body and shown beside the id.
+  assert.match(pickerSource, /settings\.modelAlias/);
+  assert.match(pickerSource, /updateBinding\(binding\.id, \{/);
+  // The 60-character cap counts Unicode scalars, matching host-core.
+  assert.match(pickerSource, /\[\.\.\.event\.target\.value\]\.slice\(0, 60\)/);
+  assert.match(pickerSource, /provider-chosen-row-alias/);
+  assert.match(styles, /\.provider-chosen-row-alias\s*\{/);
+});
+
+test("the chosen pane narrows a long configured list with its own search", () => {
+  // Both panes of the shared picker own a search field, so finding one model
+  // inside fifty configured rows does not mean scrolling.
+  assert.match(pickerSource, /provider-chosen-search-wrap/);
+  assert.match(pickerSource, /provider-chosen-search"/);
+  assert.match(pickerSource, /settings\.searchChosenModels/);
+  assert.match(pickerSource, /visibleChosen\.map\(/);
+  // The filter is a view: the badge beside the title still reports every
+  // configured model, and removing a filtered row still removes the binding.
+  assert.match(pickerSource, /provider-chosen-count">\{models\.length\}/);
+  // The rule itself is executed by model-chosen-filter.test.mjs; here the pane
+  // only has to delegate to it for the view and for every add path.
+  assert.match(filterSource, /export function filterChosenModels/);
+  assert.match(filterSource, /export function hidesAddedBinding/);
+  assert.match(pickerSource, /filterChosenModels\(models, chosenQuery, rows\)/);
+  // "Nothing matches" is a different message from "nothing chosen yet".
+  assert.match(pickerSource, /models\.length === 0 \? \(/);
+  assert.match(pickerSource, /visibleChosen\.length === 0 \? \(/);
+  assert.match(pickerSource, /settings\.noModelsChosen/);
+  assert.match(pickerSource, /settings\.noChosenModelMatches/);
+  // Every add path — checkbox, select-all, hand-typed — asks that same rule
+  // whether the new model would land behind the filter typed earlier, and an
+  // emptied list drops the filter instead of stranding it in a disabled field.
+  assert.equal([...pickerSource.matchAll(/keepAddedModelVisible\(/g)].length, 3);
+  assert.match(pickerSource, /if \(models\.length === 0\) setChosenQuery\(""\)/);
+  // No dead control: the field is off while saving or with nothing to search.
+  assert.match(pickerSource, /disabled=\{busy \|\| models\.length === 0\}/);
+  // One control, one rule: the two searches share declarations rather than
+  // drifting apart as two copies of the same box.
+  assert.match(
+    styles,
+    /\.provider-models-search-wrap,\s*\.provider-chosen-search-wrap\s*\{/,
+  );
+  assert.match(styles, /\.provider-models-search,\s*\.provider-chosen-search\s*\{/);
+  // Narrow panes give the field its own row instead of squeezing the header.
+  assert.match(styles, /\.provider-chosen-head\s*\{[\s\S]*?flex-wrap: wrap;/);
+  assert.match(
+    styles,
+    /@media \(max-width: 720px\)\s*\{[\s\S]*?\.provider-chosen-search-wrap/,
+  );
 });

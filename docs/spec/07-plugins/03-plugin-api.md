@@ -1,5 +1,13 @@
 # 03. Plugin API
 
+## Theme variables
+
+`pi.themes.setVariables(themeId, values)` requires `ui.theme`. The host accepts
+only values for declared variables on one of the caller's themes, persists them
+in private plugin settings, and refreshes an active theme without selecting a
+new theme or reloading the renderer. It never accepts stylesheet text, URLs,
+selectors, images, fonts, or arbitrary property names.
+
 ## 1. Design principles
 
 1. Small and stable
@@ -18,11 +26,18 @@ declare const pi: PiPluginHostApi;
 
 ## 3. API overview (MVP)
 
+> Status legend: every section below is **shipped** and enforced by
+> `PluginRuntime` unless its heading or text says **Planned**. A planned
+> surface is documented ahead of implementation so plugin authors can see the
+> direction; it throws `UNSUPPORTED` until it lands (see §9 for the
+> per-surface list).
+
 ### app
 ```ts
 pi.app.getVersion(): Promise<string>
 pi.app.getLocale(): Promise<string>
 pi.app.getAppearance(): Promise<PluginAppearance>
+pi.app.setTheme(themeId: "system" | "light" | "dark" | `plugin:${string}`): Promise<void>
 ```
 
 `app.getAppearance` returns the appearance the host is currently showing so a
@@ -41,6 +56,35 @@ Panels read the same value through the bridge channel `app.getAppearance` and
 receive live updates on the `appearance:changed` event (below). On hosts older
 than the channel, the call rejects with `UNSUPPORTED`; panels should fall back
 to the OS preference and their own in-panel choice.
+
+`app.setTheme` (requires `ui.theme`, ADR 0249) applies the app theme
+preference the Settings picker writes. It accepts a built-in preference or a
+currently registered plugin theme id; unknown ids reject with
+`INVALID_ARGUMENT`. The host persists `AppSettings.theme`, refreshes native
+chrome / panel appearance, and emits `settingsChanged` to the renderer.
+
+### themes (requires `ui.theme`)
+
+Runtime registry for the calling plugin's own themes. Works in production
+without unload/reload (ADR 0249).
+
+```ts
+pi.themes.upsert(input: {
+  id: string;           // local id, same rules as contributes.themes[].id
+  label: string;
+  base: "light" | "dark";
+  css: string;          // sanitized with sanitizeThemeCss
+}): Promise<void>
+
+pi.themes.remove(themeId: string): Promise<void>
+pi.themes.list(): Promise<Array<{ id: string; themeId: string; label: string; base: "light" | "dark" }>>
+```
+
+- Full ids are namespaced `plugin:<pluginId>:<themeId>`.
+- `upsert` of an existing id replaces label / base / css.
+- There is no per-plugin theme count cap; the CSS size cap and sanitizer still apply.
+- After upsert/remove the host emits `pluginChanged` (`reason: "themes"`) and
+  refreshes panel appearance, so an updated **active** theme restyles immediately.
 
 ### plugin
 ```ts
@@ -95,13 +139,47 @@ permission probe by showing a short confirmation notification; Electron does
 not expose a cross-platform read-only notification permission API, so
 `unknown` is returned before the first probe and when the operating system does
 not report a result. Native delivery is best-effort: an OS policy may suppress
-the banner without changing the durable task notification inbox.
+the banner without changing the durable task notification inbox. Clicking a
+delivered plugin notification restores and focuses the main window, but never
+activates a session or creates a durable task notification.
+
+### project (requires `project.create`)
+
+```ts
+pi.project.create(input: { path: string }): Promise<{
+  projectId: number
+  path: string
+  name: string
+}>
+```
+
+This creates or reuses a durable host project record without changing the
+active workspace. The returned `projectId` may be passed explicitly to
+`pi.session.import()` or an item in `pi.session.importBatch()`. The plugin must
+hold `project.create` when it supplies a project id. Omitting `projectId` keeps
+the imported session unbound; `projectPath` remains historical source metadata
+and never creates a project by itself.
 
 ### workspace / fs
 ```ts
-pi.workspace.get(): Promise<{ path: string; name: string } | null>
+pi.workspace.get(): Promise<{
+  path: string;
+  name: string;
+  projectId?: string;
+  roots?: Array<{ path: string; name: string; primary: boolean }>;
+} | null>
 
 pi.fs.readText(pathFromRoot: string): Promise<string>
+pi.fs.stat(pathFromRoot: string, grantId?: string): Promise<{
+  size: number;
+  mtimeMs: number;
+}>
+pi.fs.readRange(
+  pathFromRoot: string,
+  byteOffset: number,
+  length: number,
+  grantId?: string,
+): Promise<{ bytes: Uint8Array; totalSize: number }>
 pi.fs.readPreview(pathFromRoot: string): Promise<{
   kind: "text" | "image" | "binary" | "tooLarge"
   content?: string     // UTF-8 when kind is "text"
@@ -117,10 +195,21 @@ pi.fs.list(pathFromRoot: string): Promise<Array<{
   path: string;        // root-relative, usable directly with readText / list
   isDirectory: boolean;
   size?: number;       // files only
+  mtimeMs?: number;    // files only; Unix epoch milliseconds
 }>>
 pi.fs.remove(pathFromRoot: string): Promise<void>
 pi.fs.requestDirectory(): Promise<{ path: string; name: string } | null>
 ```
+
+`workspace.get` answers with the primary root — `path` and its leaf `name`,
+both unchanged — plus, when that folder belongs to a project group (ADR 0249),
+`projectId` and `roots`: every registered folder of the group in its own order,
+primary first, each `{ path, name, primary }` (ADR 0252). `workspace:changed`
+carries the same object, and main answers both from the host-owned group
+records, so the event and the pull cannot disagree. A host that cannot resolve
+the group omits `projectId` and `roots` — the same `{ path, name }` a plugin
+already handles — and reading this metadata needs no new permission and adds no
+SDK method.
 
 `fs.readPreview` classifies one existing readable file for in-app display. It
 uses the same `fs.read` checks as `fs.readText`, rejects directories, and
@@ -129,13 +218,27 @@ returns `text` (capped at 512 KiB), `image` (capped at 5 MiB, as a data URL),
 
 `fs.openDefault` opens one existing file with the operating system's default
 associated application. It uses the same `fs.read` root, symlink, protected-path,
-deny-list, and scope checks as `fs.readText`; directories are rejected. The
-host audits the operation and never accepts an absolute path from the plugin.
+deny-list, and scope checks as `fs.readText`; directories are rejected. The host
+audits the operation. A path is root-relative by default, and an absolute path is
+accepted only by this action and `fs.reveal` (no other mode takes one) when it lies
+inside a registered folder root of the open project — which then becomes the
+containment base for the request (ADR 0249 §5, ADR 0253). That is the shape a view
+uses to name a file in a project folder other than the primary one.
 
 `fs.reveal` reveals one existing readable file in the operating system's file
 manager and selects it when the platform supports that behavior. It uses the
 same `fs.read` checks, rejects directories, and audits both success and failure.
-The plugin receives and supplies only the root-relative path.
+It takes a path exactly as `fs.openDefault` does: root-relative by default, and
+absolute when the file lies inside another registered folder root of the open
+project (ADR 0253).
+
+`fs.stat` returns the size and modification time of one existing readable file
+without loading its contents. `fs.readRange` returns at most 8 MiB of bytes and
+the total file size. Both use the same root, symlink, protected-path, deny-list,
+scope, consent, and audit gates as `fs.readText`; offsets and lengths are
+non-negative safe integers. An offset at or beyond EOF returns an empty byte
+array. A `grantId` is only valid for a host-issued dropped-file grant and then
+requires the matching absolute path.
 
 Paths are relative to the mode's root — the workspace, or the directory the user
 picked through `requestDirectory()` when the mode declares
@@ -184,6 +287,9 @@ type ToolExecContext = {
 }
 ```
 
+`turnId` is populated for host-driven turns and matches the `turnId` of the
+corresponding `session:turnEnded` event (§5).
+
 ### models (requires `models.list`)
 ```ts
 pi.models.list(): Promise<PluginModelInfo[]>
@@ -229,6 +335,158 @@ session (D333 / D336). Calling this outside a tool execution fails with
 plugin's own tool is stripped from the tail. A compaction summary replaces
 pre-checkpoint history. Combined content is capped at 200k characters.
 
+### plugin-owned sessions (P0/P1; requires the matching permission)
+
+Plugins may import and manage only sessions whose origin belongs to that same
+plugin. The source must be declared in `manifest.contributes.sessionSources`;
+the host supplies the localized source label and generates the durable session
+and message ids. Imported sessions never bind a workspace, provider, or model;
+they bind a project only when the caller supplies an existing `projectId`. The
+original import values remain available in `get().history`.
+
+```ts
+type PluginSessionSourceContrib = {
+  id: string
+  label?: string | { en: string; "zh-CN": string }
+}
+
+pi.session.import(input: {
+  source: string
+  externalId: string
+  title: string
+  projectId?: number | null // explicit id from pi.project.create; omitted is unbound
+  projectPath?: string | null
+  modelId?: string | null
+  providerId?: string | null
+  createdAt: string // strict RFC3339
+  updatedAt: string // >= createdAt
+  messages: Array<{
+    role: "user" | "assistant" | "tool"
+    content: string
+    createdAt: string // monotonic within the session
+    modelId?: string
+    providerId?: string
+    toolName?: string
+    toolCallId?: string
+    toolStatus?: "success" | "error"
+    toolArgs?: unknown
+    toolResult?: unknown
+  }>
+}): Promise<{ sessionId: string; imported: boolean; skipped: boolean }>
+
+pi.session.importBatch(input: {
+  source: string
+  sessions: Array<Omit<PluginSessionImportInput, "source">>
+  mode?: "skip" | "fail"
+}): Promise<PluginSessionBatchImportResult>
+
+pi.session.list(input?: {
+  limit?: number; cursor?: string; source?: string; updatedAfter?: string
+}): Promise<PluginSessionListResult>
+pi.session.get(input: { sessionId: string }): Promise<PluginSessionGetResult>
+pi.session.listMessages(input: {
+  sessionId: string; limit?: number; cursor?: string
+  order?: "asc" | "desc"; contentLimit?: number
+}): Promise<PluginSessionMessageListResult>
+pi.session.rename(input: { sessionId: string; title: string }): Promise<{ updated: boolean }>
+pi.session.delete(input: {
+  sessionId: string; mode?: "trash" | "purge"
+}): Promise<{ deleted: boolean }>
+```
+
+Import is idempotent on `(pluginId, source, externalId)`. `skip` batches
+continue per item; `fail` batches validate and commit atomically. `trash` hides
+the session while retaining its transcript and origin; `purge` removes both and
+allows a later re-import. Reads, rename, and delete are ownership-scoped, and
+undeclared sources fail with `PERMISSION_DENIED`.
+
+When a session has an explicit project binding, `projectId` and
+`bound.workspace` report that binding, and `get().projectPath` resolves the
+bound project's current path. The original import `projectPath` remains in
+`get().history`.
+
+After a successful import, rename, or delete, Electron main emits one
+host-owned `sessionsChanged` event for the affected mutation. The renderer
+refreshes its authoritative session list and the Projects page refreshes its
+durable project index from that list. Plugins do not emit or coordinate this
+event themselves. A project created through this API is not automatically
+opened as a sidebar tab, preserving the existing closed-project behavior.
+
+The host enforces a 2,000-message/session, 100-session/batch, 512 KiB/message,
+256 KiB/tool-value, 32 MiB/payload, and JSON-depth-8 limit. Import is limited
+to 10 calls/minute plus 5 batch calls/minute per plugin; delete is limited to
+20 calls/minute. Tool `__pi*` and `piDesktop.*` object keys are removed before
+storage. P2/P3 operations (session create, message mutation, arbitrary re-binding,
+provider/model binding, batch delete, and tags) are intentionally not part of
+this contract.
+
+### session collaboration (requires `desktop.control`)
+
+The official Session Orchestrator composes the reviewed desktop-control
+catalog; this is not a second session API and it does not expose Electron
+channels or the local MCP bearer token.
+
+```ts
+type SessionCollaborationOperation =
+  | "session/collaboration/spawn"
+  | "session/collaboration/send"
+  | "session/collaboration/list"
+  | "session/collaboration/status"
+  | "session/collaboration/result"
+  | "session/collaboration/cancel"
+
+// All calls use pi.desktop.invoke({ operation, args: [input] }).
+type SpawnInput = {
+  task: string
+  title?: string
+  modelKey?: string
+  notifyOnCompletion?: boolean
+  idempotencyKey?: string
+}
+type SendInput = {
+  sessionId: string
+  content: string
+  kind?: "task" | "message"
+  notifyOnCompletion?: boolean
+  idempotencyKey?: string
+}
+type ListInput = {}
+type StatusInput = { sessionId: string }
+type ResultInput = { sessionId: string; messageId?: string; turnId?: string }
+type CancelInput = { sessionId: string; messageId?: string }
+```
+
+`spawn` returns a real durable target `sessionId` and host delivery
+`messageId`. `send` addresses an existing Session ID in either direction and
+reuses that session's project, model, context, and permission configuration;
+`messageId` identifies one delivery and is never a worker identity. `status`
+and `result` are bounded projections and do not load a full transcript.
+`cancel` interrupts only the exact queued delivery or bound turn and retains
+the target session and history.
+
+`list` returns at most 100 non-deleted Agent sessions that can receive a
+message, including sessions created independently of Session Orchestrator. Each
+entry contains only its Session ID, title, status, updated time, readable
+provider/model labels, and bounded creation links; it does not include a
+transcript, project path, credentials, or message previews. The caller can
+pass the returned Session ID to `send`, and `status`/`result` remain the
+authoritative detail reads.
+
+`spawn` and `send` are valid only during the plugin's active Agent tool
+invocation. The broker injects `pluginId`, source `sessionId`, source `turnId`,
+and an invocation identity; plugin arguments cannot supply or override those
+values. A user-facing plugin panel may use `cancel` with its own plugin
+identity, but cannot use that path to send or spawn work. The host enforces
+the source permission ceiling, Agent-mode target, inbox and worker limits,
+idempotency, and bounded autonomous hops. A requested completion callback is
+a host-owned `completion` message linked to the source delivery and is created
+at most once after the actual target turn settles.
+The callback is session data, not a new user authorization, and completion
+messages do not trigger another callback.
+
+The renderer may read the separate sidebar collaboration projection, but a
+plugin panel cannot invoke the mutation operations outside this gateway.
+
 ### agent.complete (requires `agent.complete`)
 ```ts
 pi.agent.complete(input: {
@@ -249,7 +507,7 @@ The host resolves credentials and runs a one-shot completion with `tools: []`
 through the same path as Composer prompt enhancement. The plugin never receives
 a secret. `includeSessionContext: true` also requires `session.read` and an
 in-flight tool session; the host serializes that context and, if `messages` is
-empty, appends `Please advise on the executor's situation above.` System prompt
+empty, appends `Please respond to the request.` System prompt
 ≤ 32 KiB; combined messages ≤ 200k characters; eight calls per plugin per
 rolling 60s (`RATE_LIMITED`); 90s budget (`TIMEOUT`). Empty model output is
 `INVALID_ARGUMENT`.
@@ -360,6 +618,66 @@ pi.net.fetch(input: {
 }): Promise<{ status: number; headers: Record<string, string>; bodyText: string }>
 ```
 
+### desktop control (requires `desktop.control`)
+
+```ts
+pi.desktop.listOperations(): Promise<Array<{
+  id: string
+  description: string
+  risk: "read" | "write" | "dangerous"
+}>>
+
+pi.desktop.invoke(input: {
+  operation: string
+  args?: unknown[]
+  confirm?: boolean
+}): Promise<unknown>
+```
+
+The reviewed catalog includes `session/open(sessionId)` for a plugin UI to
+open an existing durable session. Plugin-originated `session/create` and
+`agent/prompt` calls refresh session state without changing the active
+renderer session; `session/open` is explicit navigation.
+
+This is the first-party plugin gateway to the reviewed operation catalog shared
+with the opt-in local MCP control plane (ADR 0203 / D370). The two catalogs
+differ only for operations marked plugin-only: the six
+`session/collaboration/*` operations are callable through this gateway but are
+deliberately absent from the MCP-visible catalog (`tools/list`,
+`pi_control_describe`, and the `pi_desktop_invoke` enum), because they require
+an authenticated plugin invocation context and no renderer mutation channel
+exists for them. The returned catalog omits Electron channel names and the
+plugin never receives the MCP bearer token. Invocation reuses the controller,
+IPC handler, lifecycle checks, completion event, and audit boundary; a plugin
+cannot reach arbitrary Electron IPC.
+
+A `dangerous` operation (session delete, permission-mode change, tool
+approval) needs two answers. `confirm: true` is the plugin's acknowledgement
+and is required first (`CONFIRMATION_REQUIRED` otherwise). The host then asks
+the user in a native dialog that names the catalog operation id, its catalog
+description, and an argument preview; the dialog never shows plugin- or
+model-authored text, so a prompt-injected transcript cannot relabel
+`session/delete` as something benign. A dismissed dialog, a declined dialog,
+or a host without a dialog service all fail with `PERMISSION_DENIED` before
+the controller is reached. Calls are logged with the plugin id, operation,
+risk, and result status; argument values are not copied into the audit entry.
+
+### microphone panels (requires `ui.microphone`)
+
+An isolated panel may request microphone audio through the browser media API
+only when the manifest declares and the user grants `ui.microphone`:
+
+```ts
+navigator.mediaDevices.getUserMedia({ audio: true })
+```
+
+The host permission handler allows the `media` permission for that panel and
+continues to deny camera and every other device permission. The plugin does
+not receive a native microphone handle or a host secret; browser speech
+recognition and speech synthesis remain page-owned. A panel should provide a
+text fallback and announce permission or recognition failures through its
+accessible status.
+
 ## 4. Error model
 
 ```ts
@@ -372,6 +690,7 @@ type PluginApiError = {
  | "UNSUPPORTED"
  | "LIMIT_EXCEEDED" // a per-plugin cap is full (e.g. bus subscriptions)
  | "RATE_LIMITED" // a rolling window is exhausted (e.g. bus publishes)
+ | "CONFIRMATION_REQUIRED" // a dangerous desktop operation without confirm: true
  | "INTERNAL"
  message: string
 }
@@ -386,18 +705,44 @@ pi.events.on(event, handler)
 pi.events.off(event, handler)
 ```
 
-The host pushes events to the plugin process as one-way frames. Delivered today:
+The host pushes events to the plugin process as one-way frames. `pi.events`
+is not a separate channel: it is an alias over the same per-plugin bus stream
+that `pi.bus.subscribe` consumes (`plugin-host-process.mjs`), so an `on`
+handler sees every frame the host delivers to this plugin and nothing else.
+Delivered today:
 
 - `bus.message` — a bus delivery, with the `PluginBusMessage` as the single
   argument. `pi.bus.subscribe` is the normal way to receive these; `events.on`
   sees the raw stream of every subscription the plugin holds.
-- `workspace:changed` — payload is `{ path: string; name: string } | null`,
-  matching `workspace.get()`, sent when the cached workspace path changes.
+- `workspace:changed` — payload is the `workspace.get()` object or `null`,
+  sent when the cached workspace path changes: the primary `path` and `name`,
+  plus `projectId` and `roots` when the folder belongs to a project group
+  (ADR 0252). The first workspace of a run may arrive once without the folders
+  and repeat once with them, because the group records are read after that
+  first push.
 - `plugin:settingsChanged` is delivered after edits from the generated Plugins
   settings UI.
 - `session:modelChanged` — `{ sessionId, modelKey, thinkingLevel }`, sent after
   a successful `session.configure` that changes provider, model, or thinking
   level.
+- `session:turnEnded` — payload is
+  `{ sessionId: string; turnId: string; reason: "completed" | "aborted" | "error" }`,
+  sent once per host turn at the end of its teardown, after the durable
+  `session.endTurn` attempt. A turn is the one `session.beginTurn` created: a
+  user submission, an approved plan execution, or a scheduled run, and a queued
+  item that never started produces no event. `completed`, `aborted`, and
+  `error` are the three terminal reasons. The event carries the `turnId` the
+  terminal runtime event identified, not whichever turn happens to be active,
+  so a late event from an earlier turn cannot settle a newer one. Delivery is
+  fire-and-forget: there is no ack and no replay, so a plugin that is alive and
+  subscribed receives it once, and a delivery that races a plugin crash,
+  reload, or host quit is not guaranteed. Receiving it does **not** mean every
+  in-flight tool of that turn has exited — late results can still arrive — so a
+  plugin must serialise or otherwise scope its cleanup by `turnId`. The event
+  also needs no new permission: it travels on the existing event channel, and
+  subscribing to an unknown event name does not error. No published host emits it
+  yet — 0.14.8 does not include it — so a plugin that depends on it must require
+  the release that actually ships it rather than assume 0.14.7 or 0.14.8.
 
 A throwing handler is logged and does not affect other listeners or the plugin.
 
@@ -418,14 +763,25 @@ window.pluginBridge.on(event, handler)
 The same bridge serves both plugin surfaces: a detached `ui.panel` window and a
 `contributes.views` surface docked in the work panel (ADR 0104). The channel
 list, the permission gate, and the preload are identical, so one HTML entry
-works in either placement. The only difference is chrome: a docked view has no
-window-control capsule and no drag band, and its
-`--pi-plugin-titlebar-height` is `0px` rather than `46px`.
+works in either placement. The only differences are chrome and the view
+`location` below: a docked view has no window-control capsule and no drag band,
+and its `--pi-plugin-titlebar-height` is `0px` rather than `46px`.
 
 Detached panel pages using the current chrome contract declare
 `<meta name="pi-plugin-chrome" content="v2">` and use the published variable
 for normal-flow top spacing. The host preserves that page-owned spacing. A
 page without the marker remains supported through the legacy additive offset.
+
+A docked view may also be given one subject to show. The `location` a work-panel
+tab already carries is delivered to any contributed view — not only
+`pi.browser`, whose address bar keeps its own navigation channel: on creation it
+travels as the view entry URL's `piViewOpen` query parameter, and once the
+document has finished loading it arrives as the `view:open` event. A location
+that reaches the host before the first load restarts the load instead, and a
+view that is already loaded is never navigated, so unsaved work inside a plugin
+is not discarded; re-opening the same location does nothing. The payload is
+opaque to the host — each plugin decides what its `location` means — and it
+needs no permission and adds no SDK method.
 
 The host-owned preload forwards only fixed channels to the plugin runtime:
 
@@ -435,8 +791,9 @@ The host-owned preload forwards only fixed channels to the plugin runtime:
 | `ui.notify` | `notify` |
 | `ui.getNotificationPermission`, `ui.requestNotificationPermission`, `ui.showNativeNotification` | `notify` |
 | `plugin.getSettings`, `workspace.get`, `app.getAppearance` | None |
+| `app.setTheme`, `themes.upsert`, `themes.remove`, `themes.list` | `ui.theme` |
 | `models.list` | `models.list` |
-| `fs.readText`, `fs.readPreview`, `fs.openDefault`, `fs.reveal`, `fs.glob`, `fs.list` | `fs.read` |
+| `fs.readText`, `fs.stat`, `fs.readRange`, `fs.readPreview`, `fs.openDefault`, `fs.reveal`, `fs.glob`, `fs.list` | `fs.read` |
 | `fs.writeText` | `fs.write` |
 | `clipboard.readText`, `clipboard.getHistory` | `clipboard.read` |
 | `clipboard.writeText` | `clipboard.write` |
@@ -458,15 +815,23 @@ Delivered today:
 
 - `appearance:changed` — payload is the `PluginAppearance` above, sent whenever
   the app's palette or language changes, so a panel can restyle and relabel live.
-- `workspace:changed` — payload is `{ path: string; name: string } | null`,
-  matching `workspace.get()`, sent when the open project changes.
+- `workspace:changed` — payload is the `workspace.get()` object or `null`,
+  sent when the open project changes: the primary `path` and `name`, plus
+  `projectId` and `roots` when the folder belongs to a project group
+  (ADR 0252).
+- `view:open` (docked work-panel views only; a detached `ui.panel` window never
+  receives it) — payload is `{ path: string }`, the location the host asked this
+  view to show. A view created with a location already carried it in its entry
+  URL; this event delivers a later one.
+- `session:turnEnded` — the same payload as the plugin-process event in §5,
+  sent when a host turn reaches a terminal state.
 
 ## 7. Call auditing
 
 Any of the following calls must be logged for audit:
 
 - fs.writeText
-- fs.remove, fs.requestDirectory, and every refused fs call (with its path and
+- fs.stat, fs.readRange, fs.remove, fs.requestDirectory, and every refused fs call (with its path and
   `errorCode`), plus each consent answer and why it was asked (`scope` / `rate`)
 - fs.openDefault (with its root-relative path and whether the OS open succeeded)
 - fs.reveal (with its root-relative path and whether the file manager reveal succeeded)
@@ -503,7 +868,7 @@ Log fields:
 The desktop plugin runtime now implements the MVP host API surface used by local and marketplace plugins:
 
 - `app.*`, `plugin.*`, `commands.*`, `ui.*`, `workspace.*`
-- `fs.readText` / `fs.readPreview` / `fs.openDefault` / `fs.reveal` /
+- `fs.readText` / `fs.stat` / `fs.readRange` / `fs.readPreview` / `fs.openDefault` / `fs.reveal` /
   `fs.writeText` / `fs.glob` / `fs.list` / `fs.remove` / `fs.requestDirectory`,
   bounded by `manifest.fs` (ADR 0088)
 - `agent.registerTool` / `unregisterTool` / `agent.complete`

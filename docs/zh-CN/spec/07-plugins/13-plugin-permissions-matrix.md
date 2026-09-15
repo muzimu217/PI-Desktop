@@ -13,7 +13,8 @@
 |---|---|---|---|---|
 | `ui.panel` | 低 | 打开插件面板 | 安装时授予 | 几乎所有 UI 插件都需要 |
 | `ui.view` | 低 | `contributes.views` 在工作面板中列出并可打开 | 安装时授予 | 与面板窗口同级隔离：沙箱页面、按插件划分的会话分区、`net.domains` 出口限制。按激活范围过滤 |
-| `ui.theme` | 低 | `contributes.themes` CSS 已在“设置”中加载并提供 | 安装时授予 | CSS 由主机清理；它无法编写脚本 |
+| `ui.theme` | 低 | `contributes.themes` CSS 已在“设置”中加载并提供 | 安装时授予 | CSS 由主机清理；它无法编写脚本。已声明的 `assets` 通过主机的只读 `plugin-asset:` 协议提供 |
+| `ui.window.appearance` | 低 | 该插件主题被选中时，用 `contributes.windowAppearance` 设置原生窗口背景 | 安装时授予 | 仅接受 `#rrggbb` / `#rrggbbaa`；按解析后的明暗生效，主题消失后回到宿主默认值。macOS 保持 vibrancy |
 | `clipboard.read` | 中等 | `clipboard.readText`、`clipboard.getHistory` | 首次使用时确认 | 可能会读取敏感信息和保留的剪贴板历史 |
 | `clipboard.write` | 中等 | `clipboard.writeText` | 首次使用时确认 | 防止剪贴板污染 |
 | `notify` | 低 | `ui.notify`、`ui.getNotificationPermission`、`ui.requestNotificationPermission`、`ui.showNativeNotification` | 可以默认授予 | 本机交付由操作系统控制；避免通知垃圾邮件滥用 |
@@ -25,6 +26,7 @@
 | `fs.delete.workspace` | 高 | — | 加载时降级为 `fs.delete` + `own: true` | 旧权限名；只有插件自己写过的文件才不用问 |
 | `agent.tool.register` | 高 | 注册代理工具 | 安装时确认 | 工具执行情况单独审核 |
 | `agent.prompt.inject` | 高 | 注入系统提示符；激活 `contributes.skills` | 默认拒绝/强确认 | 容易导致行为劫持 |
+| `agent.extension` | 高 | 在 agent 进程内运行 `contributes.agentExtensions` 模块 | 显式确认；v1.1 仅限本地导入和开发插件 | 与 agent 自身工具同等权限；插件沙箱不适用（规格 16） |
 | `net.fetch` | 高 | `net.fetch` | 默认拒绝 | 限定在 `manifest.net.domains` 之内；列表为空或非法即完全不放行出网（§2A） |
 | `shell.openExternal` | 中等 | 打开外部链接 | 首次使用时确认 | 防止网络钓鱼链接 |
 | `mcp.server.local` | 高 | 生成清单中声明的 `transport: "stdio"` MCP 服务器 | 默认拒绝 | 运行本地可执行文件；其工具到达代理 |
@@ -33,8 +35,15 @@
 | `bus.publish` | 中等 | `bus.publish` 声明的主题 | 安装时确认 | 其他插件可以对消息进行操作 |
 | `bus.subscribe` | 中等 | `bus.subscribe` 到声明的模式 | 安装时确认 | 可以观察另一个插件的消息 |
 | `browser.cdp` | 高 | 对宿主工作面板访客页调用 `pi.browser.*` | 安装时确认 | 访客页边界夹紧到调用插件视图；CDP 走白名单 |
+| `desktop.control` | 高 | `pi.desktop.listOperations`、`pi.desktop.invoke` | 安装时确认 | 与本地 MCP 控制平面共用同一份已审查的操作目录，但标记为 plugin-only 的操作例外：六个 `session/collaboration/*` 操作可以经由插件网关调用，却被刻意排除在 MCP 可见目录之外，且没有渲染器变更通道；`dangerous` 操作需要插件传 `confirm: true` **并且**用户在宿主拥有的原生对话框中作答，对话框点名目录中的操作；MCP bearer token 和 Electron 通道名永不暴露 |
+| `ui.microphone` | 中等 | 在插件的隔离面板内调用 `navigator.mediaDevices.getUserMedia({ audio: true })` | 安装时确认 | 仅音频；摄像头和其他所有设备权限仍被拒绝；插件拿不到原生句柄或宿主密钥 |
 | `models.list` | 中等 | `pi.models.list` | 安装时确认 | 仅已就绪的 provider/model 行；不含密钥 |
+| `project.create` | 高 | `pi.project.create` 及会话导入中的显式 `projectId` | 安装时确认 | 创建或复用持久项目记录但不激活工作区；只有显式传入 id 的导入会绑定项目 |
 | `session.read` | 高 | `pi.session.getLlmContext` | 安装时确认 | 仅限进行中的工具会话；带 compaction 的投影（D019 / D336） |
+| `session.import` | 高 | `pi.session.import`、`pi.session.importBatch` | 安装时确认 | 只能导入插件声明来源；有大小和频率限制 |
+| `session.read.own` | 中等 | `pi.session.list`、`pi.session.get`、`pi.session.listMessages` | 安装时确认 | 只能读取本插件导入的会话；不能跨插件访问 |
+| `session.update.own` | 中等 | `pi.session.rename` | 安装时确认 | 只能重命名本插件拥有的活动导入会话 |
+| `session.delete.own` | 高 | `pi.session.delete` | 安装时确认 | 只能回收或清除本插件导入的会话；有频率限制 |
 | `agent.complete` | 高 | `pi.agent.complete` | 安装时确认 | 宿主代发一次性补全；消耗用户额度；`includeSessionContext` 还需要 `session.read` |
 
 ## 2A. 权限是开关，manifest 承载范围
@@ -85,6 +94,9 @@ manifest 里的字段负责回答「能做到多远」。两个字段都由主�
   （`themes`、`mcpServers`、`services`、`bus`）； `skills` 是例外，并且是
   相反，在加载时跳过（参见
   [02-plugin-manifest-schema.md](/zh-CN/spec/07-plugins/02-plugin-manifest-schema) §7)
+- 生命周期与状态事件不需要权限：`workspace:changed`、`session:modelChanged`、
+  `session:turnEnded` 和 `plugin:settingsChanged` 走既有的插件事件通道，
+  订阅未知的事件名也不会报错
 
 ## 3A。 Plan 操作状态规则
 
@@ -109,9 +121,12 @@ Agent，在 Plan 中不可见。主机返回 `PLUGIN_DISABLED_IN_PLAN`
 | `notify` | 显示应用内和本机通知 | 显示应用内和系统通知 |
 | `agent.tool.register` | 为AI Agent提供可执行工具 | 向AI Agent提供可执行工具 |
 | `agent.prompt.inject` | 调整代理指令 | 调整智能体指令 |
+| `agent.extension` | 在 agent 内运行代码 | 在 agent 内运行代码 |
 | `net.fetch` | 访问网络 | 访问网络 |
 | `shell.openExternal` | 打开外部链接 | 打开外部链接 |
 | `ui.theme` | 提供一个主题 | 提供主题 |
+| `ui.settings` | Add a sandboxed Settings entry in Extensions | 在“扩展”中添加沙盒设置项 |
+| `ui.window.appearance` | 设置窗口背景 | 设置窗口背景 |
 | `mcp.server.local` | 运行本地 MCP 服务器 | 运行本地 MCP 服务 |
 | `mcp.server.remote` | 到达远程 MCP 服务器 | 连接远端 MCP 服务 |
 | `background.service` | 保持后台服务运行 | 保持后台服务运行 |
@@ -120,6 +135,10 @@ Agent，在 Plan 中不可见。主机返回 `PLUGIN_DISABLED_IN_PLAN`
 | `browser.cdp` | Control the work-panel browser | 控制工作面板浏览器 |
 | `models.list` | List authenticated models | 列出已登录的模型 |
 | `session.read` | Read the current conversation sent to the model | 读取当前发给模型的对话 |
+| `session.import` | Import bounded session history into your declared sources | 导入受限的会话历史到已声明的数据源 |
+| `session.read.own` | Read sessions imported by this plugin | 读取此插件导入的会话 |
+| `session.update.own` | Rename sessions imported by this plugin | 重命名此插件导入的会话 |
+| `session.delete.own` | Trash or purge sessions imported by this plugin | 将此插件导入的会话移入回收站或清除 |
 | `agent.complete` | Run a one-shot completion with your models | 用你的模型发起一次补全 |
 
 ## 5. 添加升级权限

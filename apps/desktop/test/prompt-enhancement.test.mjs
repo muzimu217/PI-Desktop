@@ -1,3 +1,4 @@
+import { readComposerSource, readMainSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -5,9 +6,9 @@ import test from "node:test";
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
 
 const [composer, api, main, protocol, runtime, oneShot, en, zh] = await Promise.all([
-  read("../src/components/Composer.tsx"),
+  readComposerSource(),
   read("../src/lib/api.ts"),
-  read("../electron/main/index.ts"),
+  readMainSource(),
   read("../../../packages/shared/src/protocol.ts"),
   read("../../../packages/agent-runtime/src/prompt-enhancement.ts"),
   read("../../../packages/agent-runtime/src/one-shot-complete.ts"),
@@ -29,9 +30,11 @@ test("prompt enhancement uses the typed main-process bridge", () => {
   assert.match(oneShot, /withOpenCodeSessionHeaders/);
 });
 
-test("Composer gates enhancement, preserves file references, and guards stale results", () => {
+test("Composer enables enhancement with inline file references and guards stale results", () => {
   assert.match(composer, /const \[enhancingPrompt, setEnhancingPrompt\]/);
-  assert.match(composer, /sourceText\.trim\(\)\.startsWith\("\/"\)/);
+  assert.match(composer, /textToEnhance\.trim\(\)\.startsWith\("\/"\)/);
+  assert.match(composer, /stripInlineComposerFileReferenceTokens/);
+  assert.match(composer, /restoreInlineComposerFileReferenceTokens/);
   assert.match(composer, /!modelReady/);
   assert.match(
     composer,
@@ -47,6 +50,7 @@ test("Composer gates enhancement, preserves file references, and guards stale re
   assert.match(composer, /className="composer-enhancement-error"/);
   assert.match(composer, /enhancementError\.code/);
   assert.match(composer, /setEnhancementError\(null\)/);
+  assert.doesNotMatch(composer, /activeInlineFileReferences\.length > 0/);
 });
 
 test("prompt enhancement has complete English-first locale coverage", () => {

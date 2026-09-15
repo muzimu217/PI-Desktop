@@ -130,7 +130,16 @@ plugin runtime
 
 - 打开面板时创建独立视图
 - 传入pluginId /主题令牌
-- 关闭时销毁视图和消息订阅
+- 关闭时销毁视图和消息订阅。需要 `webContents` 身份的清理必须在窗口销毁前复制该 id；`closed` 处理程序不得在已销毁的窗口上读取 `webContents`，否则宿主会抛出未捕获的 `TypeError: Object has been destroyed`。
+- preload 通过 `pluginBridge.getDroppedFilePath(file)` 暴露文件路径，但不向页面暴露 Node。面板可以把路径传给 `fs.registerDropped`；宿主会一次性消费发送方最近的拖拽记录，为 `fs.stat` / `fs.readRange` 签发单文件读取授权。
+
+面板桥接文件通道的权限如下：
+
+| 通道 | 所需权限 |
+|---|---|
+| `fs.readText`、`fs.stat`、`fs.readRange`、`fs.readPreview`、`fs.openDefault`、`fs.reveal`、`fs.glob`、`fs.list` | `fs.read` |
+| `fs.registerDropped` | `fs.read` 加真实拖拽手势 |
+| `fs.writeText` | `fs.write` |
 
 ## 8. 故障隔离
 
@@ -163,7 +172,9 @@ toast 加上 `pluginChanged` 到渲染器。
 2. host-core 首先解析持久操作模式。在 Agent 中，它运行
    正常权限流程（风险、会话授予、120 秒超时），然后发出
    通知 `plugins.execute`
-   `{ executionId, sessionId, toolCallId, toolName, args }`。
+   `{ executionId, sessionId, toolCallId, toolName, args, turnId }`。`turnId` 是
+   运行时回合身份，原样转发，以便插件工具上下文能与
+   `session:turnEnded` 事件对应。
 3. Plan 调用在主机策略步骤失败并显示 `PLUGIN_DISABLED_IN_PLAN`；他们
    永远不会达到 Electron 或插件运行时。 Agent 呼叫继续
    Electron主要执行注册的插件工具JS并通过RPC应答

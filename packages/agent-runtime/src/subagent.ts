@@ -31,14 +31,14 @@ import {
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import {
   addUsage,
-  DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS,
-  DEFAULT_SUBAGENT_MAX_DURATION_SECONDS,
+  cumulativeDelta,
   subagentCanMutate,
+  subagentToolsLabel,
   type AgentEventEnvelope,
   type MessageUsage,
   type SubagentDefinition,
   type SubagentRunStatus as SharedSubagentRunStatus,
-  type ThinkingLevel,
+  type SubagentThinkingLevel,
   type UiMessage,
 } from "@pi-desktop/shared";
 import { classifyAgentError } from "./agent-errors.js";
@@ -47,26 +47,14 @@ import {
   nowIso,
   usageFromPi,
 } from "./agent-messages.js";
+import type { RuntimeProviderConfig } from "./provider-binding.js";
+import { clampThinkingLevel } from "./thinking-level.js";
+import { subagentModelBinding, type SubagentProviderRetryState } from "./subagent-model-binding.js";
 import {
-  buildProviderModel,
-  copilotRequestHeaders,
-  createProviderModels,
-  providerRequestKey,
-  type RuntimeProviderConfig,
-} from "./provider-binding.js";
-import {
-  openCodeEndpointFromProvider,
-  withOpenCodeSessionHeaders,
-} from "./opencode-session-headers.js";
-import { mergeProviderHeaders, withProviderHeaders } from "./provider-headers.js";
-import {
-  captureProviderResponse,
   classifyProviderError,
-  createProviderRetryStream,
   delayWithAbort,
   PROVIDER_RATE_LIMIT_MAX_RETRIES,
   PROVIDER_TRANSIENT_MAX_RETRIES,
-  carriesRetryDelayHeaders,
   isTransientProviderRetryCode,
   providerRateLimitDelayMs,
   providerSetupRetryDelayMs,
@@ -80,7 +68,6 @@ export const SUBAGENT_LIST_TOOL_NAME = "TaskList";
 /** Stop running delegations (ADR 0089). */
 export const SUBAGENT_STOP_TOOL_NAME = "TaskStop";
 
-const PROVIDER_REQUEST_MAX_RETRIES = 0;
 /** The report is the only thing that enters the parent's context; keep it
  * from becoming the context problem delegation was supposed to avoid. */
 export const MAX_SUBAGENT_REPORT_CHARS = 12_000;
@@ -89,6 +76,10 @@ export type SubagentRunStatus = SharedSubagentRunStatus;
 
 export type SubagentRunResult = {
   agentName: string;
+  /** Provider/model used by this run after delegation resolution. */
+  modelId: string;
+  /** Thinking selection passed to the delegate after inheritance/clamping. */
+  thinkingLevel: SubagentThinkingLevel;
   status: SubagentRunStatus;
   /** Text handed back to the parent model. */
   report: string;
@@ -96,6 +87,7 @@ export type SubagentRunResult = {
   turns: number;
   toolCalls: number;
   usage?: MessageUsage;
+  modelFailures?: Array<{ model: string; code: string; message: string }>;
   error?: { code: string; message: string };
 };
 
@@ -116,7 +108,12 @@ export type SubagentRunOptions = {
   /** Provider resolved by Electron main (the definition's pin, or the
    * session's provider when the definition pins nothing). */
   provider: RuntimeProviderConfig;
-  thinkingLevel: ThinkingLevel;
+  thinkingLevel: SubagentThinkingLevel;
+  /** User-owned definition pins only, in configured order. Missing bindings fail visibly. */
+  fallbackModels?: Array<{ key: string; provider?: RuntimeProviderConfig }>;
+  /** Original parent thinking selection, before primary-model clamping. */
+  inheritedThinkingLevel?: SubagentThinkingLevel;
+  onModelChange?: (provider: RuntimeProviderConfig, thinkingLevel: SubagentThinkingLevel) => void;
   /** Fully composed child system prompt (see `composeSubagentSystemPrompt`). */
   systemPrompt: string;
   /** Host-backed tools, built by the session runtime so a delegate's calls
@@ -147,13 +144,19 @@ export function composeSubagentSystemPrompt(options: {
   definition: SubagentDefinition;
   /** Guidance blocks inherited from the session (shell, scratch, rules). */
   guidance?: string[];
+  /** Spawn-time tool names after inherit resolution. */
+  toolNames?: readonly string[];
 }): string {
   const { definition } = options;
-  const toolList = definition.tools.join(", ") || "none";
+  const resolved = options.toolNames;
+  const toolList =
+    resolved && resolved.length > 0
+      ? resolved.join(", ")
+      : subagentToolsLabel(definition);
   const framing = [
-    `You are the "${definition.name}" subagent inside PI-Desktop, working on one task delegated by the main agent.`,
+    `You are the \"${definition.name}\" subagent inside PI-Desktop, working on one task delegated by the main agent.`,
     `You cannot see the user, ask questions, or delegate further. Finish the task with the tools you have: ${toolList}.`,
-    subagentCanMutate(definition)
+    subagentCanMutate(definition, resolved)
       ? "You may change files, but only the ones the task is about; leave everything else untouched."
       : "You have no tools that change files or run commands, so never report an edit you could not have made.",
     "Your final message is the report the main agent receives when you finish. Make it self-contained: what you did, what you found with exact paths and line numbers, and anything you could not finish.",
@@ -185,79 +188,39 @@ export class SubagentRun {
   private turns = 0;
   private toolCalls = 0;
   private usage?: MessageUsage;
-  private cappedTurns = false;
-  private timedOut?: { code: string; message: string };
   private streamError?: { code: string; message: string };
   private pendingProviderRetry?: ReturnType<typeof classifyAgentError>;
   private providerRetryInProgress = false;
   private providerTransientRetryAttempt = 0;
   private providerRateLimitRetryAttempt = 0;
-  private providerRetryHeaders?: Record<string, string>;
-  private providerResponseStatus?: number;
+  private provider: RuntimeProviderConfig;
+  private thinkingLevel: SubagentThinkingLevel;
+  private fallbackIndex = 0;
+  private readonly attemptedModels = new Set<string>();
+  private readonly modelFailures: NonNullable<SubagentRunResult["modelFailures"]> = [];
+  private readonly retryState: SubagentProviderRetryState = {
+    claim: (error, phase) => this.claimProviderRetry(error, phase),
+  };
   private readonly runAbortController = new AbortController();
-  private idleTimer?: ReturnType<typeof setTimeout>;
-  private durationTimer?: ReturnType<typeof setTimeout>;
-  private activeToolExecutions = new Set<string>();
-  private watchdogsStarted = false;
 
   constructor(opts: SubagentRunOptions) {
     this.opts = opts;
-    const model = buildProviderModel(opts.provider);
-    const models = createProviderModels(opts.provider, model);
-    const requestKey = providerRequestKey(opts.provider);
+    this.provider = opts.provider;
+    this.thinkingLevel = opts.thinkingLevel;
+    this.attemptedModels.add(`${opts.provider.id}/${opts.provider.modelId}`);
+    const binding = this.modelBinding();
     this.agent = new Agent({
-      streamFn: (m, context, options) => {
-        this.providerRetryHeaders = undefined;
-        this.providerResponseStatus = undefined;
-        const requestOptions = withProviderHeaders(
-          withOpenCodeSessionHeaders(
-            {
-              ...options,
-              maxRetries: PROVIDER_REQUEST_MAX_RETRIES,
-              sessionId: opts.sessionId,
-              fetch: captureProviderResponse(options?.fetch, (response) => {
-                this.providerResponseStatus = response?.status;
-                this.providerRetryHeaders = carriesRetryDelayHeaders(
-                  response?.status,
-                )
-                  ? response?.headers
-                  : undefined;
-              }),
-            },
-            {
-              ...openCodeEndpointFromProvider(opts.provider, m),
-              sessionId: opts.sessionId,
-            },
-          ),
-          mergeProviderHeaders(
-            copilotRequestHeaders(opts.provider, context),
-            opts.provider.headers,
-          ),
-        );
-        return createProviderRetryStream(
-          m,
-          context,
-          requestOptions,
-          (retryOptions) => models.streamSimple(m, context, retryOptions),
-          {
-            claim: (error, phase) => this.claimProviderRetry(error, phase),
-            headers: () => this.providerRetryHeaders,
-            status: () => this.providerResponseStatus,
-          },
-        );
-      },
-      getApiKey: async () => requestKey || undefined,
+      streamFn: binding.streamFn,
+      getApiKey: binding.getApiKey,
       convertToLlm,
       afterToolCall: async (context) => this.afterToolCall(context),
       initialState: {
         systemPrompt: opts.systemPrompt,
-        model,
+        model: binding.model,
         tools: opts.tools,
-        thinkingLevel: opts.thinkingLevel,
+        thinkingLevel: binding.agentThinkingLevel,
         messages: [],
       },
-      // A delegate is a worker, not a fan-out point: its own tool calls run
-      // one at a time, and it has no `Task` tool to nest further.
       toolExecution: "sequential",
     });
     this.agent.subscribe((event) => this.handleEvent(event));
@@ -273,27 +236,29 @@ export class SubagentRun {
       this.agent.abort();
     };
     signal?.addEventListener("abort", onAbort, { once: true });
-    this.startWatchdogs();
     let caughtError: ReturnType<typeof classifyAgentError> | undefined;
     try {
       await this.agent.prompt(this.opts.task);
       await this.agent.waitForIdle();
-      while (this.pendingProviderRetry && !signal?.aborted && !this.timedOut) {
-        await this.retryPendingProviderFailure();
+      while (!signal?.aborted) {
+        if (this.pendingProviderRetry) {
+          await this.retryPendingProviderFailure();
+        } else if (this.streamError && this.useNextModel()) {
+          await this.agent.continue();
+          await this.agent.waitForIdle();
+        } else {
+          break;
+        }
       }
     } catch (error) {
       caughtError = classifyAgentError(error);
     } finally {
       signal?.removeEventListener("abort", onAbort);
-      this.stopWatchdogs();
       this.finalizeCurrentAssistant();
     }
 
     if (signal?.aborted) {
       return this.result("aborted", "The delegated task was aborted.");
-    }
-    if (this.timedOut) {
-      return this.result("timed_out", this.latestReportText(), this.timedOut);
     }
     if (caughtError) {
       if (caughtError.code === "TURN_ABORTED") {
@@ -307,9 +272,6 @@ export class SubagentRun {
     if (this.streamError) {
       return this.result("failed", "", this.streamError);
     }
-    if (this.cappedTurns) {
-      return this.result("truncated", this.lastReportText);
-    }
     if (!this.lastReportText.trim()) {
       return this.result("failed", "", {
         code: "SUBAGENT_NO_REPORT",
@@ -317,6 +279,68 @@ export class SubagentRun {
       });
     }
     return this.result("completed", this.lastReportText);
+  }
+
+  private modelBinding() {
+    return subagentModelBinding({
+      provider: this.provider,
+      thinkingLevel: this.thinkingLevel,
+      sessionId: this.opts.sessionId,
+      maxTokens: this.opts.definition.maxTokens,
+    }, this.retryState);
+  }
+
+  /** Continue the same agent at the failed request; never replay completed tools. */
+  private useNextModel(): boolean {
+    if (this.runSignal().aborted || !this.streamError || this.streamError.code === "TURN_ABORTED") return false;
+    if (!this.opts.fallbackModels?.length) return false;
+    const failed = this.agent.state.messages.at(-1);
+    // Only a provider's terminal assistant error permits fallback. Host/tool
+    // failures, cancellation, and unexpected internal exceptions do not.
+    if (failed?.role !== "assistant" || failed.stopReason !== "error") return false;
+    this.recordModelFailure(`${this.provider.id}/${this.provider.modelId}`, this.streamError);
+    while (this.fallbackIndex < this.opts.fallbackModels.length) {
+      const next = this.opts.fallbackModels[this.fallbackIndex++];
+      if (!next.provider) {
+        this.recordModelFailure(next.key, {
+          code: "MODEL_NOT_CONFIGURED",
+          message: "The configured fallback model could not be resolved.",
+        });
+        continue;
+      }
+      const identity = `${next.provider.id}/${next.provider.modelId}`;
+      if (this.attemptedModels.has(identity)) continue;
+      this.attemptedModels.add(identity);
+      this.provider = next.provider;
+      const requested = this.opts.definition.thinkingLevel ?? this.opts.inheritedThinkingLevel ?? this.opts.thinkingLevel;
+      this.thinkingLevel = requested === "omit" ? "omit" : clampThinkingLevel(this.provider, requested);
+      const binding = this.modelBinding();
+      this.agent.state.model = binding.model;
+      this.agent.state.thinkingLevel = binding.agentThinkingLevel;
+      this.agent.streamFunction = binding.streamFn;
+      this.agent.getApiKey = binding.getApiKey;
+      this.agent.state.messages = this.agent.state.messages.slice(0, -1);
+      this.streamError = undefined;
+      this.providerTransientRetryAttempt = 0;
+      this.providerRateLimitRetryAttempt = 0;
+      this.lastReportText = "";
+      this.opts.onModelChange?.(this.provider, this.thinkingLevel);
+      return !this.runSignal().aborted;
+    }
+    return false;
+  }
+
+  private recordModelFailure(model: string, error: { code: string; message: string }): void {
+    this.modelFailures.push({ model, ...error });
+    this.emit({
+      type: "message_end",
+      message: {
+        ...this.newAssistantRow(),
+        content: `Model ${model} failed (${error.code}): ${error.message}`,
+        status: "error",
+        isError: true,
+      },
+    });
   }
 
   private claimProviderRetry(
@@ -356,12 +380,12 @@ export class SubagentRun {
         retryError.code === "PROVIDER_RATE_LIMITED"
           ? providerRateLimitDelayMs(
               this.providerRateLimitRetryAttempt,
-              this.providerRetryHeaders,
+              this.retryState.headers,
             )
           : providerSetupRetryDelayMs(
               this.providerTransientRetryAttempt,
               undefined,
-              this.providerRetryHeaders,
+              this.retryState.headers,
             );
       await delayWithAbort(delayMs, this.runSignal());
       if (this.opts.signal?.aborted) return;
@@ -382,44 +406,35 @@ export class SubagentRun {
     const text =
       status === "completed"
         ? body
-        : status === "truncated"
-          ? [
-              `The ${name} subagent hit its ${this.opts.definition.maxTurns ?? "configured"}-turn limit before finishing.`,
-              ...(body ? ["Its last report was:", body] : []),
-            ].join("\n\n")
-          : status === "aborted"
-            ? `The ${name} subagent was aborted after ${this.turns} turn(s).`
-            : status === "timed_out"
-              ? [
-                  `The ${name} subagent timed out after ${this.turns} turn(s).`,
-                  ...(body ? ["Its last output was:", body] : []),
-                ].join("\n\n")
-            : [
-                `The ${name} subagent failed after ${this.turns} turn(s): ${error?.message ?? "unknown error"}.`,
-                ...(body ? ["Its last output was:", body] : []),
-              ].join("\n\n");
+        : status === "aborted"
+          ? `The ${name} subagent was aborted after ${this.turns} turn(s).`
+          : [
+              `The ${name} subagent failed after ${this.turns} turn(s): ${error?.message ?? "unknown error"}.`,
+              ...(body ? ["Its last output was:", body] : []),
+            ].join("\n\n");
     return {
       agentName: name,
+      modelId: this.provider.modelId,
+      thinkingLevel: this.thinkingLevel,
       status,
-      report: boundedReport(text),
+      report: boundedReport([
+        ...this.modelFailures.map((failure) => `Model ${failure.model} failed (${failure.code}): ${failure.message}`),
+        text,
+      ].join("\n\n")),
       turns: this.turns,
       toolCalls: this.toolCalls,
       ...(this.usage ? { usage: this.usage } : {}),
+      ...(this.modelFailures.length ? { modelFailures: [...this.modelFailures] } : {}),
       ...(error ? { error } : {}),
     };
   }
 
-  /** Parent bookkeeping first (host failures, mutation-failure terminate),
-   * then the delegate's own turn cap. */
+  /** Parent bookkeeping: host failures and a mutation-failure terminate. */
   private async afterToolCall(
     context: AfterToolCallContext,
   ): Promise<AfterToolCallResult | undefined> {
     const parent = this.opts.resolveToolOutcome?.(context);
-    const capped =
-      this.opts.definition.maxTurns !== undefined &&
-      this.turns >= this.opts.definition.maxTurns;
-    if (capped) this.cappedTurns = true;
-    const terminate = parent?.terminate === true || capped;
+    const terminate = parent?.terminate === true;
     if (!parent?.isError && !terminate) return undefined;
     return {
       ...(parent?.isError ? { isError: true } : {}),
@@ -440,80 +455,15 @@ export class SubagentRun {
 
   /**
    * Idle and duration watchdogs are withdrawn (D328). Stopping a delegate is
-   * the parent agent's `TaskStop` or the user's Stop, not a timer.
+   * the parent agent's `TaskStop` or the user's Stop, not a timer, so the
+   * only abort sources are the parent's signal and this run's own controller.
    */
-  private startWatchdogs(): void {}
-
-  private stopWatchdogs(): void {
-    if (!this.watchdogsStarted) return;
-    this.watchdogsStarted = false;
-    if (this.idleTimer !== undefined) clearTimeout(this.idleTimer);
-    if (this.durationTimer !== undefined) clearTimeout(this.durationTimer);
-    this.idleTimer = undefined;
-    this.durationTimer = undefined;
-  }
-
-  private idleTimeoutSeconds(): number {
-    return this.opts.definition.idleTimeoutSeconds ??
-      DEFAULT_SUBAGENT_IDLE_TIMEOUT_SECONDS;
-  }
-
-  private maxDurationSeconds(): number {
-    return this.opts.definition.maxDurationSeconds ??
-      DEFAULT_SUBAGENT_MAX_DURATION_SECONDS;
-  }
-
-  private armIdleTimer(): void {
-    if (!this.watchdogsStarted || this.activeToolExecutions.size > 0) return;
-    if (this.idleTimer !== undefined) clearTimeout(this.idleTimer);
-    this.idleTimer = setTimeout(
-      () =>
-        this.timeout(
-          "SUBAGENT_IDLE_TIMEOUT",
-          `The subagent produced no activity for ${this.idleTimeoutSeconds()} seconds.`,
-        ),
-      this.idleTimeoutSeconds() * 1000,
-    );
-  }
-
-  private timeout(code: string, message: string): void {
-    if (this.timedOut) return;
-    this.timedOut = { code, message };
-    this.runAbortController.abort();
-    this.agent.abort();
-  }
-
   private runSignal(): AbortSignal {
     return AbortSignal.any(
       this.opts.signal
         ? [this.opts.signal, this.runAbortController.signal]
         : [this.runAbortController.signal],
     );
-  }
-
-  private noteActivity(event: AgentEvent): void {
-    if (!this.watchdogsStarted) return;
-    if (event.type === "tool_execution_start") {
-      this.activeToolExecutions.add(event.toolCallId);
-      if (this.idleTimer !== undefined) clearTimeout(this.idleTimer);
-      this.idleTimer = undefined;
-      return;
-    }
-    if (event.type === "tool_execution_end") {
-      this.activeToolExecutions.delete(event.toolCallId);
-      this.armIdleTimer();
-      return;
-    }
-    // Every other event is a sign of life, down to a single streamed token
-    // arriving as `message_update`. The idle watchdog measures silence, not
-    // slowness: a delegate that keeps streaming never trips it, however long
-    // its turn takes. The timer stays paused while a tool runs, so this only
-    // re-arms once the last execution ended.
-    if (this.activeToolExecutions.size === 0) this.armIdleTimer();
-  }
-
-  private latestReportText(): string {
-    return this.lastReportText || this.currentAssistant?.content || "";
   }
 
   private newAssistantRow(): UiMessage {
@@ -523,8 +473,8 @@ export class SubagentRun {
       content: "",
       createdAt: nowIso(),
       status: "streaming",
-      modelId: this.opts.provider.modelId,
-      providerId: this.opts.provider.id,
+      modelId: this.provider.modelId,
+      providerId: this.provider.id,
       parentToolCallId: this.opts.parentToolCallId,
       agentName: this.opts.definition.name,
     };
@@ -538,7 +488,6 @@ export class SubagentRun {
    * and a delegate finishing must never end the parent's turn.
    */
   private handleEvent(event: AgentEvent): void {
-    this.noteActivity(event);
     switch (event.type) {
       case "turn_start":
         this.turns += 1;
@@ -574,28 +523,33 @@ export class SubagentRun {
         const nextThinking = content.hasThinking
           ? content.thinking
           : previousThinking;
-        const deltaText = content.hasText
-          ? content.text.startsWith(previousText)
-            ? content.text.slice(previousText.length)
-            : content.text
-          : "";
-        const deltaThinking = content.hasThinking
-          ? content.thinking.startsWith(previousThinking)
-            ? content.thinking.slice(previousThinking.length)
-            : content.thinking
-          : "";
+        const textDelta = content.hasText
+          ? cumulativeDelta(previousText, content.text)
+          : { delta: "", reset: false };
+        const thinkingDelta = content.hasThinking
+          ? cumulativeDelta(previousThinking, content.thinking)
+          : { delta: "", reset: false };
         this.currentAssistant = {
           ...this.currentAssistant,
           content: nextText,
           ...(nextThinking ? { thinking: nextThinking } : {}),
           status: "streaming",
         };
-        this.emit({
-          type: "message_update",
-          message: this.currentAssistant,
-          deltaText,
-          ...(deltaThinking ? { deltaThinking } : {}),
-        });
+        if (
+          textDelta.delta ||
+          thinkingDelta.delta ||
+          textDelta.reset ||
+          thinkingDelta.reset
+        ) {
+          this.emit({
+            type: "message_update",
+            message: this.currentAssistant,
+            ...(textDelta.delta ? { deltaText: textDelta.delta } : {}),
+            ...(thinkingDelta.delta ? { deltaThinking: thinkingDelta.delta } : {}),
+            ...(textDelta.reset ? { resetText: true } : {}),
+            ...(thinkingDelta.reset ? { resetThinking: true } : {}),
+          });
+        }
         break;
       }
       case "message_end": {
@@ -611,7 +565,7 @@ export class SubagentRun {
             typeof (message as { errorMessage?: unknown }).errorMessage === "string"
               ? ((message as { errorMessage?: string }).errorMessage as string)
               : "provider stream failed";
-          classifiedError = classifyProviderError(raw, this.providerResponseStatus);
+          classifiedError = classifyProviderError(raw, this.retryState.status);
           retryAttempt = this.claimProviderRetry(classifiedError, "stream");
           if (retryAttempt !== undefined) {
             this.pendingProviderRetry = classifiedError;

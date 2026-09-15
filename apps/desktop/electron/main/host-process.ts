@@ -3,11 +3,19 @@ import { createInterface } from "node:readline";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { ErrorCodes, PROTOCOL_VERSION, rpcTimeoutMs, stripProxyEnv } from "@pi-desktop/shared";
+import {
+  ErrorCodes,
+  MAX_HOST_STDIN_LINE_BYTES,
+  PROTOCOL_VERSION,
+  rpcTimeoutMs,
+  stripProxyEnv,
+} from "@pi-desktop/shared";
 import {
   GlibcUnsupportedError,
   glibcMissingSymbol,
 } from "./linux-glibc";
+import { DbSchemaTooNewError, parseSchemaTooNew } from "./host-boot-diagnostics";
+import { redactValue } from "./logger";
 
 const HOST_DISPOSE_GRACE_MS = 3_000;
 const HOST_FORCE_KILL_GRACE_MS = 1_000;
@@ -121,7 +129,19 @@ export class HostProcess {
       if (!text) return;
       this.lastStderr = `${this.lastStderr}${text}`.slice(-4_000);
       if (onStderr) onStderr(text);
-      else console.error(`[host-core] ${text.trimEnd()}`);
+      else {
+        console.error(
+          `[host/runtime] ${JSON.stringify({
+            ts: new Date().toISOString(),
+            level: "info",
+            channel: "host",
+            category: "runtime",
+            event: "child.process.stderr",
+            message: "child process stderr",
+            data: { output: redactValue(text.trimEnd()) },
+          })}`,
+        );
+      }
     });
 
     this.child.on("exit", (code, signal) => {
@@ -138,7 +158,15 @@ export class HostProcess {
         `host-core process error: ${error.message}`,
       );
       this.closeTransport(failure);
+      // A spawn failure never produces an `exit` event, so without settling the
+      // exit promise here `dispose()` would wait the full grace period, send a
+      // SIGKILL to a process that never started, and wait again.
+      if (this.child.pid === undefined || this.child.exitCode !== null) {
+        this.exitObserved = true;
+        this.resolveExit();
+      }
       this.notifyExit({ code: null, signal: null, intentional: this.disposed });
+      if (this.exitObserved) this.cleanupProcessListeners();
     });
 
     const rl = createInterface({ input: this.child.stdout });
@@ -199,6 +227,12 @@ export class HostProcess {
    * rather than by matching message text.
    */
   private unavailableError(message: string): Error & { errorCode: string } {
+    const schema = parseSchemaTooNew(this.lastStderr) ?? parseSchemaTooNew(message);
+    if (schema) {
+      return Object.assign(new DbSchemaTooNewError(schema), {
+        errorCode: ErrorCodes.HOST_UNAVAILABLE,
+      });
+    }
     if (glibcMissingSymbol(this.lastStderr) || glibcMissingSymbol(message)) {
       return Object.assign(new GlibcUnsupportedError(), {
         errorCode: ErrorCodes.HOST_UNAVAILABLE,
@@ -303,6 +337,12 @@ export class HostProcess {
     const id = randomUUID();
     const timeoutMs = timeoutOverrideMs ?? rpcTimeoutMs(method, params);
     const payload = JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n";
+    if (Buffer.byteLength(payload, "utf8") > MAX_HOST_STDIN_LINE_BYTES) {
+      throw Object.assign(new Error("request line exceeds 64 MiB"), {
+        errorCode: ErrorCodes.LIMIT_EXCEEDED,
+        code: 1002,
+      });
+    }
     return new Promise<T>((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
       let settled = false;

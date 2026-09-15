@@ -36,7 +36,7 @@ test("footer exposes settings, plugins and notifications in one row", () => {
   assert.match(sidebarSource, /data-nav="settings"/);
   assert.match(sidebarSource, /data-nav="plugins"/);
   const pluginsAction = sidebarSource.match(
-    /<button[\s\S]*?data-nav="plugins"[\s\S]*?<\/button>/,
+    /<TooltipButton[\s\S]*?data-nav="plugins"[\s\S]*?<\/TooltipButton>/,
   )?.[0] ?? "";
   assert.match(pluginsAction, /<IconPlug size=\{14\} aria-hidden \/>/);
   assert.doesNotMatch(sidebarSource, /data-nav="theme"/);
@@ -48,14 +48,32 @@ test("footer exposes settings, plugins and notifications in one row", () => {
   assert.doesNotMatch(sidebarSource, /openLogs/);
   // Every action is icon-only, so each needs a label for pointer and AT users.
   const actions = sidebarSource
-    .split("<button")
+    .split("<TooltipButton")
     .filter((chunk) => /className=(?:"footer-action"|\{`footer-action )/.test(chunk));
   assert.equal(actions.length, 2);
   for (const action of actions) {
     const attrs = action.slice(0, action.indexOf(">"));
-    assert.match(attrs, /title=/);
-    assert.match(attrs, /aria-label=/);
+    assert.match(attrs, /tooltip=/);
+    assert.match(attrs, /ariaLabel=/);
   }
+  // Both footer destinations report their active state to assistive tech; the
+  // Plugins button also reports the Back toggle a second activation performs.
+  const footerAttributes = (marker) => {
+    const at = sidebarSource.indexOf(marker);
+    if (at < 0) return "";
+    return sidebarSource.slice(
+      sidebarSource.lastIndexOf("<TooltipButton", at),
+      sidebarSource.indexOf("</TooltipButton>", at),
+    );
+  };
+  assert.match(
+    footerAttributes('data-nav="settings"'),
+    /aria-pressed=\{page === "settings"\}/,
+  );
+  assert.match(
+    footerAttributes('data-nav="plugins"'),
+    /aria-pressed=\{page === "plugins"\}/,
+  );
 });
 
 test("footer sits on the sidebar content grid without a hairline", () => {

@@ -47,6 +47,7 @@ describe("validateManifest", () => {
         mcpServers: [{ id: "files", transport: "stdio", command: "mcp-files" }],
         services: [{ id: "watcher", autoRestart: true }],
         bus: { publish: ["notes.created"], subscribe: ["notes.**"] },
+        sessionSources: [{ id: "legacy", label: { en: "Legacy", "zh-CN": "旧会话" } }],
       },
     });
     expect(result.ok).toBe(true);
@@ -59,6 +60,36 @@ describe("validateManifest", () => {
     );
   });
 
+  it("accepts author as a string or contact object plus homepage/repository", () => {
+    expect(validateManifest({ ...base, author: "PI-Desktop" }).ok).toBe(true);
+    expect(
+      validateManifest({
+        ...base,
+        author: { name: "PI", email: "pi@example.com", url: "https://example.com" },
+        homepage: "https://example.com",
+        repository: "https://github.com/example/pi",
+      }).ok,
+    ).toBe(true);
+    expect(validateManifest({ ...base, author: { email: "x" } }).error).toMatch(/author\.name/);
+    expect(validateManifest({ ...base, author: 42 }).error).toMatch(/manifest\.author/);
+    expect(validateManifest({ ...base, homepage: 7 }).error).toMatch(/homepage/);
+    expect(validateManifest({ ...base, repository: "" }).error).toMatch(/repository/);
+  });
+
+  it("keeps main and ui.panel inside the plugin directory", () => {
+    expect(validateManifest({ ...base, main: "../main.js" }).error).toMatch(/manifest\.main.*\.\./);
+    expect(validateManifest({ ...base, main: "/abs/main.js" }).error).toMatch(/manifest\.main.*absolute/);
+    expect(validateManifest({ ...base, main: "C:\\main.js" }).error).toMatch(/manifest\.main.*absolute/);
+    expect(validateManifest({ ...base, ui: { panel: "../panel.html" } }).error).toMatch(
+      /manifest\.ui\.panel.*\.\./,
+    );
+    expect(validateManifest({ ...base, ui: { panel: "/panel.html" } }).error).toMatch(
+      /manifest\.ui\.panel.*absolute/,
+    );
+    expect(validateManifest({ ...base, ui: { panel: 3 } }).error).toMatch(/manifest\.ui\.panel/);
+    expect(validateManifest({ ...base, ui: { panel: "renderer/index.html" } }).ok).toBe(true);
+  });
+
   it("surfaces contribution errors", () => {
     expect(
       validateManifest({ ...base, contributes: { themes: [{ id: "a", label: "A", path: "a.json" }] } })
@@ -67,6 +98,36 @@ describe("validateManifest", () => {
     expect(validateManifest({ ...base, contributes: { skills: ["../escape.md"] } }).error).toMatch(
       /\.\./,
     );
+    expect(
+      validateManifest({
+        ...base,
+        contributes: { sessionSources: [{ id: "legacy" }, { id: "legacy" }] },
+      }).error,
+    ).toMatch(/duplicate session source/);
+  });
+
+  it("validates typed theme variables and sandboxed settings destinations", () => {
+    expect(
+      validateContributions({
+        themes: [{
+          id: "scenic",
+          label: "Scenic",
+          path: "themes/scenic.css",
+          variables: [{ name: "--nexus-backdrop-blur", type: "length", unit: "px", min: 0, max: 20, default: 6 }],
+        }],
+        settingsDestinations: [{
+          id: "scenic-themes",
+          label: { en: "Scenic themes", "zh-CN": "风景主题" },
+          icon: "palette",
+          entry: "settings/index.html",
+        }],
+      }),
+    ).toBeUndefined();
+    expect(
+      validateContributions({
+        themes: [{ id: "scenic", label: "Scenic", path: "themes/scenic.css", variables: [{ name: "--pi-bg", type: "color", default: "#000000" }] }],
+      }),
+    ).toMatch(/variable declaration/);
   });
 });
 
@@ -105,6 +166,24 @@ describe("validateContributions", () => {
   it("rejects malformed skill and service entries", () => {
     expect(validateContributions({ skills: [{ path: "" } as never] })).toMatch(/need a path/);
     expect(validateContributions({ services: [{ id: "1bad" }] })).toMatch(/id must match/);
+  });
+
+  it("reports a null or malformed command entry instead of throwing", () => {
+    expect(() => validateContributions({ commands: [null as never] })).not.toThrow();
+    expect(validateContributions({ commands: [null as never] })).toMatch(/commands entries/);
+    expect(validateContributions({ commands: [{ title: "No id" } as never] })).toMatch(/need an id/);
+    expect(validateContributions({ commands: [{ id: "x.open" } as never] })).toMatch(/requires a title/);
+    expect(
+      validateContributions({
+        commands: [
+          { id: "x.open", title: "A" },
+          { id: "x.open", title: "B" },
+        ],
+      }),
+    ).toMatch(/duplicate command id/);
+    const result = validateManifest({ ...base, contributes: { commands: [null] } });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/commands entries/);
   });
 
   it("accepts plugin-local shortcut settings and rejects undeclared commands", () => {
@@ -205,10 +284,138 @@ describe("naming helpers", () => {
   });
 });
 
+describe("planSafeActions contract (ADR 0211)", () => {
+  it("accepts a planSafeActions list on a manifest agentTool", () => {
+    const result = validateManifest({
+      ...base,
+      contributes: {
+        agentTools: [
+          {
+            name: "Browser",
+            description: "browser tool",
+            risk: "medium",
+            planSafeActions: ["navigate", "snapshot"],
+            schema: {
+              type: "object",
+              properties: {
+                action: { type: "string", enum: ["navigate", "snapshot", "click"] },
+              },
+              required: ["action"],
+            },
+          },
+        ],
+      },
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("treats an absent planSafeActions as plan-denied", () => {
+    const result = validateManifest({
+      ...base,
+      contributes: {
+        agentTools: [
+          {
+            name: "Browser",
+            description: "browser tool",
+            schema: {
+              type: "object",
+              properties: { action: { type: "string", enum: ["navigate"] } },
+            },
+          },
+        ],
+      },
+    });
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe("contributed theme assets and window appearance", () => {
+  it("accepts a whitelisted absolute asset list", () => {
+    expect(
+      validateContributions({
+        themes: [
+          {
+            id: "midnight",
+            label: "Midnight",
+            path: "a.css",
+            assets: ["C:/art/bg.png", "file:///C:/font/ui.woff2", "/art/sheen.svg"],
+          },
+        ],
+      }),
+    ).toBeUndefined();
+  });
+
+  it("rejects a relative path, an escape, an unknown scheme or a wrong extension", () => {
+    for (const asset of [
+      "art/bg.png",
+      "./art/bg.png",
+      "../bg.png",
+      "art/../bg.png",
+      "C:/art/../bg.png",
+      "C:/art/bg.gif",
+      "https://x/bg.png",
+      "",
+    ]) {
+      expect(
+        validateContributions({
+          themes: [{ id: "midnight", label: "Midnight", path: "a.css", assets: [asset] }],
+        }),
+      ).toMatch(/asset/);
+    }
+  });
+
+  it("rejects the same asset declared twice", () => {
+    expect(
+      validateContributions({
+        themes: [
+          {
+            id: "m",
+            label: "M",
+            path: "a.css",
+            assets: ["C:/art/bg.png", "file:///C:/art/bg.png"],
+          },
+        ],
+      }),
+    ).toMatch(/twice/);
+  });
+
+  it("accepts #rrggbb and #rrggbbaa window backgrounds", () => {
+    expect(
+      validateContributions({
+        windowAppearance: { backgroundColor: { light: "#ffffff", dark: "#0d1424cc" } },
+      }),
+    ).toBeUndefined();
+    expect(validateContributions({ windowAppearance: {} })).toBeUndefined();
+  });
+
+  it("rejects a window background that is not #rrggbb or #rrggbbaa", () => {
+    for (const color of ["#fff", "0d1424", "#0d1424z", "#0d1424ccc"]) {
+      expect(
+        validateContributions({ windowAppearance: { backgroundColor: { dark: color } } }),
+      ).toMatch(/backgroundColor/);
+    }
+    expect(
+      validateContributions({ windowAppearance: { backgroundColor: "dark" } } as never),
+    ).toMatch(/backgroundColor/);
+    expect(validateContributions({ windowAppearance: [] } as never)).toMatch(/windowAppearance/);
+  });
+
+  it("requires ui.window.appearance for a declared window background", () => {
+    const contributes = { windowAppearance: { backgroundColor: { dark: "#0d1424" } } };
+    expect(validateManifest({ ...base, contributes }).error).toMatch(
+      /ui\.window\.appearance permission/,
+    );
+    expect(
+      validateManifest({ ...base, permissions: ["ui.window.appearance"], contributes }).ok,
+    ).toBe(true);
+  });
+});
+
 describe("PLUGIN_PERMISSIONS", () => {
   it("declares the capability permissions and stays unique", () => {
     for (const permission of [
       "ui.theme",
+      "ui.window.appearance",
       "ui.view",
       "mcp.server.local",
       "mcp.server.remote",
@@ -218,6 +425,7 @@ describe("PLUGIN_PERMISSIONS", () => {
       "agent.prompt.inject",
       "agent.complete",
       "models.list",
+      "project.create",
       "session.read",
       "fs.read",
       "fs.write",
@@ -299,5 +507,33 @@ describe("validateManifest fs scope", () => {
         fs: { read: { scope: ["docs/**"] } },
       }).ok,
     ).toBe(true);
+  });
+});
+
+describe("contributes.agentExtensions", () => {
+  const base = { schemaVersion: 1, id: "demo.ax", name: "AX", version: "0.1.0", main: "main.js" };
+
+  it("accepts relative .ts/.js entries when agent.extension is declared", () => {
+    const result = validateManifest({
+      ...base,
+      permissions: ["agent.extension"],
+      contributes: { agentExtensions: ["src/index.ts", "lib/hooks.mjs"] },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.manifest?.contributes?.agentExtensions).toEqual(["src/index.ts", "lib/hooks.mjs"]);
+  });
+
+  it("rejects entries without the permission, outside the plugin, non-script, or too many", () => {
+    expect(validateManifest({ ...base, contributes: { agentExtensions: ["src/index.ts"] } }).error).toMatch(
+      /agent\.extension permission/,
+    );
+    const perm = { ...base, permissions: ["agent.extension"] };
+    expect(validateManifest({ ...perm, contributes: { agentExtensions: ["../out.ts"] } }).ok).toBe(false);
+    expect(validateManifest({ ...perm, contributes: { agentExtensions: ["notes.md"] } }).error).toMatch(/\.ts or \.js/);
+    expect(
+      validateManifest({ ...perm, contributes: { agentExtensions: Array.from({ length: 9 }, (_, i) => `e${i}.ts`) } })
+        .error,
+    ).toMatch(/at most/);
+    expect(PLUGIN_PERMISSIONS).toContain("agent.extension");
   });
 });

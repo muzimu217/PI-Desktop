@@ -2,8 +2,11 @@ import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Composer } from "./Composer";
 import { HomeMascotLogo } from "./HomeMascotLogo";
+import { HomeProjectSwitcher } from "./HomeProjectSwitcher";
 import { IconX } from "./icons";
+import { TooltipButton } from "./ui";
 import { OnboardingChecklist } from "./OnboardingChecklist";
+import { ResponseAnnotationDialog } from "./ResponseAnnotationDialog";
 import { SessionPane } from "./SessionPane";
 import { useAppStore } from "../stores/app-store";
 import { headPermission } from "../lib/pending-permissions";
@@ -47,7 +50,6 @@ export const ChatSurface = memo(function ChatSurface() {
   // reads its own session's flag.
   const isRunning = useAppStore((state) => state.isRunning);
   const workspace = useAppStore((state) => state.workspace);
-  const openProject = useAppStore((state) => state.openProject);
   const error = useAppStore((state) => state.error);
   const errorCode = useAppStore((state) => state.errorCode);
   const errorRetriable = useAppStore((state) => state.errorRetriable);
@@ -150,18 +152,7 @@ export const ChatSurface = memo(function ChatSurface() {
                   {heroProject ? (
                     <>
                       {emptyTitleParts.before}
-                      <button
-                        type="button"
-                        className="project-underline"
-                        onClick={() => void openProject()}
-                        title={
-                          workspace?.path ||
-                          activeSession?.projectPath ||
-                          t("project.open")
-                        }
-                      >
-                        {heroProject}
-                      </button>
+                      <HomeProjectSwitcher name={heroProject} path={workspace?.path || activeSession?.projectPath || null} />
                       {emptyTitleParts.after}
                     </>
                   ) : isTemporarySession ? (
@@ -227,17 +218,20 @@ export const ChatSurface = memo(function ChatSurface() {
                 {t("errors.action.retry")}
               </button>
             ) : null}
-            <button
+            <TooltipButton
               type="button"
-              aria-label={t("errors.action.dismiss")}
+              tooltip={t("errors.action.dismiss")}
+              ariaLabel={t("errors.action.dismiss")}
               className="chat-error-dismiss"
               onClick={() => useAppStore.getState().clearError()}
             >
               <IconX size={13} />
-            </button>
+            </TooltipButton>
           </div>
         </div>
       ) : null}
+
+      <ResponseAnnotationDialog />
     </div>
   );
 });

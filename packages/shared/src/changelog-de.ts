@@ -2,6 +2,73 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const deEntries: ChangelogEntry[] = [
   {
+    "version": "0.14.8",
+    "date": "2026-09-14",
+    "highlights": [
+      "Durchsuchen und installieren Sie MCP-Server aus der offiziellen Registry und benutzerdefinierten Quellen im MCP-Markt.",
+      "Durchsuchen und installieren Sie Skills aus kuratierten und GitHub-Quellen im Skill-Markt, mit öffentlichem HTTPS und Größenbegrenzung.",
+      "Liefert die Dateiansicht als mitgeliefertes File-Manager-Plugin; gebündelte Plugins können Marktplatz-Updates behalten.",
+      "Fügt einen Vorschau-Modus für das Arbeitspanel hinzu, hebt die Chat-Spalte auf mindestens 450px und priorisiert MainChat im Dreispalten-Layout.",
+      "Findet unabhängige Sitzungen, sendet host-eigene Kollaborationsnachrichten und öffnet Kollaborationslinks.",
+      "Subagenten können Eltern-Tools erben, mitgelieferte Builtins erscheinen in den Einstellungen, ein UI-Designer-Builtin kommt hinzu, und das Erstellen zeigt einen eigenen Status.",
+      "Steuert einen laufenden Turn mit Alt+Enter und öffnet eingefügte Textdateien im Composer zum Bearbeiten.",
+      "Gestaltet die Projekterstellung neu: Mehrordner-Arbeitsbereiche, projekteigene Memory und visueller Memory-Editor.",
+      "Installiert deklarierte Abhängigkeiten und Skills aus importierten pi-Paketen hinter einer host-eigenen Sicherheitsgrenze.",
+      "Fügt Vorgabe-Chips für Kontextfenster und Max-Output hinzu, zeigt Read-Zeilenbereiche auf Tool-Chips und hält den Kontext nach fehlgeschlagener Kompaktierung wiederherstellbar.",
+    ],
+  },
+  {
+    "version": "0.14.6",
+    "date": "2026-09-10",
+    "highlights": [
+      "Warnt, wenn diese Version älter ist als Ihre lokalen Daten oder die Intel-Version auf Apple Silicon läuft, statt stumm zu scheitern.",
+      "Fügt eine lokale MCP-Desktop-Steuerebene hinzu; geprüfte Plugins steuern den Desktop nur nach nativer Zustimmung.",
+      "Fügt Subagent-Vorlagen, eine anbietergebundene Modellauswahl und die effektive Denkstufe auf Delegationskarten hinzu.",
+      "Konfigurierte Modelle mit Alias versehen, Modell-IDs kopieren und das modell-eigene Wire-API vor dem Anbieterstil bevorzugen.",
+      "Ersetzt textuelles Edit-Matching durch zeilenverankerte Operationen mit fehlerspezifischen Wiederherstellungshinweisen.",
+      "Wiederholt Anbieteranfragen bis zu zehnmal mit sichtbarem Countdown und setzt autonome Fortschrittsrunden fort.",
+      "Neu gestalteter macOS-Installer, portable Windows-Exe und Linux-RPM-Paket, GNOME-Tray- und Dock-Symbole wiederhergestellt.",
+      "Konversations-IDs kopieren und Sitzungsordner aus der Seitenleiste öffnen, mit lokalisierten Tooltips für Symbolaktionen.",
+      "Zeigt Live-Prozessstatus und ruhige Intervalle in der Aktivitätszeile und fügt einen fixierten Arbeitsbereich-Umschalter hinzu.",
+      "Erzwingt Ignore-Regeln im Arbeitsbereich, löst hängende Symlinks auf und prüft Plugin-Netzwerkausgang bei jeder Umleitung neu.",
+      "Beachtet Proxy-Bypass-Regeln, behält eingefügte Private-Use-Glyphen und lädt Dateivorschauen ohne den Editor zu blockieren.",
+    ],
+  },
+  {
+    "version": "0.14.5",
+    "date": "2026-09-09",
+    "highlights": [
+      "Kennzeichnen Sie jedes macOS-DMG und jede ZIP-Datei mit der nativen arm64- oder x64-Architektur."
+    ]
+  },
+  {
+    "version": "0.14.4",
+    "date": "2026-09-09",
+    "highlights": [
+      "Fügen Sie begrenzte Bereichslesevorgänge für große Dateien und an echte Zieh-und-Ablegen-Gesten gebundene Dateifreigaben für Plugins hinzu.",
+      "Verlangen Sie für macOS-Signierung und Notarisierung eine ausdrückliche Aktivierung und liefern Sie Hinweise zum Öffnen vertrauenswürdiger unsignierter Builds."
+    ]
+  },
+  {
+    "version": "0.14.3",
+    "date": "2026-09-09",
+    "highlights": [
+      "Kennzeichnen Sie Intel-macOS-Downloads eindeutig, damit die Architektur des Installationsprogramms klar erkennbar ist."
+    ]
+  },
+  {
+    "version": "0.14.2",
+    "date": "2026-09-08",
+    "highlights": [
+      "Fügen Sie einen Kontextverbrauch-Inspektor hinzu, der dem ausgewählten Modell folgt und Hinweise zur Komprimierung anzeigt.",
+      "Verbessern Sie die Anbieter- und Modelleinstellungen mit durchsuchbarer Auswahl, Sammelaktionen und klareren Abruffehlern.",
+      "Fassen Sie Sitzungstitel automatisch zusammen und erlauben Sie dauerhafte Projektnamen.",
+      "Überarbeiten Sie das Subagent-Seitenpanel mit Live-Status, kompakten Aufgabenblasen, Modellinformationen und Navigation zur neuesten Ausgabe.",
+      "Senden Sie native Benachrichtigungen für interaktive Fragen und Freigaben, während normale Abschlüsse aus dem Posteingang fernbleiben.",
+      "Fügen Sie eine koreanische Oberflächenlokalisierung hinzu und verbessern Sie lokalisierte Einstellungen, Zwischenablageverlauf und sichere Links.",
+    ]
+  },
+  {
     "version": "0.14.1",
     "date": "2026-09-08",
     "highlights": [
@@ -25,7 +92,6 @@ export const deEntries: ChangelogEntry[] = [
     "version": "0.13.11",
     "date": "2026-09-07",
     "highlights": [
-      "Aktivieren Sie das mitgelieferte Advisor-Plugin, damit ein zweites Modell die aktuelle Konversation überprüft.",
       "Ermöglichen Sie Plugins, Modelle aufzulisten, den Sitzungskontext während der Übertragung zu lesen und hosteigene Vervollständigungen anzufordern, ohne Anmeldeinformationen zu erhalten."
     ]
   },

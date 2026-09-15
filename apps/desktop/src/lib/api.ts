@@ -5,6 +5,7 @@ import type {
   AgentCompactRequest,
   AgentCompactResponse,
   AgentPromptRequest,
+  AgentSteerRequest,
   UiMessage,
   MessageRevisionSummary,
   AgentPromptResponse,
@@ -13,6 +14,9 @@ import type {
   SessionSummarizeTitleRequest,
   SessionSummarizeTitleResponse,
   AgentStopResponse,
+  AgentQueueChangedEvent,
+  AgentQueuePushRequest,
+  QueuedTurnSummary,
   AgentStatus,
   AskToolResolution,
   AgentInstructionFile,
@@ -25,12 +29,16 @@ import type {
   ComposerCommand,
   ComposerPasteFile,
   ComposerPastedFile,
+  FsChatRefResolveResult,
   FsEntry,
   FsImageDataUrlResult,
   FsIndexResult,
   FsReadResult,
   HostHealth,
   HostStatusEvent,
+  MarketSource,
+  McpCatalogEntry,
+  SkillCatalogEntry,
   ModelInfo,
   McpServerInput,
   McpServerRecord,
@@ -44,11 +52,15 @@ import type {
   PluginSettingDefinition,
   PluginServiceStatus,
   PluginViewMeta,
+  PluginSettingsDestinationMeta,
   PluginTheme,
   MarketPluginSummary,
   MarketPluginDetail,
   PluginInstallResult,
   ProjectRecord,
+  ProjectGroupRecord,
+  ProjectMemory,
+  ProjectMemoryEntry,
   ProjectWorkspace,
   PullRequestSummary,
   ScheduledTask,
@@ -57,7 +69,11 @@ import type {
   ProviderUpdateInput,
   Result,
   SessionDetail,
+  SessionSearchPage,
+  SessionSearchContext,
+  SessionSearchContextRequest,
   SessionSummary,
+  SessionCollaborationSummary,
   ToolPermissionResolution,
   UserSkillInput,
   UserSkillRecord,
@@ -78,6 +94,9 @@ import type {
   UpdateState,
   WindowControlAction,
   CloseBehavior,
+  TrustedExtensionStatusEvent,
+  TrustedExtensionUiPrompt,
+  TrustedExtensionUiPromptResponse,
 } from "@pi-desktop/shared";
 import {
   defaultCommandShellForPlatform,
@@ -91,7 +110,13 @@ import {
 } from "@pi-desktop/shared";
 
 export type ImportSource = "claude-code" | "opencode" | "codex" | "pi";
-export type ModelConfigImportSource = ImportSource | "cc-switch";
+// One definition, owned by the shared package (the host and sidecar use the
+// same shape); re-exported so existing renderer imports keep working.
+import type {
+  ModelConfigImportCandidate,
+  ModelConfigImportSource,
+} from "@pi-desktop/shared";
+export type { ModelConfigImportCandidate, ModelConfigImportSource };
 
 export interface ImportCandidate {
   source: ImportSource;
@@ -101,23 +126,14 @@ export interface ImportCandidate {
   model: string | null;
   createdAt: string;
   updatedAt: string;
-  messageCount: number;
+  /** null when the source file was too large to scan without sampling. */
+  messageCount: number | null;
 }
 
 export interface ImportRunResult {
   imported: number;
   skipped: number;
   failed: number;
-}
-
-export interface ModelConfigImportCandidate {
-  source: ModelConfigImportSource;
-  externalId: string;
-  name: string;
-  baseUrl: string | null;
-  apiStyle: string;
-  modelIds: string[];
-  hasSecret: boolean;
 }
 
 declare global {
@@ -129,6 +145,8 @@ declare global {
       platform: NodeJS.Platform;
       /** Authoritative OS locale passed from the main process at window creation. */
       locale?: string;
+      /** Resolve a native dropped File to its source path. */
+      getDroppedFilePath?: (file: File) => string | null;
     };
   }
 }
@@ -153,6 +171,7 @@ async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
 function normalizeSession(session: SessionSummary): SessionSummary {
   return {
     ...session,
+    source: session.source ?? "desktop",
     mode: normalizeMode((session as { mode?: unknown }).mode),
   };
 }
@@ -167,6 +186,8 @@ function normalizeSessionDetail(detail: SessionDetail | null): SessionDetail | n
 }
 
 export type SessionHistoryReadOptions = {
+  /** Center a bounded read on this stable ID and retain its original text. */
+  messageAround?: string;
   /** Return the newest page ending before this zero-based message offset. */
   messageBefore?: number;
   /** Maximum number of messages in the returned page. */
@@ -306,7 +327,6 @@ export const api = {
     kind: "task" | "interactive";
     title: string;
     body: string;
-    source?: "task" | "interactive";
   }) => invoke<{ shown: boolean }>(IPC.invoke.notificationShowNative, input),
   setNotificationViewingSession: (sessionId: string | null) =>
     invoke<{ ok: boolean }>(IPC.invoke.notificationSetViewingSession, {
@@ -327,6 +347,10 @@ export const api = {
       title,
       throughMessageId,
     }).then((result) => ({ ...result, session: normalizeSessionDetail(result.session)! })),
+  searchSessions: (query: string, offset = 0) =>
+    invoke<SessionSearchPage>(IPC.invoke.sessionSearch, { query, offset }),
+  getSearchContext: (request: SessionSearchContextRequest) =>
+    invoke<SessionSearchContext>(IPC.invoke.sessionSearchContext, request),
   getSession: (id: string, options?: SessionHistoryReadOptions) =>
     invoke<{ session: SessionDetail | null }>(IPC.invoke.sessionGet, {
       id,
@@ -335,13 +359,24 @@ export const api = {
       ...result,
       session: normalizeSessionDetail(result.session),
     })),
+  getSessionCollaboration: (sessionId: string) =>
+    invoke<SessionCollaborationSummary>(IPC.invoke.sessionCollaboration, { sessionId }),
   deleteSession: (id: string) => invoke(IPC.invoke.sessionDelete, id),
   getSessionScratchPath: (sessionId: string) =>
     invoke<{ path: string }>(IPC.invoke.sessionGetScratchPath, { sessionId }),
+  openSessionScratchPath: (sessionId: string) =>
+    invoke<{ ok: boolean; path: string }>(IPC.invoke.sessionOpenScratchPath, {
+      sessionId,
+    }),
   openProjectFolder: (path: string) =>
     invoke<{ ok: boolean; path: string }>(IPC.invoke.projectOpenFolder, path),
   renameSession: (id: string, title: string) =>
     invoke<{ ok: boolean }>(IPC.invoke.sessionRename, id, title),
+  moveSessionProject: (sessionId: string, projectPath: string) =>
+    invoke<{ session: SessionSummary }>(IPC.invoke.sessionMoveProject, {
+      sessionId,
+      projectPath,
+    }).then((result) => ({ ...result, session: normalizeSession(result.session) })),
   summarizeSessionTitle: (req: SessionSummarizeTitleRequest) =>
     invoke<SessionSummarizeTitleResponse>(IPC.invoke.sessionSummarizeTitle, req),
   configureSession: (
@@ -451,12 +486,48 @@ export const api = {
     invoke<{ workspace: ProjectWorkspace | null }>(IPC.invoke.projectGet),
   listProjects: () =>
     invoke<{ projects: ProjectRecord[] }>(IPC.invoke.projectList),
+  listProjectGroups: () =>
+    invoke<{ groups: ProjectGroupRecord[] }>(IPC.invoke.projectGroupList),
+  createProjectGroup: (name: string, folders: string[]) =>
+    invoke<{ group: ProjectGroupRecord }>(IPC.invoke.projectGroupCreate, { name, folders }),
+  renameProjectGroup: (groupId: string, name: string) =>
+    invoke<{ group: ProjectGroupRecord }>(IPC.invoke.projectGroupRename, { groupId, name }),
+  updateProjectGroup: (groupId: string, name: string, folders: string[]) =>
+    invoke<{ group: ProjectGroupRecord }>(IPC.invoke.projectGroupUpdate, {
+      groupId,
+      name,
+      folders,
+    }),
+  getProjectGroupMemory: (groupId: string) =>
+    invoke<{ memory: ProjectMemory }>(IPC.invoke.projectGroupMemoryGet, { groupId }),
+  saveProjectGroupMemory: (groupId: string, entries: ProjectMemory["entries"]) =>
+    invoke<{ memory: ProjectMemory }>(IPC.invoke.projectGroupMemorySave, { groupId, entries }),
+  getProjectGroupInstructions: (groupId: string) =>
+    invoke<{ content: string }>(IPC.invoke.projectGroupInstructionsGet, { groupId }),
+  saveProjectGroupInstructions: (groupId: string, content: string) =>
+    invoke<{ content: string }>(IPC.invoke.projectGroupInstructionsSave, { groupId, content }),
   openProject: () =>
     invoke<{ workspace: ProjectWorkspace | null; canceled?: boolean }>(
       IPC.invoke.projectOpen,
     ),
+  pickProjectFolders: () =>
+    invoke<{ folders: string[]; canceled?: boolean }>(IPC.invoke.projectPickFolders),
+  getProjectMemory: (projectPath: string) =>
+    invoke<{ memory: ProjectMemory }>(IPC.invoke.projectMemoryGet, { projectPath }),
+  saveProjectMemory: (projectPath: string, entries: ProjectMemoryEntry[]) =>
+    invoke<{ memory: ProjectMemory }>(IPC.invoke.projectMemorySave, {
+      projectPath,
+      entries,
+    }),
+  cloneProject: (url: string) =>
+    invoke<{ workspace: ProjectWorkspace | null; canceled?: boolean }>(
+      IPC.invoke.projectClone,
+      { url },
+    ),
   pickFiles: () =>
     invoke<{ token: string | null; canceled?: boolean }>(IPC.invoke.composerPickFiles),
+  getDroppedFilePath: (file: File) =>
+    window.piDesktop?.getDroppedFilePath?.(file) ?? null,
   pickPhotos: () =>
     invoke<{ token: string | null; canceled?: boolean }>(IPC.invoke.composerPickPhotos),
   importFiles: (sessionId: string, token: string) =>
@@ -472,6 +543,11 @@ export const api = {
   recordClipboardPaste: (text: string) =>
     invoke<{ ok: boolean }>(IPC.invoke.clipboardRecordPaste, { text }),
   clearProject: () => invoke(IPC.invoke.projectClear),
+  removeProject: (path: string) =>
+    invoke<{ removed: boolean; sessionsRemoved: number }>(
+      IPC.invoke.projectRemove,
+      { path },
+    ),
   setProject: (path: string) =>
     invoke<{ workspace: ProjectWorkspace | null }>(IPC.invoke.projectSet, path),
   listPullRequests: () =>
@@ -513,6 +589,8 @@ export const api = {
     prefix: UiMessage[];
   }) =>
     invoke<{ messages: UiMessage[] }>(IPC.invoke.sessionActivateRevision, input),
+  steer: (req: AgentSteerRequest) =>
+    invoke<AgentPromptResponse>(IPC.invoke.agentSteer, req),
   prompt: (req: AgentPromptRequest) =>
     invoke<AgentPromptResponse>(IPC.invoke.agentPrompt, req),
   enhancePrompt: (req: PromptEnhancementRequest) =>
@@ -523,6 +601,14 @@ export const api = {
     invoke(IPC.invoke.agentAbort, { sessionId }),
   stop: (sessionId: string) =>
     invoke<AgentStopResponse>(IPC.invoke.agentStop, { sessionId }),
+  queuePrompt: (req: AgentQueuePushRequest) =>
+    invoke<QueuedTurnSummary>(IPC.invoke.agentQueuePush, req),
+  listQueuedPrompts: (sessionId: string) =>
+    invoke<{ entries: QueuedTurnSummary[] }>(IPC.invoke.agentQueueList, { sessionId }),
+  removeQueuedPrompt: (turnId: string) =>
+    invoke(IPC.invoke.agentQueueRemove, { turnId }),
+  prioritizeQueuedPrompt: (turnId: string) =>
+    invoke(IPC.invoke.agentQueuePrioritize, { turnId }),
   getStatus: (sessionId: string) =>
     invoke<{ status: AgentStatus }>(IPC.invoke.agentGetStatus, sessionId),
   getAgentInstructions: (projectPath?: string) =>
@@ -613,6 +699,25 @@ export const api = {
       imported: McpServerRecord[];
       failed: Array<{ id: string; reason: string }>;
     }>(IPC.invoke.mcpImport, { text }),
+  /** Query the configured market sources; `failedSources` names dead ones. */
+  searchMcpMarketRegistry: (query: string, sources: MarketSource[], options?: { more?: boolean }) =>
+    invoke<{ entries: McpCatalogEntry[]; failedSources?: string[]; exhausted?: boolean }>(
+      IPC.invoke.mcpMarketSearch,
+      { query, sources, ...options },
+    ),
+
+  // --- Skill market ----------------------------------------------------------
+  searchSkillMarket: (query: string, sources: { id: string; name: string; url: string }[]) =>
+    invoke<{ entries: SkillCatalogEntry[]; failedSources?: string[] }>(
+      IPC.invoke.skillMarketSearch,
+      { query, sources },
+    ),
+  /** Fetch one catalog document (frontmatter split off) for preview/install. */
+  fetchSkillMarketDocument: (entry: SkillCatalogEntry) =>
+    invoke<{ name?: string; description?: string; body: string; resources?: Array<{ path: string; body: string }> }>(
+      IPC.invoke.skillMarketFetch,
+      { entry },
+    ),
 
   // --- Skills the user owns -------------------------------------------------
   listUserSkills: (query?: AgentCapabilityQuery) =>
@@ -681,6 +786,7 @@ export const api = {
   togglePluginLauncher: () => invoke(IPC.invoke.pluginLauncherToggle),
   dismissPluginLauncher: () => invoke(IPC.invoke.pluginLauncherDismiss),
   listPluginThemes: () => invoke<PluginTheme[]>(IPC.invoke.pluginThemes),
+  listPluginSettingsDestinations: () => invoke<PluginSettingsDestinationMeta[]>(IPC.invoke.pluginSettingsDestinations),
   listPluginServices: () => invoke<PluginServiceStatus[]>(IPC.invoke.pluginServices),
   /**
    * Work panel views, already filtered by permission, activation scope, and
@@ -713,6 +819,12 @@ export const api = {
       visible,
       sessionId,
     }),
+  pluginSettingsViewOpen: (pluginId: string, destinationId: string) =>
+    invoke(IPC.invoke.pluginSettingsViewOpen, { pluginId, destinationId }),
+  pluginSettingsViewSetBounds: (bounds: { x: number; y: number; width: number; height: number }) =>
+    invoke(IPC.invoke.pluginSettingsViewSetBounds, bounds),
+  pluginSettingsViewSetVisible: (pluginId: string, destinationId: string, visible: boolean) =>
+    invoke(IPC.invoke.pluginSettingsViewSetVisible, { pluginId, destinationId, visible }),
   marketRefresh: (force = true) =>
     invoke<{
       providerId: string;
@@ -748,6 +860,25 @@ export const api = {
       IPC.invoke.marketApplyUpdates,
       { onlyAuto },
     ),
+  /** Import a pi CLI extension file or directory as a development plugin (spec 16 §3). */
+  importPiExtension: () =>
+    invoke<
+      | { canceled: true }
+      | {
+          canceled: false;
+          id: string;
+          path: string;
+          entries: string[];
+          dependencies:
+            | { state: "skipped"; reason: "no-package-json" | "no-dependencies" }
+            | { state: "installed" }
+            | { state: "failed"; error: string };
+        }
+    >(IPC.invoke.pluginImportExtension),
+  runExtensionCommand: (input: { sessionId: string; name: string; args: string }) =>
+    invoke<{ ok: boolean }>(IPC.invoke.extensionsCommandRun, input),
+  respondExtensionPrompt: (response: TrustedExtensionUiPromptResponse) =>
+    invoke<{ ok: boolean }>(IPC.invoke.extensionsUiRespond, response),
   searchCommands: (query: string) =>
     invoke<{ commands: CommandItem[] }>(
       IPC.invoke.commandPaletteSearch,
@@ -795,6 +926,16 @@ export const api = {
   fsReveal: (path: string) => invoke(IPC.invoke.fsReveal, { path }),
   fsOpen: (path: string) => invoke(IPC.invoke.fsOpen, { path }),
   fsIndex: () => invoke<FsIndexResult>(IPC.invoke.fsIndex),
+  /**
+   * Complete a file reference from chat text to a real file (D320 follow-up).
+   * The main process owns the root order — project, session scratch,
+   * attachments — because only it can see the scratch store.
+   */
+  fsResolveRef: (ref: string, sessionId?: string) =>
+    invoke<FsChatRefResolveResult>(IPC.invoke.fsResolveRef, {
+      ref,
+      ...(sessionId ? { sessionId } : {}),
+    }),
   composerCommands: () =>
     invoke<{ commands: ComposerCommand[] }>(IPC.invoke.composerCommands),
   setWorkPanelReservation: (width: number) =>
@@ -807,10 +948,10 @@ export const api = {
       IPC.invoke.windowSetWorkPanelChatWidth,
       { width },
     ),
-  setWindowBackgroundColor: (theme: "light" | "dark") =>
-    invoke<{ applied: boolean; theme: "light" | "dark" }>(
+  setWindowBackgroundColor: (theme: "light" | "dark", color?: string) =>
+    invoke<{ applied: boolean; theme: "light" | "dark"; color?: string }>(
       IPC.invoke.windowSetBackgroundColor,
-      { theme },
+      { theme, color },
     ),
   windowControl: (action: WindowControlAction) =>
     invoke<{ maximized: boolean }>(IPC.invoke.windowControl, { action }),
@@ -913,6 +1054,12 @@ export const api = {
       listener(payload as AgentEventEnvelope),
     );
   },
+  onAgentQueueChanged: (listener: (event: AgentQueueChangedEvent) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.agentQueueChanged, (payload) =>
+      listener(payload as AgentQueueChangedEvent),
+    );
+  },
   onPlansChanged: (listener: (event: PlanningStateEvent) => void) => {
     if (!window.piDesktop?.on) return () => undefined;
     return window.piDesktop.on(IPC.event.plansChanged, (payload) =>
@@ -923,6 +1070,18 @@ export const api = {
     if (!window.piDesktop?.on) return () => undefined;
     return window.piDesktop.on(IPC.event.providersOauth, (payload) =>
       listener(payload as OAuthLoginEvent),
+    );
+  },
+  onExtensionPrompt: (listener: (prompt: TrustedExtensionUiPrompt) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.extensionsUiPrompt, (payload) =>
+      listener(payload as TrustedExtensionUiPrompt),
+    );
+  },
+  onExtensionStatus: (listener: (event: TrustedExtensionStatusEvent) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.extensionsStatus, (payload) =>
+      listener(payload as TrustedExtensionStatusEvent),
     );
   },
   onToast: (listener: (message: string) => void) => {
@@ -945,6 +1104,26 @@ export const api = {
       listener((payload as { notification: AppNotification }).notification),
     );
   },
+  onSessionsChanged: (
+    listener: (event: {
+      reason?: string;
+      pluginId?: string;
+      projectPath?: string | null;
+      selectSessionId?: string;
+    }) => void,
+  ) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.sessionsChanged, (payload) =>
+      listener(
+        (payload ?? {}) as {
+          reason?: string;
+          pluginId?: string;
+          projectPath?: string | null;
+          selectSessionId?: string;
+        },
+      ),
+    );
+  },
   onNotificationActivated: (
     listener: (event: { id: string; sessionId: string }) => void,
   ) => {
@@ -965,6 +1144,12 @@ export const api = {
     if (!window.piDesktop?.on) return () => undefined;
     return window.piDesktop.on(IPC.event.pluginChanged, (payload) =>
       listener((payload ?? {}) as { reason?: string; pluginId?: string }),
+    );
+  },
+  onSettingsChanged: (listener: (patch: Record<string, unknown>) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.settingsChanged, (payload) =>
+      listener((payload ?? {}) as Record<string, unknown>),
     );
   },
   onPluginLauncherShown: (listener: () => void) => {

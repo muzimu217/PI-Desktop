@@ -29,6 +29,73 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.14.8",
+    date: "2026-09-14",
+    highlights: [
+      "Browse and install MCP servers from the official registry and user-configured sources in the MCP market.",
+      "Browse and install skills from curated and GitHub sources in the Skill market, with public-HTTPS and size gates.",
+      "Ship the file view as the vendored File Manager plugin, and let a bundled plugin keep a marketplace update.",
+      "Add a work-panel preview mode, raise the chat column floor to 450px, and prioritize MainChat in the three-column shell.",
+      "Discover independent sessions, send host-owned collaboration messages, and open collaboration links.",
+      "Let subagents inherit parent tools, list shipped builtins in Settings, add a UI-designer builtin, and show a distinct creating state.",
+      "Steer an active turn with Alt+Enter, and expand pasted text files in the composer for editing.",
+      "Redesign project creation with multi-folder workspaces, project-owned memory, and a visual memory editor.",
+      "Install declared dependencies and skills from imported pi packages behind a host-owned security boundary.",
+      "Add preset chips for model context-window and max-output, show Read line ranges on tool chips, and keep context recoverable after a failed compaction.",
+    ],
+  },
+  {
+    version: "0.14.6",
+    date: "2026-09-10",
+    highlights: [
+      "Warn when this build is older than your local data, or is the Intel build running on Apple Silicon, instead of failing silently.",
+      "Add a local MCP desktop control plane, and let reviewed plugins drive the desktop only after native consent.",
+      "Add subagent preset templates, a provider-bounded model picker, and the effective thinking level on delegation cards.",
+      "Alias configured models, copy model IDs, and honor a model's own wire API over the provider-wide style.",
+      "Replace textual Edit matching with line-anchored operations, with error-specific recovery guidance.",
+      "Retry providers up to ten times with a visible countdown, and recover autonomous progress-only turns.",
+      "Redesign the macOS installer, add a Windows portable exe and Linux RPM package, and restore GNOME tray and dock icons.",
+      "Copy conversation IDs and open session folders from the sidebar, with localized tooltips on icon-only actions.",
+      "Show live process status and quiet intervals on the activity row, and add a viewport-fixed work panel toggle.",
+      "Enforce workspace ignore rules, resolve dangling symlinks, and re-check plugin network egress on every redirect.",
+      "Honor proxy bypass rules, keep pasted private-use glyphs, and load file previews without blocking the composer.",
+    ],
+  },
+  {
+    version: "0.14.5",
+    date: "2026-09-09",
+    highlights: [
+      "Label every macOS DMG and ZIP with its native arm64 or x64 architecture.",
+    ],
+  },
+  {
+    version: "0.14.4",
+    date: "2026-09-09",
+    highlights: [
+      "Add bounded large-file range reads and gesture-bound dropped-file grants for plugins.",
+      "Make macOS signing and notarization explicit opt-in, with opening guidance for trusted unsigned builds.",
+    ],
+  },
+  {
+    version: "0.14.3",
+    date: "2026-09-09",
+    highlights: [
+      "Label Intel macOS release downloads explicitly so the installer architecture is clear.",
+    ],
+  },
+  {
+    version: "0.14.2",
+    date: "2026-09-08",
+    highlights: [
+      "Add a context usage inspector that follows the selected model and shows compaction guidance.",
+      "Improve provider and model setup with searchable selection, bulk actions, and clearer fetch errors.",
+      "Summarize session titles automatically and let you rename projects with names that persist across restarts.",
+      "Refine the subagent side sheet with live status, compact task bubbles, model identity, and latest-output navigation.",
+      "Deliver native notifications for interactive asks and approvals while keeping routine completions out of the inbox.",
+      "Add Korean shell localization and improve localized settings, clipboard history, and safe link handling.",
+    ],
+  },
+  {
     version: "0.14.1",
     date: "2026-09-08",
     highlights: [
@@ -52,7 +119,6 @@ const enEntries: ChangelogEntry[] = [
     version: "0.13.11",
     date: "2026-09-07",
     highlights: [
-      "Enable the bundled Advisor plugin to have a second model review the current conversation.",
       "Let plugins list models, read in-flight session context, and request host-owned completions without receiving credentials.",
     ],
   },
@@ -693,6 +759,72 @@ const enEntries: ChangelogEntry[] = [
 
 const zhCNEntries: ChangelogEntry[] = [
   {
+    version: "0.14.8",
+    date: "2026-09-14",
+    highlights: [
+      "在 MCP 市场中浏览并安装官方注册表和自定义来源的 MCP 服务器。",
+      "在 Skill 市场中从精选来源和 GitHub 浏览并安装技能，安装走公开 HTTPS 并受大小限制。",
+      "将文件视图作为内置 File Manager 插件随应用分发，内置插件也可继续接收市场更新。",
+      "新增工作面板预览模式，将对话列最小宽度提升到 450px，三栏布局优先保证主对话区。",
+      "发现独立会话、发送宿主所有的协作消息，并打开协作链接。",
+      "子智能体可继承父级工具，设置中列出随应用提供的内置子智能体，新增 UI 设计师内置，并在创建过程显示独立状态。",
+      "用 Alt+Enter 在进行中的回合追加引导，粘贴的文本文件可在输入框中展开编辑。",
+      "重新设计项目创建：支持多文件夹工作区、项目级记忆和可视化记忆编辑。",
+      "从导入的 pi 扩展安装其声明的依赖和技能，安装过程由宿主安全边界约束。",
+      "为模型上下文窗口和最大输出提供预设芯片，在工具芯片上显示 Read 行范围，压缩失败后仍可恢复上下文。",
+    ],
+  },
+  {
+    version: "0.14.6",
+    date: "2026-09-10",
+    highlights: [
+      "当安装的版本比本地数据更旧，或在 Apple Silicon 上运行 Intel 版本时给出明确提示，而不是静默失败。",
+      "新增本地 MCP 桌面控制平面，经审核的插件只有在原生确认后才能控制桌面。",
+      "新增子智能体预设模板、按服务商限定的模型选择器，并在委派卡片上显示实际思考级别。",
+      "可为已配置模型设置别名并复制模型 ID，模型自身的接口协议优先于服务商级设置。",
+      "Edit 工具改为按行锚定的操作，取代文本匹配，并提供针对具体错误的恢复指引。",
+      "服务商请求最多重试十次并显示倒计时，自主模式下仅有进展的回合也能继续恢复。",
+      "重新设计 macOS 安装器，新增 Windows 便携版和 Linux RPM 包，恢复 GNOME 托盘与 Dock 图标。",
+      "可从侧边栏复制会话 ID 或打开会话文件夹，仅图标的操作均有本地化提示。",
+      "活动行显示实时进程状态与安静间隔，新增固定在视口的工作面板切换按钮。",
+      "强制执行工作区忽略规则，解析悬空符号链接，并在每次重定向时重新检查插件网络出口。",
+      "遵循代理绕过规则，保留粘贴的私用区字形，文件预览不再阻塞输入区。",
+    ],
+  },
+  {
+    version: "0.14.5",
+    date: "2026-09-09",
+    highlights: [
+      "为每个 macOS DMG 和 ZIP 标注原生 arm64 或 x64 架构。",
+    ],
+  },
+  {
+    version: "0.14.4",
+    date: "2026-09-09",
+    highlights: [
+      "为插件新增有上限的大文件范围读取和绑定真实拖拽手势的文件授权。",
+      "将 macOS 签名和公证改为明确的可选流程，并为可信未签名构建提供打开指引。",
+    ],
+  },
+  {
+    version: "0.14.3",
+    date: "2026-09-09",
+    highlights: [
+      "为 Intel macOS 发布下载添加明确后缀，方便区分安装包架构。",
+    ],
+  },
+  {
+    version: "0.14.2",
+    date: "2026-09-08",
+    highlights: [
+      "新增上下文用量检查器，跟随当前模型显示上下文窗口和压缩提示。",
+      "改进服务商和模型配置，支持可搜索选择、批量操作，并提供更清晰的获取错误提示。",
+      "支持自动总结会话标题，并可重命名项目；项目名称会在重启后保留。",
+      "优化子智能体侧边面板，显示实时状态、紧凑任务气泡和模型信息，并支持跳转到最新输出。",
+      "为交互式提问和审批提供原生通知，同时不再将普通完成消息放入通知收件箱。",
+      "新增韩语界面，并改进本地化设置、剪贴板历史和安全链接处理。",    ],
+  },
+  {
     version: "0.14.1",
     date: "2026-09-08",
     highlights: [
@@ -716,7 +848,6 @@ const zhCNEntries: ChangelogEntry[] = [
     version: "0.13.11",
     date: "2026-09-07",
     highlights: [
-      "启用内置 Advisor 插件后，可用第二个模型审阅当前对话。",
       "插件可列出模型、读取当前会话，并请求宿主代发补全，不会拿到凭据。",
     ],
   },
@@ -1357,6 +1488,73 @@ const zhCNEntries: ChangelogEntry[] = [
 
 const zhTWEntries: ChangelogEntry[] = [
   {
+    version: "0.14.8",
+    date: "2026-09-14",
+    highlights: [
+      "在 MCP 市場中瀏覽並安裝官方登錄檔和自訂來源的 MCP 伺服器。",
+      "在 Skill 市場中從精選來源和 GitHub 瀏覽並安裝技能，安裝走公開 HTTPS 並受大小限制。",
+      "將檔案檢視作為內建 File Manager 外掛隨應用程式發佈，內建外掛也可繼續接收市場更新。",
+      "新增工作面板預覽模式，將對話欄最小寬度提升到 450px，三欄版面優先保證主對話區。",
+      "發現獨立工作階段、傳送宿主所有的協作訊息，並開啟協作連結。",
+      "子智慧體可繼承父級工具，設定中列出隨應用程式提供的內建子智慧體，新增 UI 設計師內建，並在建立過程顯示獨立狀態。",
+      "用 Alt+Enter 在進行中的回合追加引導，貼上的文字檔可在輸入框中展開編輯。",
+      "重新設計專案建立：支援多資料夾工作區、專案級記憶和視覺化記憶編輯。",
+      "從匯入的 pi 擴充功能安裝其宣告的相依套件和技能，安裝過程由宿主安全邊界約束。",
+      "為模型上下文視窗和最大輸出提供預設晶片，在工具晶片上顯示 Read 行範圍，壓縮失敗後仍可復原上下文。",
+    ],
+  },
+  {
+    version: "0.14.6",
+    date: "2026-09-10",
+    highlights: [
+      "當安裝的版本比本機資料更舊，或在 Apple Silicon 上執行 Intel 版本時給出明確提示，而不是靜默失敗。",
+      "新增本機 MCP 桌面控制平面，經審核的外掛只有在原生確認後才能控制桌面。",
+      "新增子智慧體預設範本、按服務商限定的模型選擇器，並在委派卡片上顯示實際思考級別。",
+      "可為已設定模型設定別名並複製模型 ID，模型自身的介面協定優先於服務商層級設定。",
+      "Edit 工具改為按行錨定的操作，取代文字比對，並提供針對具體錯誤的恢復指引。",
+      "服務商請求最多重試十次並顯示倒數，自主模式下僅有進展的回合也能繼續恢復。",
+      "重新設計 macOS 安裝器，新增 Windows 可攜版和 Linux RPM 套件，恢復 GNOME 系統匣與 Dock 圖示。",
+      "可從側邊欄複製會話 ID 或開啟會話資料夾，僅圖示的操作均有本地化提示。",
+      "活動列顯示即時程序狀態與安靜間隔，新增固定在視口的工作面板切換按鈕。",
+      "強制執行工作區忽略規則，解析懸空符號連結，並在每次重新導向時重新檢查外掛網路出口。",
+      "遵循代理略過規則，保留貼上的私用區字形，檔案預覽不再阻塞輸入區。",
+    ],
+  },
+  {
+    version: "0.14.5",
+    date: "2026-09-09",
+    highlights: [
+      "為每個 macOS DMG 和 ZIP 標註原生 arm64 或 x64 架構。",
+    ],
+  },
+  {
+    version: "0.14.4",
+    date: "2026-09-09",
+    highlights: [
+      "為外掛新增有上限的大型檔案範圍讀取，以及繫結真實拖放手勢的檔案授權。",
+      "將 macOS 簽署與公證改為明確的選用流程，並為可信的未簽署版本提供開啟指引。",
+    ],
+  },
+  {
+    version: "0.14.3",
+    date: "2026-09-09",
+    highlights: [
+      "為 Intel macOS 發布下載加入明確後綴，方便區分安裝包架構。",
+    ],
+  },
+  {
+    version: "0.14.2",
+    date: "2026-09-08",
+    highlights: [
+      "新增上下文用量檢查器，跟隨目前模型顯示上下文視窗和壓縮提示。",
+      "改進服務商和模型設定，支援可搜尋選擇、批次操作，並提供更清晰的擷取錯誤提示。",
+      "支援自動總結會話標題，並可重新命名專案；專案名稱會在重新啟動後保留。",
+      "最佳化子智慧體側邊面板，顯示即時狀態、精簡任務氣泡和模型資訊，並支援跳轉到最新輸出。",
+      "為互動式提問和核准提供原生通知，同時不再將一般完成訊息放入通知收件匣。",
+      "新增韓語介面，並改進本地化設定、剪貼簿歷史和安全連結處理。",
+    ],
+  },
+  {
     version: "0.14.1",
     date: "2026-09-08",
     highlights: [
@@ -1380,7 +1578,6 @@ const zhTWEntries: ChangelogEntry[] = [
     version: "0.13.11",
     date: "2026-09-07",
     highlights: [
-      "啟用內建 Advisor 外掛後，可用第二個模型審閱當前對話。",
       "外掛可列出模型、讀取當前會話，並請求宿主代發補全，不會拿到憑據。",
     ],
   },

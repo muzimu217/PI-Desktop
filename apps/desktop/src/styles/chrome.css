@@ -198,7 +198,10 @@
   flex-direction: column;
   overflow: hidden;
   position: relative;
-  background: var(--ds-bg-sidebar, var(--ds-bg-primary));
+  background-color: var(--ds-bg-sidebar, var(--ds-bg-primary));
+  background-image: var(--ds-bg-sidebar-image, none);
+  background-repeat: no-repeat;
+  background-size: cover;
   /* No seam against the main pane (D297): the sidebar's own surface tone is
      the only edge cue on every platform, as it already was on macOS glass. */
   /*
@@ -210,6 +213,8 @@
 }
 
 .sidebar-resize-handle {
+  /* The sidebar is fixed-width: collapse/open only, never dragged. */
+  display: none;
   position: absolute;
   top: 0;
   right: 0;
@@ -252,6 +257,12 @@
 :root[data-sidebar-resizing="true"],
 :root[data-sidebar-resizing="true"] * {
   cursor: col-resize !important;
+  user-select: none !important;
+}
+
+:root[data-project-reordering="true"],
+:root[data-project-reordering="true"] * {
+  cursor: grabbing !important;
   user-select: none !important;
 }
 
@@ -328,7 +339,10 @@
   flex: 0 0 56px;
   display: flex;
   flex-direction: column;
-  background: var(--ds-bg-sidebar, var(--ds-bg-primary));
+  background-color: var(--ds-bg-sidebar, var(--ds-bg-primary));
+  background-image: var(--ds-bg-sidebar-image, none);
+  background-repeat: no-repeat;
+  background-size: cover;
 }
 
 /*
@@ -342,7 +356,8 @@
 :root[data-platform="darwin"] .sidebar,
 :root[data-platform="darwin"] .sidebar-rail {
   background-color: var(--ds-sidebar-glass-tint);
-  background-image: linear-gradient(
+  background-image: var(--ds-bg-sidebar-image, none),
+    linear-gradient(
       180deg,
       var(--ds-sidebar-glass-sheen-top),
       transparent 220px
@@ -488,6 +503,11 @@
 .conversation-topbar .ct-right {
   flex: 0 0 auto;
   justify-content: flex-end;
+  padding-right: 36px;
+}
+
+.conversation-topbar.ct-work-panel-open .ct-right {
+  padding-right: 0;
 }
 
 .conversation-topbar .ct-title-wrap {
@@ -515,10 +535,11 @@
   line-height: var(--leading-compact);
 }
 
-.conversation-topbar .ct-icon-btn {
+.conversation-topbar .ct-icon-btn,
+.app-work-panel-toggle {
   display: inline-flex;
-  height: 28px;
-  width: 28px;
+  height: var(--ds-work-panel-toggle-size);
+  width: var(--ds-work-panel-toggle-size);
   align-items: center;
   justify-content: center;
   border: none;
@@ -530,12 +551,14 @@
     color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
-.conversation-topbar .ct-icon-btn:hover:not(:disabled) {
+.conversation-topbar .ct-icon-btn:hover:not(:disabled),
+.app-work-panel-toggle:hover:not(:disabled) {
   background: var(--ds-bg-hover);
   color: var(--ds-text-primary);
 }
 
-.conversation-topbar .ct-icon-btn:disabled {
+.conversation-topbar .ct-icon-btn:disabled,
+.app-work-panel-toggle:disabled {
   opacity: 0.4;
   cursor: default;
 }
@@ -551,7 +574,54 @@
 .conversation-topbar .ct-actions {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 0;
+  padding: 2px;
+  border-radius: var(--radius-md);
+  background: var(--ds-tile);
+}
+
+/* Keep the sole work-panel toggle anchored to the viewport while the in-flow
+ * panel changes MainPane width. AppShell ownership keeps it available on every
+ * non-Settings route and above the panel header throughout both animations. */
+.app-work-panel-toggle {
+  position: fixed;
+  top: 9px;
+  right: var(--ds-work-panel-toggle-inset);
+  z-index: 30;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.app-work-panel-toggle[aria-pressed="true"] {
+  background: var(--ds-tile-deep);
+  color: var(--ds-text-primary);
+  box-shadow: var(--ds-raised-shadow);
+}
+
+.app-work-panel-toggle-icon {
+  position: relative;
+  display: inline-flex;
+  width: 15px;
+  height: 15px;
+}
+
+.app-work-panel-toggle-icon > svg {
+  position: absolute;
+  inset: 0;
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.app-work-panel-toggle[aria-pressed="false"] .app-work-panel-toggle-icon > svg:last-child,
+.app-work-panel-toggle[aria-pressed="true"] .app-work-panel-toggle-icon > svg:first-child {
+  opacity: 0;
+}
+
+:root[data-platform="win32"] .app-work-panel-toggle,
+:root[data-platform="linux"] .app-work-panel-toggle {
+  right: calc(
+    var(--ds-window-controls-width) + var(--ds-work-panel-toggle-inset)
+  );
 }
 
 /* macOS traffic lights occupy the top-left ~76px; only reserve that space
@@ -631,7 +701,8 @@
 
 :root[data-platform="win32"] .conversation-topbar.ct-work-panel-open,
 :root[data-platform="linux"] .conversation-topbar.ct-work-panel-open {
-  right: var(--ds-window-controls-width);
+  /* Window controls stay viewport-fixed over the panel, not this pane. */
+  right: 0;
 }
 
 .notification-center {
@@ -664,9 +735,11 @@
 }
 
 .notification-popover {
-  position: absolute;
-  bottom: calc(100% + 8px);
+  position: fixed;
+  top: auto;
   left: 0;
+  right: auto;
+  bottom: auto;
   z-index: 60;
   display: flex;
   width: min(360px, calc(100vw - 24px));
@@ -681,8 +754,6 @@
 
 /* Portaled to document.body so the main pane cannot paint over the dialog. */
 .notification-popover-portaled {
-  position: fixed;
-  right: auto;
   z-index: 60;
 }
 
@@ -894,6 +965,7 @@
 @media (max-width: 480px) {
   .notification-popover {
     position: fixed;
+    top: auto;
     bottom: 8px;
     right: 8px;
     left: 8px;
@@ -922,10 +994,10 @@
   /* Continuous with the adjacent titlebar: no side seam (D297). */
 }
 
-/* The main shell puts the controls inside the conversation pane so the right
- * work panel can use its own complete header without inheriting app chrome. */
+/* The main shell keeps one control band mounted inside MainPane, but its
+ * viewport-fixed position must not follow MainPane while the work panel reflows. */
 .window-controls.window-controls-in-pane {
-  position: absolute;
+  position: fixed;
 }
 
 .window-control-btn {
@@ -965,7 +1037,7 @@
 
 :root[data-platform="win32"] .main-titlebar.work-panel-open,
 :root[data-platform="linux"] .main-titlebar.work-panel-open {
-  right: var(--ds-window-controls-width);
+  right: 0;
 }
 
 .sidebar-header {
@@ -1035,3 +1107,75 @@
   -webkit-user-select: none;
   user-select: none;
 }
+
+/* Window-level chrome for preview mode: the topbar that normally owns the drag
+   band and the window controls lives in MainChat, which preview mode does not
+   render, so the shell reserves the same 46px band itself. */
+.app-shell.work-panel-maximized .work-panel-header {
+  -webkit-app-region: drag;
+}
+
+.app-shell.work-panel-maximized .work-panel-header button {
+  -webkit-app-region: no-drag;
+}
+
+.window-chrome-row {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 200;
+  display: flex;
+  height: var(--ds-toolbar-height);
+  align-items: center;
+  padding-left: 8px;
+  pointer-events: none;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.window-chrome-row.sidebar-expanded {
+  left: var(--ds-sidebar-width);
+}
+
+/* Native macOS traffic lights occupy the top-left ~76px of the window. Keep
+ * preview actions outside that hit area while the sidebar is collapsed. */
+:root[data-platform="darwin"] .window-chrome-row:not(.sidebar-expanded) {
+  padding-left: 76px;
+}
+
+:root[data-platform="darwin"][data-fullscreen="true"]
+  .window-chrome-row:not(.sidebar-expanded) {
+  padding-left: 8px;
+}
+
+.window-chrome-row button {
+  pointer-events: auto;
+}
+
+/* The system buttons keep their ordinary titlebar seat at the top right. */
+.window-chrome-row .window-controls {
+  margin-left: auto;
+  -webkit-app-region: no-drag;
+}
+
+.window-chrome-drag {
+  flex: 1 1 auto;
+  align-self: stretch;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.window-chrome-row .window-controls,
+.window-chrome-row button {
+  -webkit-app-region: no-drag;
+}
+/* Preview mode: the top band replaces MainChat's titlebar, so the system
+   buttons join the band's own flow instead of floating over the panel as a
+   separate opaque block (their fixed seat is meant for the titlebar row). */
+
+
+
+
+/* Preview mode: the three shell actions sit tight at the band's left edge
+ * (new task, restore the panel, toggle the panel), then the drag region. */

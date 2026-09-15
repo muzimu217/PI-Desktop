@@ -87,6 +87,7 @@ Tables (canonical DDL in [04-data-storage](04-data-storage.md) §4.3–4.4, §4.
         "required": ["id", "contextWindow", "maxTokens", "thinkingLevels", "defaultThinkingLevel"],
         "properties": {
           "id": { "type": "string", "minLength": 1 },
+          "alias": { "type": "string", "maxLength": 60 },
           "contextWindow": { "type": "integer", "minimum": 1 },
           "maxTokens": { "type": "integer", "minimum": 1 },
           "thinkingLevels": {
@@ -109,6 +110,13 @@ Tables (canonical DDL in [04-data-storage](04-data-storage.md) §4.3–4.4, §4.
   }
 }
 ```
+
+`models[].alias` is an optional display label (ADR 0192). `models[].id`
+remains the identity sent to the provider and the alias is never used for
+provider or model resolution; UI naming and clearing rules are specified in
+[04-ux/08-component-spec](../04-ux/08-component-spec.md). Host-core trims the
+alias, drops a blank one, and enforces the 60-character limit by rejecting an
+over-long alias with `MODEL_ALIAS_TOO_LONG`.
 
 `compatibility.supportsReasoning` and
 `compatibility.supportedThinkingLevels` remain readable for stored-record and
@@ -135,10 +143,19 @@ model record may explicitly set it to `true` for an upstream that accepts
 `authKind: "oauth"` marks a vendor-account row (ADR 0095, D237, D240): the credential
 is an OAuth grant under `secret:provider:<id>:oauth` rather than a pasted key,
 so the row carries no `secretRef` for it and launches with an empty key. The
-last two apiStyle values are vendor-account wire APIs — `openai_codex_responses`
+two account-only apiStyle values are vendor-account wire APIs — `openai_codex_responses`
 (the Codex conversation envelope) and `pi_messages` (the radius gateway) — and
 are not offered in the custom-provider dialog because neither works against a
-hand-typed base URL with a pasted key. A vendor row's style is not fixed by the
+hand-typed base URL with a pasted key. New custom services offer only
+Chat Completions, Responses, Anthropic Messages, and Google Generative AI;
+OpenCode Go remains a named service. Existing non-OAuth rows with either
+account-only style remain editable: their current format is shown as a disabled
+legacy option with an explanation and can be saved unchanged. Merely opening
+the editor does not derive another protocol, name, or URL from a matching
+endpoint preset. Selecting another format is an explicit change. Copying such
+a row preserves its draft format for review, but saving and discovery remain
+disabled with a visible explanation until a supported format is explicitly
+chosen. No existing authentication kind or credential is migrated. A vendor row's style is not fixed by the
 vendor: GitHub Copilot serves Anthropic, Chat Completions, and Responses
 models, so the style follows the selected model and is rewritten on each model
 change. The vendor account editor uses the same multi-model binding controls as
@@ -223,6 +240,43 @@ account isolation. Agent-runtime supplies Copilot's context-sensitive request
 headers per call; a saved custom header with the same name overrides the
 default.
 
+### Copy a provider into an independent draft
+
+Model configuration offers **Copy** on ordinary non-OAuth provider rows. The
+action normally opens a new custom-service draft with an editable API format,
+allowing the same endpoint and model bindings to be reused for another
+protocol. OpenCode Go is the exception: its copy retains the named service and
+fixed `opencode_go` format; selecting Custom service first makes the ordinary
+API formats editable. OAuth account rows do not offer this action.
+
+The draft is built from an explicit allowlist: the source name, `baseUrl`,
+`apiStyle`, and declared `models` binding fields. Model objects and nested
+`thinkingLevels` arrays are copied independently so draft edits cannot mutate
+the source. A copy label may distinguish the suggested name; the user can edit
+it before saving. No source `id`, credential or credential reference,
+`hasSecret` state, OAuth metadata, custom `headers`, or unknown fields are
+copied. All custom headers are omitted because an otherwise permitted header
+may contain a token. The dialog explains that credentials and custom headers
+must be supplied again when needed.
+
+A malformed Base URL, a non-HTTP(S) scheme, or a URL containing user info,
+query parameters, or a fragment is left blank in the draft so legacy URL
+credentials are not copied.
+
+The draft uses the normal new-provider discovery path: it must not pass the
+source provider id to model discovery or connection testing to resolve that
+provider's stored key. Any authenticated discovery uses only credentials
+explicitly supplied for the new draft. Copying does not read or duplicate
+secret-store values.
+
+Canceling the draft performs no provider/configuration persistence. Saving
+uses the existing `createProvider` / `providers.create` flow and assigns a new
+provider identity and, when a new key is entered, that provider's own secret
+reference. The source provider and global default provider/model selections
+remain unchanged. The first selected model remains the new provider's own
+default through the existing create behavior. Copying adds no IPC method,
+storage schema, or permission boundary.
+
 ## 3. Built-in vendor presets
 
 Presets only prefill form defaults; they are not a closed world.
@@ -265,11 +319,15 @@ Fireworks, OpenCode Go (`opencode_go`), Z.AI / Z.AI Coding Plan.
 
 China: DeepSeek, Qwen DashScope (`alibaba-cn`), Moonshot (`moonshotai-cn`),
 Zhipu AI / Coding Plan, SiliconFlow (`siliconflow-cn`), Volcengine Ark,
-MiniMax (`anthropic_messages`), Kimi For Coding (`anthropic_messages`).
+MiniMax (`anthropic_messages` at `https://api.minimaxi.com/anthropic/v1`),
+MiniMax (OpenAI) (`chat_completions` at `https://api.minimaxi.com/v1`, aliases
+`minimax-openai` / `minimax-compatible`), Kimi For Coding (`anthropic_messages`).
 
 Zhipu / Z.AI Completions requests still receive `thinkingFormat: "zai"` and
 `zaiToolStream: true`. pi-ai `zai-coding-cn` remains an alias of
-`zhipuai-coding-plan`.
+`zhipuai-coding-plan`. DeepSeek-family Completions requests receive
+`requiresReasoningContentOnAssistantMessages: true` when the vendor key, URL,
+model id, or catalog family identifies DeepSeek. `thinkingFormat` is unchanged.
 
 ### Vendor-account presets
 
@@ -348,6 +406,9 @@ change for the raw snapshot.
 - schema version via `PRAGMA user_version` (04-data-storage §7)
 - provider records additive-evolved; per-provider extension fields land in `config_json`
 - unknown future protocol values should not crash older app versions (ignore/disable with warning)
+- an unknown or legacy `apiStyle` remains editable: the provider editor uses
+  `chat_completions` as its safe UI fallback, and a subsequent save repairs the
+  stored style instead of crashing while normalizing the base URL
 
 ## 8. SQL (Rust-owned SQLite)
 

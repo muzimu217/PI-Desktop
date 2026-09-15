@@ -1,7 +1,14 @@
 export type WorkPanelTabKind =
+  | "new"
   | "review"
   | "file"
-  | "plugin";
+  | "plugin"
+  /**
+   * A follow-up conversation opened from a message. The tab id is
+   * `sidechat:<childSessionId>` and the resource is that child session, so the
+   * panel shows a real session without making it the visible one (D-LOCAL-message-quotes).
+   */
+  | "sidechat";
 
 export type WorkPanelTab = {
   id: string;
@@ -28,6 +35,8 @@ export type ReviewArtifactEvent = {
   isError?: boolean;
   result: unknown;
 };
+
+let newWorkPanelTabSequence = 0;
 
 export function emptyWorkPanelContext(): WorkPanelContext {
   return { open: false, tabs: [], activeTabId: null, fileRequest: null };
@@ -64,9 +73,22 @@ export function switchWorkPanelContextState(
 }
 
 export function toolWorkPanelTab(
-  kind: Exclude<WorkPanelTabKind, "file" | "plugin">,
+  kind: Exclude<WorkPanelTabKind, "new" | "file" | "plugin">,
 ): WorkPanelTab {
   return { id: kind, kind };
+}
+
+/**
+ * A temporary launcher page created by the panel's `+` action. Its id is
+ * intentionally unique so each click creates a real, independently closable
+ * tab instead of toggling a shared menu or reusing one blank state.
+ */
+export function newWorkPanelTab(): WorkPanelTab {
+  newWorkPanelTabSequence += 1;
+  return {
+    id: `new:${Date.now().toString(36)}-${newWorkPanelTabSequence.toString(36)}`,
+    kind: "new",
+  };
 }
 
 /**
@@ -94,6 +116,31 @@ export function browserPluginTab(location?: string): WorkPanelTab {
   };
 }
 
+/**
+ * The bundled file view (ADR 0241). A chat file reference prefers it, because
+ * the file belongs beside the conversation that named it and the view can edit
+ * as well as read.
+ *
+ * Named here exactly as `BROWSER_PLUGIN_TAB` names the side browser. The id is
+ * not privileged: when the plugin is absent its view is simply missing from the
+ * launcher list, and callers fall back to the host file tab.
+ */
+export const FILE_MANAGER_PLUGIN_TAB = {
+  pluginId: "pi.file-manager",
+  viewId: "manager",
+} as const;
+
+/** The file view, asked to show one file. */
+export function fileManagerPluginTab(location: string): WorkPanelTab {
+  return {
+    ...pluginWorkPanelTab(
+      FILE_MANAGER_PLUGIN_TAB.pluginId,
+      FILE_MANAGER_PLUGIN_TAB.viewId,
+    ),
+    location,
+  };
+}
+
 export function parsePluginViewRef(
   resource: string | undefined,
 ): { pluginId: string; viewId: string } | null {
@@ -116,7 +163,8 @@ export function parsePluginViewRef(
 export function isKnownWorkPanelTab(tab: WorkPanelTab): boolean {
   return (
     Boolean(tab) &&
-    (tab.kind === "review" || tab.kind === "file" || tab.kind === "plugin")
+    (tab.kind === "new" || tab.kind === "review" ||
+      tab.kind === "file" || tab.kind === "plugin" || tab.kind === "sidechat")
   );
 }
 
@@ -210,6 +258,31 @@ export function openWorkPanelTabState(
   }
   const tabs = [...state.tabs];
   tabs[index] = tab;
+  return { tabs, activeTabId: tab.id };
+}
+
+/** Replace a launcher tab with its selected destination, reusing an open tab. */
+export function replaceWorkPanelTabState(
+  state: WorkPanelTabsState,
+  sourceTabId: string,
+  tab: WorkPanelTab,
+): WorkPanelTabsState {
+  const sourceIndex = state.tabs.findIndex((item) => item.id === sourceTabId);
+  if (sourceIndex < 0) return openWorkPanelTabState(state, tab);
+  if (sourceTabId === tab.id) return { ...state, activeTabId: tab.id };
+
+  const existingIndex = state.tabs.findIndex(
+    (item) => item.id === tab.id && item.id !== sourceTabId,
+  );
+  if (existingIndex >= 0) {
+    return {
+      tabs: state.tabs.filter((_, index) => index !== sourceIndex),
+      activeTabId: tab.id,
+    };
+  }
+
+  const tabs = [...state.tabs];
+  tabs[sourceIndex] = tab;
   return { tabs, activeTabId: tab.id };
 }
 

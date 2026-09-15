@@ -600,7 +600,13 @@
   }
 }
 
-.provider-models-search-wrap {
+/*
+  One search field, two panes: the discovered list and the chosen list filter
+  with the same control, so the pair reads as one picker rather than as two
+  unrelated boxes. Both sit in their pane header, pushed to the trailing edge.
+*/
+.provider-models-search-wrap,
+.provider-chosen-search-wrap {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -614,12 +620,14 @@
   transition: background 120ms ease, box-shadow 120ms ease;
 }
 
-.provider-models-search-wrap:focus-within {
+.provider-models-search-wrap:focus-within,
+.provider-chosen-search-wrap:focus-within {
   background: var(--ds-raised);
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 24%, transparent);
 }
 
-.provider-models-search {
+.provider-models-search,
+.provider-chosen-search {
   flex: 1;
   min-width: 0;
   border: 0;
@@ -630,7 +638,8 @@
   line-height: var(--leading-normal);
 }
 
-.provider-models-search::placeholder {
+.provider-models-search::placeholder,
+.provider-chosen-search::placeholder {
   color: var(--ds-text-faint);
 }
 
@@ -782,6 +791,8 @@
   align-items: center;
   gap: 6px;
   flex: none;
+  /* The trailing search field drops below the title on a narrow pane. */
+  flex-wrap: wrap;
   padding: 9px 8px 4px;
 }
 
@@ -856,6 +867,21 @@
   white-space: nowrap;
 }
 
+/* The configured alias, shown beside the id it names. */
+.provider-chosen-row-alias {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: var(--ds-tile-deep);
+  color: var(--ds-text-secondary);
+  font-size: var(--text-3xs);
+  line-height: var(--leading-normal);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .provider-chosen-row-limits {
   flex: none;
   color: var(--ds-text-faint);
@@ -875,7 +901,8 @@
   cursor: pointer;
 }
 
-.provider-chosen-advanced-toggle:hover {
+.provider-chosen-advanced-toggle:hover,
+.provider-chosen-advanced-toggle[aria-expanded="true"] {
   background: var(--ds-bg-active);
   color: var(--ds-text-primary);
 }
@@ -905,23 +932,75 @@
   color: var(--ds-text-primary);
 }
 
+/*
+  Compact property sheet in a half-pane: 2xs labels, dense fields, no helper
+  paragraphs. Native number spinners are hidden so the two limit fields match.
+  Author `display: flex` would otherwise override the HTML hidden attribute.
+*/
 .provider-chosen-row-body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 0 8px 8px;
+  gap: 8px;
+  padding: 2px 8px 8px;
   font-size: var(--text-sm);
-  padding-top: 8px;
+}
+
+.provider-chosen-row-body[hidden] {
+  display: none;
 }
 
 .provider-chosen-row-body .field-input,
 .provider-chosen-row-body .field-select {
-  font-size: inherit;
+  min-height: 28px;
+  padding: 4px 8px;
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
 }
+
+.provider-chosen-row-body input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.provider-chosen-row-body input[type="number"]::-webkit-outer-spin-button,
+.provider-chosen-row-body input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+.provider-chosen-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.provider-chosen-field-label {
+  color: var(--ds-text-secondary);
+  font-size: var(--text-2xs);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--leading-normal);
+}
+
 .provider-chosen-limits {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+/* Preset ladders above the two numeric limit inputs (#202): the same
+   segmented-track language as the thinking chips, five stops per ladder. */
+.provider-limit-presets {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 3px;
+  width: 100%;
+  max-width: 100%;
+  padding: 3px;
+  border-radius: var(--radius-md);
+  background: var(--ds-bg-chip);
 }
 
 .provider-chosen-thinking {
@@ -932,9 +1011,9 @@
 
 .provider-chosen-thinking-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 3px 8px;
+  gap: 4px 8px;
   min-width: 0;
 }
 
@@ -955,6 +1034,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  margin-left: auto;
 }
 
 .provider-chosen-thinking-select {
@@ -981,9 +1061,10 @@
 }
 
 .provider-chosen-capability-rows {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
 }
 
 .provider-chosen-capability {
@@ -998,11 +1079,11 @@
 }
 
 .provider-chosen-thinking-chips {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  align-items: stretch;
   gap: 3px;
-  width: fit-content;
+  width: 100%;
   max-width: 100%;
   padding: 3px;
   border-radius: var(--radius-md);
@@ -1010,15 +1091,18 @@
 }
 
 .provider-thinking-chip {
-  min-width: 42px;
+  min-width: 0;
   min-height: 26px;
-  padding: 3px 9px;
+  padding: 3px 4px;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--ds-text-secondary);
   font-size: var(--text-2xs);
   line-height: var(--leading-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: pointer;
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
@@ -1032,9 +1116,9 @@
 
 /* The chosen level is the raised segment of the track (D297). */
 .provider-thinking-chip.selected {
-  background: var(--ds-raised);
+  background: var(--ds-accent);
   box-shadow: var(--ds-raised-shadow);
-  color: var(--ds-text-primary);
+  color: var(--ds-bg-primary);
 }
 
 .provider-thinking-chip:focus-visible {
@@ -1061,30 +1145,6 @@
   color: var(--ds-text-secondary);
 }
 
-.provider-chosen-delegation-help[data-tip]::after {
-  content: attr(data-tip);
-  position: absolute;
-  bottom: calc(100% + 5px);
-  left: 50%;
-  z-index: 8;
-  transform: translateX(-50%);
-  border: 1px solid var(--ds-border-default);
-  border-radius: var(--radius-sm);
-  background: var(--ds-bg-elevated-opaque);
-  box-shadow: var(--ds-shadow-composer);
-  padding: 3px 7px;
-  color: var(--ds-text-secondary);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-compact);
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--motion-duration-fast) var(--motion-ease-out);
-}
-
-.provider-chosen-delegation-help[data-tip]:hover::after {
-  opacity: 1;
-}
 
 .provider-custom-model {
   flex: none;
@@ -1553,7 +1613,9 @@
 }
 
 @media (max-width: 720px) {
-  .provider-models-search-wrap {
+  /* Both searches take their own row instead of squeezing their header. */
+  .provider-models-search-wrap,
+  .provider-chosen-search-wrap {
     margin-left: 0;
     width: 100%;
   }
@@ -1590,6 +1652,10 @@
 
   .model-provider-row-actions {
     align-self: flex-end;
+  }
+
+  .provider-chosen-thinking-chips {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
 }

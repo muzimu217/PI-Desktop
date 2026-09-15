@@ -92,7 +92,15 @@ pi-ai 去发出 `x-opencode-session`。每个提供商行（AI 服务或 OAuth �
 路径上不显示名称、Base URL 或 API 格式。对话回合仍然使用选定的 pi-ai 适配器
 （`chat_completions`、`responses`、`anthropic_messages`、
 `google_generative_ai` 或 `opencode_go`）。智谱 / Z.AI 的 Completions 请求
-使用 `thinkingFormat: "zai"` 与 `zaiToolStream: true`。
+使用 `thinkingFormat: "zai"` 与 `zaiToolStream: true`。DeepSeek 系 Completions
+在 `vendorKey`、Base URL、模型 ID 或目录 `family` 能识别为 DeepSeek 时设置
+`requiresReasoningContentOnAssistantMessages: true`。pi-ai 只根据
+`provider === "deepseek"` 或 `deepseek.com` URL 自动检测，而 PI-Desktop 把 UUID
+存成 `model.provider`，因此聚合网关与自定义端点会在无思考内容的助手回合漏掉
+`reasoning_content`。非官方 DeepSeek 端点还会设置 `requiresNonEmptyReasoningReplay`，
+用文档化的非空占位符而不是 `""` 填补缺失推理（OpenCode / 第三方中转在压缩后拒绝空回传；
+见 ADR 0256 / #296）。官方 `deepseek.com` 行仍使用空串回填（#223）。该覆盖不改
+`thinkingFormat`。
 
 ## 5. 内置供应商矩阵（发货意图）
 
@@ -305,7 +313,12 @@ type ThinkingLevel =
 `ModelBinding.availableForSubagents`（布尔值，默认 false）：这是一个选择加入
 的标志，让该模型可用于 AI 驱动的子代理委托。启用后，该模型会出现在注入父
 agent 系统提示的委托目录中。父 agent 随后就能通过 Task 工具的 `model` 参数
-选中它。
+选中它。为某个定义解析固定模型不代表授予此许可。启动载荷通过独立的
+`subagentModelKeys` 传递允许覆盖的模型键；仅供定义固定使用的绑定仍只通过
+正常的固定模型解析生效，包括 `Task.model` 重复该定义自己的固定键。按需匹配使用唯一
+provider id/vendor/name 查找，不得用另一账号凭据覆盖固定模型。多个账号的 vendor/model 别名冲突时，已勾选账号改用
+确切的提供商 ID 作为覆盖键。优先级保持 Task.model → 定义固定模型 → 会话模型
+（D278；ADR subagent-model-opt-in）。
 
 ## 8. 秘密
 
@@ -354,6 +367,27 @@ sidecar 请求
 提供元数据，但不能把 ID 加进已认证列表。一个厂商可以跨越多种线路 API ——
 Copilot 同时提供 Anthropic、Chat Completions 与 Responses 模型 —— 因此行
 的 `apiStyle` 跟随所选模型。
+
+### Anthropic token 端点限流
+
+固定版本 pi-ai 0.85.1 的仓库补丁为 Anthropic 授权码交换与刷新提供同一套
+有限策略：只重试明确的 HTTP 429，最多总共三次请求。先等待至少 1 秒、再
+等待至少 2 秒；若 `Retry-After` 给出更长的秒数或 HTTP 日期，则遵守该时间。
+服务器要求的等待超出剩余预算时结束本次尝试，不缩短等待后提前重试。
+缺失或无效提示使用有限的指数退避。
+
+请求、响应体读取和等待共用一个 30 秒 helper 截止时间及原始调用方 signal；
+更早的调用方截止时间优先。pi-ai 现有刷新操作在凭据存储锁内有 15 秒限制。
+取消同样中断等待。补丁不把刷新移出该锁：失败保留已有凭据，成功旋转后
+仅写入一次新授权。
+
+网络失败、响应体中断、5xx 和 `invalid_grant` 均不重放，因为非幂等 token
+请求的结果可能不确定。明确的 `invalid_grant` 即使标为 429 也立即结束。
+HTTP/token JSON 失败显示有限恢复说明，不包含原始响应体、URL 或嵌套堆栈。
+登录失败提示稍后关闭弹窗并重新发起登录；刷新失败提示等待后重试，持续失败
+时重新登录。仅凭 HTTP 429 不能证明授权码是否已被使用，因此不声称其已失效。
+
+沿用现有依赖补丁机制，OAuth 端点、PKCE、凭据归属、IPC 和存储 schema 不变。
 
 ## 9. 模型目录服务
 
@@ -409,8 +443,9 @@ type ModelDescriptor = {
 - 不要暴露原始的目录兼容性内部细节或提供商机密
 - 设置 → 导入可以从 Claude Code、Codex、OpenCode、Pi 和 CC Switch 复制
   provider/model 行。扫描是显式的。已存储的 API key 会被复制进宿主密钥库；
-  OAuth/订阅授权则不会。重复导入时会跳过等价端点（归一化 URL + API 风格）。
-  不涉及协议或模式版本升级（D342 / ADR 0179）
+  OAuth/订阅授权则不会。重复导入时只会跳过等价提供商（归一化 URL + API
+  风格 + 相同凭据）；同一端点的不同凭据仍保持为独立提供商。
+  不涉及协议或模式版本升级（D342 / ADR 0179 / ADR 0188）
 
 ### 模型选择器
 - 搜索启用的提供商的所有模型
@@ -533,6 +568,19 @@ UI 可能会显示层级提示，但默认情况下不得硬阻止未知模型�
 该模型，不会改变其他提供商。
 
 这是**通用逃生舱**，保证超出原生集成之外的市场覆盖范围。
+
+目录条目还可以额外固定模型级 wire API（例如 `api: "openai-responses"`）。存在时它优先于 provider 级 `apiStyle`，因此 `opencode_go` 下的 responses-only 模型会走 Responses adapter 而非 Chat Completions；没有模型级固定时保持 provider 级风格不变。
+
+### 16.1 Responses 流终止（pi-ai 补丁）
+
+OpenAI Responses 适配器必须把 `response.completed`（以及
+`response.incomplete`）视为流的终点：完成响应收尾后即停止消费流，
+而不是继续等待服务端的 TCP FIN。上游 pi-ai 会一直迭代直到服务端关闭
+连接，在保持空闲连接不关的反向代理后面会导致整个回合挂起。在该修复
+随上游发布之前，`patches/` 通过 pnpm patch 修改
+`@earendil-works/pi-ai@0.85.1`，在终态事件处跳出事件循环（消费方停止
+迭代时 OpenAI SDK 会中止底层请求）。待 pi-ai 发布包含该修复的版本后
+移除补丁。
 
 ## 17. 多提供商产品规则
 

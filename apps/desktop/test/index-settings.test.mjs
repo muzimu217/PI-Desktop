@@ -53,10 +53,16 @@ test("index page drives one switch and keeps the index a rebuildable cache", asy
   assert.doesNotMatch(settingsTypes, /indexNewFolders/);
   assert.doesNotMatch(enLocale, /newFolders/);
   assert.match(enLocale, /grepBoost: "Grep index boost"/);
-  assert.match(enLocale, /grepBoostDesc: "Index newly opened workspaces/);
+  assert.match(enLocale, /grepBoostDesc: "While this switch is on, Grep may serve/);
   // The switch promises speed, never different results, so the copy still has
   // to describe the index as a rebuildable cache Grep does not depend on.
   assert.match(enLocale, /Grep results never depend on it/);
+  // The manual build is gated on that same switch: without a consumer an index
+  // is only a scan and some disk, so the page must not offer to build one.
+  assert.match(page, /disabled=\{busy !== null \|\| !grepBoost\}/);
+  assert.match(page, /aria-describedby="idx-actions-desc"/);
+  assert.match(enLocale, /actionsDesc: "Build or rebuild the index for the current workspace/);
+  assert.match(enLocale, /cannot be built while the index boost is off/);
 });
 
 test("index IPC stays on the three lifecycle channels", () => {
@@ -108,4 +114,22 @@ test("the index page explains itself once and can be dismissed for good", () => 
   // The switch left the health card: it is a setting, not telemetry.
   assert.match(page, /t\("index\.sectionCode"\)/);
   assert.match(page, /t\("index\.indexSubtitle"\)/);
+});
+
+test("the manual build is gated on the switch that reads the index", async () => {
+  // Rebuild stays a host lifecycle RPC and keeps working regardless, but the
+  // page only offers it while the opt-in switch is on: an index nothing reads
+  // is pure scan and disk cost, which is the reason the card carries exactly
+  // one toggle in the first place.
+  assert.match(page, /t\("index\.actionsDesc"\)/);
+  assert.match(page, /t\("index\.localOnly"\)/);
+  assert.match(page, /id="idx-actions-desc"/);
+  // Clear keeps working with the switch off, so a leftover index can still go.
+  assert.match(page, /disabled=\{busy !== null \|\| !root\}/);
+  // The gate lives in the locale, not only in the component: every shipped
+  // catalog has to say why the build can be unavailable.
+  for (const locale of ["en", "zh-CN", "zh-TW", "de", "es", "fr", "ko", "tr"]) {
+    const catalog = await read(`../../packages/i18n/src/locales/${locale}/index.ts`);
+    assert.match(catalog, /"?actionsDesc"?:/, locale);
+  }
 });

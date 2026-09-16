@@ -292,13 +292,20 @@ export function IndexPage({ settings, saveSettings }: IndexPageProps) {
           <div className="settings-row">
             <div className="settings-row-copy">
               <div className="settings-row-title">{t("index.actions")}</div>
-              <div className="settings-row-desc">{t("index.localOnly")}</div>
+              <div className="settings-row-desc" id="idx-actions-desc">
+                {t("index.actionsDesc")} {t("index.localOnly")}
+              </div>
             </div>
             <div className="settings-row-control idx-actions">
               <Button
                 variant="primary"
-                disabled={busy !== null}
+                // Building while the consumer switch is off would only scan the
+                // workspace and take up disk for an index nothing ever reads.
+                // The reason sits in the row's own description, not a tooltip:
+                // disabled controls do not fire the hover that would show one.
+                disabled={busy !== null || !grepBoost}
                 aria-busy={busy === "rebuild"}
+                aria-describedby="idx-actions-desc"
                 onClick={() => void rebuild()}
               >
                 <IconDatabase size={14} />

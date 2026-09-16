@@ -573,11 +573,16 @@ system while preserving their different data ownership:
   toggle would either duplicate this switch or build an index that nothing
   reads, so the card carries exactly one
 - Actions are Rebuild index and Clear index; both call the host lifecycle
-  RPCs and refresh the card from the returned status
+  RPCs and refresh the card from the returned status. Rebuild is offered only
+  while the opt-in toggle is on, because an index the switch never feeds is
+  just a scan and some disk; Clear stays available so a leftover index can
+  still be removed
 - The copy states that the index is a rebuildable local cache whose data
   never leaves the machine, and that Grep results never depend on it
 - Empty state: no root yet for the active workspace, with Build index as the
-  single action. Load failure shows a retry instead of a blank card
+  single action, gated the same way so the empty state never offers a build
+  the switch would leave unread. Load failure shows a retry instead of a blank
+  card
 
 ### Info
 - app/host/protocol versions + open logs

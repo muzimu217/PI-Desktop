@@ -570,8 +570,7 @@ impl McpServerRegistry {
         let target_label = suffixed_display_name(&source.label, &taken_labels, MAX_VALUE_BYTES);
 
         let mut config: McpConfig = serde_json::from_str(
-            &fs::read_to_string(&source_path)
-                .with_context(|| format!("read {source_path}"))?,
+            &fs::read_to_string(&source_path).with_context(|| format!("read {source_path}"))?,
         )
         .with_context(|| format!("parse {source_path}"))?;
         let rename = config.id != target_id || config.label != target_label;
@@ -632,11 +631,7 @@ mod tests {
 
     /// A registry plus the two directories a level switch needs.
     fn scaffolding() -> (tempfile::TempDir, tempfile::TempDir, tempfile::TempDir) {
-        (
-            tempdir().unwrap(),
-            tempdir().unwrap(),
-            tempdir().unwrap(),
-        )
+        (tempdir().unwrap(), tempdir().unwrap(), tempdir().unwrap())
     }
 
     fn stdio(id: &str) -> McpServerInput {
@@ -806,9 +801,12 @@ mod tests {
                 .is_empty());
             // The global override is gone with the document, not left pointing
             // at an id the global directory no longer holds.
-            assert!(registry
-                .state
-                .enabled(MCP_KIND, CapabilityLevel::Global, "files", Some(&project_path)));
+            assert!(registry.state.enabled(
+                MCP_KIND,
+                CapabilityLevel::Global,
+                "files",
+                Some(&project_path)
+            ));
         });
     }
 
@@ -881,12 +879,18 @@ mod tests {
             assert!(!project.path().join(".agents/servers/files.json").exists());
             // The disabled state is now the global default: it follows the
             // document, and no project-only entry is left behind.
-            assert!(!registry
-                .state
-                .enabled(MCP_KIND, CapabilityLevel::Global, "files", Some("/elsewhere")));
-            assert!(registry
-                .state
-                .enabled(MCP_KIND, CapabilityLevel::Project, "files", Some(&project_path)));
+            assert!(!registry.state.enabled(
+                MCP_KIND,
+                CapabilityLevel::Global,
+                "files",
+                Some("/elsewhere")
+            ));
+            assert!(registry.state.enabled(
+                MCP_KIND,
+                CapabilityLevel::Project,
+                "files",
+                Some(&project_path)
+            ));
         });
     }
 
@@ -959,7 +963,10 @@ mod tests {
                 fs::read_to_string(project.path().join(".agents/servers/FILES.json")).unwrap(),
                 existing
             );
-            assert!(project.path().join(".agents/servers/files-2.json").is_file());
+            assert!(project
+                .path()
+                .join(".agents/servers/files-2.json")
+                .is_file());
             let listed = registry
                 .list(CapabilityLevel::Project, Some(&project_path))
                 .unwrap();

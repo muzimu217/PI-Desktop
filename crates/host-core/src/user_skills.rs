@@ -410,8 +410,9 @@ impl UserSkillRegistry {
                 fs::remove_dir_all(dir)
                     .map_err(|error| anyhow::anyhow!("remove {}: {error}", dir.display()))?;
             } else {
-                fs::remove_file(&source_path)
-                    .map_err(|error| anyhow::anyhow!("remove {}: {error}", source_path.display()))?;
+                fs::remove_file(&source_path).map_err(|error| {
+                    anyhow::anyhow!("remove {}: {error}", source_path.display())
+                })?;
             }
         }
 
@@ -1087,7 +1088,10 @@ mod tests {
                 fs::read_to_string(&target).unwrap(),
                 "---\nname: Review\ndescription: Check code\n---\n\nDo it.\n"
             );
-            assert!(registry.list(CapabilityLevel::Global, None).unwrap().is_empty());
+            assert!(registry
+                .list(CapabilityLevel::Global, None)
+                .unwrap()
+                .is_empty());
         });
     }
 
@@ -1241,9 +1245,12 @@ mod tests {
             assert!(!project.path().join(".agents/skills/review.md").exists());
             // Off everywhere, because the document is off and its state is now
             // the global default rather than one project's leftover override.
-            assert!(!registry
-                .state
-                .enabled(SKILL_KIND, CapabilityLevel::Global, "review", Some("/elsewhere")));
+            assert!(!registry.state.enabled(
+                SKILL_KIND,
+                CapabilityLevel::Global,
+                "review",
+                Some("/elsewhere")
+            ));
         });
     }
 
@@ -1296,12 +1303,18 @@ mod tests {
         // that is what both the directory and the next scan will call it.
         assert_eq!(placement.stem, "2");
         let document = skill_document_path(directory.path(), &placement.stem, true);
-        assert_eq!(capability_id(&placement.name, &document, 64), placement.stem);
+        assert_eq!(
+            capability_id(&placement.name, &document, 64),
+            placement.stem
+        );
 
         // A flat destination derives the same id from the `.md` stem.
         let placement = plan_skill_placement(&source, directory.path(), false, &existing).unwrap();
         let document = skill_document_path(directory.path(), &placement.stem, false);
-        assert_eq!(capability_id(&placement.name, &document, 64), placement.stem);
+        assert_eq!(
+            capability_id(&placement.name, &document, 64),
+            placement.stem
+        );
     }
 
     #[test]

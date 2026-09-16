@@ -446,11 +446,7 @@ pub fn display_name_candidate(name: &str, ordinal: u32, max_chars: usize) -> Str
 
 /// The display name a document should carry at a destination that already
 /// holds `taken` (compared case-insensitively, the way shadowing compares it).
-pub fn suffixed_display_name(
-    preferred: &str,
-    taken: &HashSet<String>,
-    max_chars: usize,
-) -> String {
+pub fn suffixed_display_name(preferred: &str, taken: &HashSet<String>, max_chars: usize) -> String {
     for ordinal in 1..=MAX_ID_SUFFIX {
         let candidate = display_name_candidate(preferred, ordinal, max_chars);
         if !candidate.is_empty() && !taken.contains(&candidate.to_lowercase()) {
@@ -504,7 +500,10 @@ pub fn copy_directory_tree(from: &Path, to: &Path, skip_skill_document: bool) ->
 /// never replaces an existing destination.
 pub fn move_capability_file(from: &Path, to: &Path) -> Result<()> {
     if to.exists() {
-        bail!("CAPABILITY_INVALID: destination already exists: {}", to.display());
+        bail!(
+            "CAPABILITY_INVALID: destination already exists: {}",
+            to.display()
+        );
     }
     if let Some(parent) = to.parent() {
         fs::create_dir_all(parent)?;
@@ -745,14 +744,15 @@ pub(crate) mod test_support {
     /// per-module locks would not exclude each other, and two tests would end up
     /// reading each other's directory.
     pub fn with_global_agents<T>(dir: &Path, f: impl FnOnce() -> T) -> T {
-        let _guard = AGENTS_ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        let _guard = AGENTS_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         // Safety: test-only process env mutation, serialized by the lock above.
         unsafe { std::env::set_var(super::AGENTS_DIR_ENV, dir) };
         let outcome = f();
         unsafe { std::env::remove_var(super::AGENTS_DIR_ENV) };
         outcome
     }
-
 }
 
 #[cfg(test)]
@@ -973,7 +973,13 @@ mod tests {
             )
             .unwrap();
         state
-            .set_enabled("skills", CapabilityLevel::Project, "review", Some("/repo"), false)
+            .set_enabled(
+                "skills",
+                CapabilityLevel::Project,
+                "review",
+                Some("/repo"),
+                false,
+            )
             .unwrap();
         assert!(!state.enabled("skills", CapabilityLevel::Global, "review", None));
 

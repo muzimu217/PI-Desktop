@@ -200,6 +200,12 @@ fn select_candidates_inner(
     if candidates.len() > cap {
         return Ok(InnerSelection::Fallback(FallbackReason::TooWide));
     }
+    // The fallback walk serves files in one global newest-first order and the
+    // caller truncates at head_limit while scanning in candidate order, so the
+    // merged set is re-sorted into that same order. Appending the unindexed
+    // tail as-is would let a head-limited Grep read an older indexed hit
+    // before a newer unindexed file — silently changing Grep's answer.
+    candidates.sort_unstable_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.cmp(&b.0)));
     // The visible set is every row the crawler stored for this root, ingested
     // or not; it is the denominator for the candidate-ratio diagnostic.
     let visible: i64 = connection.query_row(
@@ -324,6 +330,43 @@ mod tests {
                 // FTS hit + both unindexed files. `miss.txt` is ingested and
                 // does not match, so narrowing still happens.
                 assert_eq!(names, vec!["big.txt", "hit.txt", "image.png"]);
+            }
+            CandidateSelection::Fallback => panic!("fresh index must serve"),
+        }
+    }
+
+    #[test]
+    fn merged_candidates_keep_the_global_newest_first_order() {
+        let data = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        // Written first, so it is the older file once both exist.
+        fs::write(
+            root.path().join("old_hit.txt"),
+            "the literal needle is here\n",
+        )
+        .unwrap();
+        let store = IndexStore::open(data.path()).unwrap();
+        store.rebuild(root.path(), IndexLimits::default()).unwrap();
+        // Created after that build: newer than the indexed hit, and never
+        // ingested because its size is past the cap. A second crawl records
+        // its fresh mtime in the visible set — the same state a same-path
+        // auto refresh leaves the store in — and the fallback walk would
+        // read this file first.
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        let big = format!(
+            "{}needle\n",
+            "x".repeat(crate::index::MAX_FILE_BYTES as usize)
+        );
+        fs::write(root.path().join("new_big.txt"), big).unwrap();
+        store.rebuild(root.path(), IndexLimits::default()).unwrap();
+
+        match select_candidates(&store, root.path(), "needle", 20_000) {
+            CandidateSelection::Ready(files) => {
+                let names: Vec<String> = files
+                    .iter()
+                    .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
+                    .collect();
+                assert_eq!(names, vec!["new_big.txt", "old_hit.txt"]);
             }
             CandidateSelection::Fallback => panic!("fresh index must serve"),
         }

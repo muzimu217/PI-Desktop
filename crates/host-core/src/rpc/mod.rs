@@ -1849,36 +1849,48 @@ async fn handle_request(
             // and `index.status` reports `building` until it lands.
             let settings = st.db.get_setting("app").ok().flatten();
             let changed = previous.as_deref() != Some(ws.path.as_str());
-            if index_grep_boost_enabled(settings.as_ref()) {
-                let index = st.index.clone();
-                let root = PathBuf::from(ws.path.clone());
+            let index = st.index.clone();
+            let root = PathBuf::from(ws.path.clone());
+            let boost = index_grep_boost_enabled(settings.as_ref());
+            let refresh_due = !changed && boost && index.refresh_due(&root);
+            // The index store owns its connection, so its calls below do not
+            // need the app state lock; drop the lock before doing them so
+            // concurrent RPCs are not serialized behind this one.
+            drop(st);
+            let mut triggered = false;
+            if boost {
                 let outcome = if changed {
                     index.ensure_index(&root)
-                } else if index.refresh_due(&root) {
+                } else if refresh_due {
                     index
                         .request_refresh(&root)
                         .map(|_| crate::index::EnsureOutcome::Triggered)
                 } else {
                     Ok(crate::index::EnsureOutcome::Fresh)
                 };
-                drop(st);
                 match outcome {
                     Ok(crate::index::EnsureOutcome::Triggered) => {
-                        tokio::task::spawn_blocking(move || {
-                            if let Err(error) =
-                                index.rebuild(&root, crate::index::IndexLimits::default())
-                            {
-                                tracing::warn!(error = %error, "background index rebuild failed");
-                            }
-                        });
+                        // Mark only on a successful trigger: a failed one
+                        // stays due and retries on the next workspace.set.
+                        index.refresh_mark(&root);
+                        triggered = true;
                     }
                     Ok(_) => {}
                     Err(error) => {
                         tracing::warn!(error = %error, "auto index ensure failed");
                     }
                 }
-            } else {
-                drop(st);
+            }
+            if triggered {
+                let build_index = index.clone();
+                let build_root = root.clone();
+                tokio::task::spawn_blocking(move || {
+                    if let Err(error) =
+                        build_index.rebuild(&build_root, crate::index::IndexLimits::default())
+                    {
+                        tracing::warn!(error = %error, "background index rebuild failed");
+                    }
+                });
             }
             Ok(json!({ "workspace": ws }))
         }

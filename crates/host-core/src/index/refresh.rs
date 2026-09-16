@@ -18,21 +18,30 @@ use super::{normalize_root, root_id, IndexStatus, IndexStore, RootUpdate};
 pub const AUTO_REFRESH_MIN_INTERVAL: Duration = Duration::from_secs(600);
 
 impl IndexStore {
-    /// Whether a same-path auto refresh of `root` is due now. Calling this
-    /// consumes the answer: the interval restarts from the call, whether or
-    /// not the caller goes through with the refresh (a workspace the user
-    /// keeps switching to should not queue up refreshes).
+    /// Whether a same-path auto refresh of `root` is due now. This only
+    /// *peeks* — the interval clock starts when the caller reports the
+    /// refresh actually triggered via [`Self::refresh_mark`], so a failed
+    /// trigger retries on the next `workspace.set` instead of waiting out
+    /// the interval.
     pub fn refresh_due(&self, root: &Path) -> bool {
         let root_id = root_id(&normalize_root(root));
-        let mut last = self.last_refresh.lock().unwrap();
-        let due = match last.get(&root_id) {
+        let last = self.last_refresh.lock().unwrap();
+        match last.get(&root_id) {
             Some(at) => at.elapsed() >= AUTO_REFRESH_MIN_INTERVAL,
             None => true,
-        };
-        if due {
-            last.insert(root_id, Instant::now());
         }
-        due
+    }
+
+    /// Start the same-path refresh interval for `root`. Call this only after
+    /// the re-walk has actually been triggered (an equivalent fresh rebuild
+    /// from a changed-path set marks too — a workspace that was just crawled
+    /// has no need for an immediate refresh).
+    pub fn refresh_mark(&self, root: &Path) {
+        let root_id = root_id(&normalize_root(root));
+        self.last_refresh
+            .lock()
+            .unwrap()
+            .insert(root_id, Instant::now());
     }
 
     /// Mark a `fresh` root `building` ahead of a same-path auto refresh, so
@@ -40,6 +49,14 @@ impl IndexStore {
     pub fn request_refresh(&self, root: &Path) -> Result<()> {
         let root = normalize_root(root);
         let root_id = root_id(&root);
+        // Register the root as building in-process *before* the row flips:
+        // a concurrent ensure_index in the window before the spawned rebuild
+        // starts must see a live build, not crash residue, or it would
+        // trigger a second crawl. If the rebuild never ends up running, the
+        // registration lives until process exit — the cheaper side of the
+        // ambiguity, since the alternative is a permanently spinning health
+        // card.
+        self.building_roots.lock().unwrap().insert(root_id.clone());
         self.set_root_status(
             &root_id,
             &root,
@@ -61,16 +78,21 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn same_path_refresh_is_due_once_then_spacing_kicks_in() {
+    fn same_path_refresh_is_due_until_marked() {
         let data = tempfile::tempdir().unwrap();
         let root = tempfile::tempdir().unwrap();
         fs::write(root.path().join("one.txt"), "one\n").unwrap();
         let store = IndexStore::open(data.path()).unwrap();
 
-        assert!(store.refresh_due(root.path()), "first set is due");
+        assert!(store.refresh_due(root.path()), "first peek is due");
+        assert!(
+            store.refresh_due(root.path()),
+            "peeking does not consume the interval"
+        );
+        store.refresh_mark(root.path());
         assert!(
             !store.refresh_due(root.path()),
-            "the interval restarts on the first call"
+            "marking starts the interval"
         );
         // An unrelated root has its own clock.
         let other = tempfile::tempdir().unwrap();
@@ -78,7 +100,7 @@ mod tests {
     }
 
     #[test]
-    fn request_refresh_marks_a_fresh_root_building() {
+    fn request_refresh_registers_the_build_in_process() {
         let data = tempfile::tempdir().unwrap();
         let root = tempfile::tempdir().unwrap();
         fs::write(root.path().join("one.txt"), "one\n").unwrap();
@@ -87,6 +109,14 @@ mod tests {
         assert_eq!(store.status(Some(root.path())).unwrap()[0].status, "fresh");
 
         store.request_refresh(root.path()).unwrap();
+        // The registration must exist before the spawned rebuild starts, or
+        // a concurrent ensure_index would read the `building` row as crash
+        // residue and re-trigger the crawl.
+        assert!(store
+            .building_roots
+            .lock()
+            .unwrap()
+            .contains(&root_id(&normalize_root(root.path()))));
         assert_eq!(
             store.status(Some(root.path())).unwrap()[0].status,
             "building"

@@ -205,7 +205,9 @@ fn select_candidates_inner(
     // merged set is re-sorted into that same order. Appending the unindexed
     // tail as-is would let a head-limited Grep read an older indexed hit
     // before a newer unindexed file — silently changing Grep's answer.
-    candidates.sort_unstable_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.cmp(&b.0)));
+    candidates.sort_unstable_by(|(a_path, _, a_mtime), (b_path, _, b_mtime)| {
+        b_mtime.cmp(a_mtime).then_with(|| a_path.cmp(b_path))
+    });
     // The visible set is every row the crawler stored for this root, ingested
     // or not; it is the denominator for the candidate-ratio diagnostic.
     let visible: i64 = connection.query_row(

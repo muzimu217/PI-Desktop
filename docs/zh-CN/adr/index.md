@@ -285,7 +285,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | 0253 | [移除子智能体轮次上限](/adr/0253-remove-subagent-turn-limit) | 已接受（取代 0062 / 0063 / 0119 / 0126 / 0166 / 0210 中关于 `maxTurns` 的条款） |
  | 0265 | [排队队列的优先区块与行内操作](/adr/0265-turn-queue-priority-block-and-row-actions) | 已接受待实现（修订 ADR 0213 / 0118） |
  | 0267 | [插件标签跟随应用语言](/adr/0267-plugin-labels-follow-the-app-language) | 已接受（修订 ADR 0160；ADR 0182） |
-| 0270 | [设置页用量统计目的地](/adr/0270-settings-usage-statistics) | 已接受（修订 D335 / ADR 0173） |
+| 0271 | [设置页用量统计目的地](/adr/0271-settings-usage-statistics) | 已接受（修订 D335 / ADR 0173） |
 
 ## 什么时候看 ADR
 

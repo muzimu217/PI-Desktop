@@ -1,4 +1,4 @@
-# ADR 0270: Settings usage statistics destination (amends D335 / ADR 0173)
+# ADR 0271: Settings usage statistics destination (amends D335 / ADR 0173)
 
 - Status: Accepted (2026-09-14)
 - Related: D331, D335, ADR 0171, ADR 0173

@@ -297,4 +297,4 @@ Each ADR includes:
 | 0270 | [Builtin subagents can be switched off](0270-builtin-subagents-can-be-disabled.md) | Accepted for implementation (amends ADR 0063; ADR 0112) |
 | 0269 | [Move capability documents between the global and project levels](0269-capability-level-transfer.md) | Accepted for implementation (amends ADR 0112) |
 | 0268 | Remove quotes, annotations, and side chats | Accepted (supersedes message-quotes-and-side-chats / response-annotations / floating-annotation-index) |
-| 0270 | [Settings usage statistics destination](0270-settings-usage-statistics.md) | Accepted (amends D335 / ADR 0173) |
+| 0271 | [Settings usage statistics destination](0271-settings-usage-statistics.md) | Accepted (amends D335 / ADR 0173) |

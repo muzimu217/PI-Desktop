@@ -157,7 +157,7 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
 
 ### Usage statistics (`usage` tab, `Data & Statistics` group)
 
-Amends D335 / ADR 0173 (ADR 0270): the Usage destination returns to Settings
+Amends D335 / ADR 0173 (ADR 0271): the Usage destination returns to Settings
 for the host-owned view. The page reads `stats.summary` /
 `stats.topSessions` — range switch (7/30 days), cards (total tokens,
 peak day, longest pure-chat time, current streak), 365-day heatmap, daily

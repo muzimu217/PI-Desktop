@@ -246,7 +246,6 @@ pub fn is_vendor_path(root: &Path, path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
 
     #[test]

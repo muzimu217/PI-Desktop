@@ -721,7 +721,7 @@ reading surface of the workstation.
 ### 4.3 Layout
 
 - Background: bg-primary
-- Max content width: 720px (messages), centered
+- Max content width: 760px default, user-resizable (D439); assistant rows follow the band. User plates stay `min(82%, 600px)`
 - The transcript keeps one stable scrollbar gutter on the trailing edge. It
   never reserves a matching left gutter, so the minimap and first message do
   not leave a decorative blank strip beside the session.
@@ -1465,10 +1465,16 @@ Single message render — either user (plaintext) or assistant (markdown streami
 
 ### 8.3 Layout
 
-- Max content band: 760px thread column; assistant body max 720px
-- When the sidebar is collapsed, the centered thread column and composer band
-  use a 640px ceiling. The outer main pane remains fluid and the width
-  transition follows the sidebar dock transition.
+- Max content band: 760px default, user-resizable via dual edge handles
+  (D439 / ADR 0274). Assistant, tool, and decision rows follow the band.
+  User plates stay `min(82%, 600px)`.
+- The live band is `min(available pane, preferred)`. Collapsing the sidebar
+  no longer tightens a 640px ceiling; the outer pane stays fluid and the
+  width transition follows the sidebar dock.
+- Dual 12px handles sit on the band edges: invisible at rest, glow on hover
+  or focus, 1px hairline plus glow while dragging. Double-click resets to
+  760px. Arrow keys step the width; Home restores the default; End fills the
+  pane.
 - User: right-aligned, theme-neutral soft plate (`color-mix` on primary ink,
   never a fixed accent tint), borderless, `radius-lg-plus` with a tighter
   bottom-right corner, capped at `min(82%, 600px)` so short prompts read as
@@ -3431,7 +3437,7 @@ Sidebar footer                                        Popover (360px max)
 2. All interactive elements have visible focus rings (2px accent, offset 2px)
 3. Layout shell metrics (46px titlebar row, ~275/48 sidebar, 280 context,
    compact composer with 1–7-line draft growth) match spec
-4. Chat messages constrained to 720px max width
+4. Chat content band defaults to 760px and is user-resizable; user plates stay compact
 5. ToolCallCard shows status, args preview, result preview, duration per [01-ui-ia.md](01-ui-ia.md) §5
 6. PermissionCard shows tool name, risk, args, countdown, and three action buttons per [03-permission-ux.md](03-permission-ux.md)
 7. Composer: Enter sends when Enter-to-send is on; when it is off, Cmd/Ctrl+Enter

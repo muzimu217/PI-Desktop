@@ -47,6 +47,7 @@ export * from "./github-feedback.js";
 export * from "./network-proxy.js";
 export * from "./attachment-limits.js";
 export * from "./font-size.js";
+export * from "./chat-content-width.js";
 export * from "./racp.js";
 export * from "./trusted-extensions.js";
 export * from "./provider-retry.js";

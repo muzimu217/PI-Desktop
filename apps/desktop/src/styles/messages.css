@@ -45,14 +45,14 @@
 .message-row.assistant .message-col,
 .message-row.system .message-col,
 .message-row.tool .message-col {
-  width: min(100%, 720px);
+  width: min(100%, var(--chat-prose-max-width, 720px));
   align-items: flex-start;
 }
 
 /* Decision cards are soft tiles (D297): risk rides in the tint and the risk
    pill rather than a coloured rail. */
 .permission-card {
-  width: min(100%, 720px);
+  width: min(100%, var(--chat-prose-max-width, 720px));
   margin: 10px 0;
   padding: 14px 16px;
   border-radius: var(--radius-md);
@@ -60,7 +60,7 @@
 }
 
 .asktool-card {
-  width: min(100%, 720px);
+  width: min(100%, var(--chat-prose-max-width, 720px));
   margin: 10px 0;
   padding: 14px 16px;
   border-radius: var(--radius-md);
@@ -256,7 +256,7 @@
 .working-indicator {
   box-sizing: border-box;
   display: flex;
-  width: min(100%, 720px);
+  width: min(100%, var(--chat-prose-max-width, 720px));
   align-items: center;
   gap: 7px;
   margin: 2px 0 8px;
@@ -427,7 +427,7 @@
 .planning-state-indicator {
   box-sizing: border-box;
   display: flex;
-  width: min(100%, 720px);
+  width: min(100%, var(--chat-prose-max-width, 720px));
   align-items: center;
   gap: 7px;
   margin: 2px 0 8px;
@@ -511,7 +511,7 @@
   --review-change-rail: var(--ds-text-muted);
   position: relative;
   box-sizing: border-box;
-  width: min(calc(100% - 24px), 720px);
+  width: min(calc(100% - 24px), var(--chat-prose-max-width, 720px));
   margin: 0 0 2px 24px;
 }
 
@@ -747,7 +747,7 @@
 }
 
 .turn-outcome-card {
-  width: min(100%, 720px);
+  width: min(100%, var(--chat-prose-max-width, 720px));
   margin: 12px 0 8px;
   border-radius: var(--radius-md);
   background: var(--ds-tile);
@@ -1345,7 +1345,7 @@
    28px footer. */
 .message-edit {
   display: flex;
-  width: min(100%, 720px);
+  width: min(100%, var(--chat-prose-max-width, 720px));
   margin: 0;
   flex-direction: column;
   border: 0;
@@ -1359,7 +1359,7 @@
    narrow chat-plate clamp for as long as the editor is open. */
 .message-row.user .message-col:has(.message-edit) {
   width: 100%;
-  max-width: min(100%, 720px);
+  max-width: min(100%, var(--chat-prose-max-width, 720px));
 }
 
 .message-row.user .message-bubble:has(.message-edit) {
@@ -1437,7 +1437,7 @@
 }
 
 .message-bubble {
-  max-width: min(100%, 720px);
+  max-width: min(100%, var(--chat-prose-max-width, 720px));
   border-radius: var(--radius-lg-plus);
   padding: 10px 14px;
   line-height: var(--leading-chat);
@@ -1453,7 +1453,7 @@
 }
 
 .message-row.session-message .message-col {
-  width: min(100%, 720px);
+  width: min(100%, var(--chat-prose-max-width, 720px));
   max-width: 100%;
   align-items: stretch;
 }
@@ -1781,7 +1781,7 @@
 
 /* Live tail while running: last thought line / current tool, single line. */
 .tool-activity-preview {
-  max-width: min(100%, 720px);
+  max-width: min(100%, var(--chat-prose-max-width, 720px));
   margin: 1px 0 0 26px;
   overflow: hidden;
   color: var(--ds-text-muted);

@@ -138,6 +138,8 @@ export const tr = {
     expandSidebar: "Kenar çubuğunu genişlet",
     resizeSidebar: "Kenar çubuğu genişliğini ayarla",
     sidebarWidth: "Kenar çubuğu genişliği: {{width}} piksel",
+    resizeChatWidth: "Sohbet genişliğini ayarla",
+    chatWidth: "Sohbet genişliği: {{width}} piksel",
     sessionActions: "Oturum eylemleri",
     renameTask: "Görevi yeniden adlandır",
     sessionRunning: "Çalışıyor",

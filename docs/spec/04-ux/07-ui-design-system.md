@@ -817,8 +817,8 @@ model):
 - Column `flex: 1; min-height: 0; overflow: hidden`
 - Inner scroller (`.home-scroll`) is the only vertical overflow surface for
   the hero and optional checklist
-- Stack (`.home-stack-inner`) uses content width **`min(100%, 768px)`** in the
-  expanded shell and **`min(100%, 640px)`** while the sidebar is collapsed,
+- Stack (`.home-stack-inner`) uses content width
+  **`min(100%, var(--chat-content-max-width))`** (default 760px, D439),
   with **`gap: 16px`** (workstation ceiling), and auto margins to center the
   column when the viewport is tall
 - The content order is **hero → optional onboarding checklist**. Task entry
@@ -1026,7 +1026,7 @@ Codex parity decisions (D034/D070) supersede any older value here.
 | Composer shell minimum | ~80px | One-line draft + toolbar padding |
 | Composer toolbar | MainChat `≥450px` | Left/right control groups stay on one row and do not shrink; mode/permission labels stay single-line and ellipsize |
 | Composer draft height | 1–7 text lines | Auto-grow; internal scroll beyond line 7 |
-| Chat message max width | 720px assistant / 560px user plate | Prevent eye-span over-stretch; user turns stay compact |
+| Chat message max width | 760px default band (user-resizable, min 560px) / 600px user plate | Band follows `min(pane, preferred)`; user turns stay compact |
 | Window min width | 1040px | Enforced by Electron for the whole app; opening the panel never changes native bounds |
 | Window min height | 700px | Enforced by Electron |
 
@@ -1222,7 +1222,7 @@ Full component contract and usage rules: [08-component-spec.md §17](08-componen
 | **Compact list rows 28px height** | Sidebar session items, settings list rows |
 | **Button rows 32px height** | Standard buttons |
 | **Never exceed 24px vertical gap** | Even for "breathing room" — this is a workstation |
-| **Max content width 720px** | Chat messages, tool disclosure rows — prevent over-wide eye-span |
+| **Max content width 760px default** | Chat band is user-resizable (min 560px); user plates stay compact |
 
 ## 14. Do / Don't
 

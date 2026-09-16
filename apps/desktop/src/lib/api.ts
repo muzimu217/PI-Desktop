@@ -108,6 +108,7 @@ import {
   normalizeMode,
   normalizeNetworkProxy,
   resolveFontScale,
+  normalizeChatContentMaxWidth,
   validateNetworkProxy,
 } from "@pi-desktop/shared";
 
@@ -223,6 +224,7 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     defaultCommandShell?: unknown;
     largePasteThreshold?: unknown;
     fontScale?: unknown;
+    chatContentMaxWidth?: unknown;
     networkProxy?: unknown;
   };
   if (
@@ -249,6 +251,14 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
     throw Object.assign(new Error("fontScale is invalid"), {
       errorCode: "INVALID_PARAMS",
     });
+  }
+  if (Object.prototype.hasOwnProperty.call(value, "chatContentMaxWidth")) {
+    const next = normalizeChatContentMaxWidth(value.chatContentMaxWidth);
+    if (next === undefined || next !== value.chatContentMaxWidth) {
+      throw Object.assign(new Error("chatContentMaxWidth is invalid"), {
+        errorCode: "INVALID_PARAMS",
+      });
+    }
   }
   if (Object.prototype.hasOwnProperty.call(value, "networkProxy")) {
     const proxy = validateNetworkProxy(value.networkProxy);

@@ -136,6 +136,8 @@ export const en = {
     expandSidebar: "Expand sidebar",
     resizeSidebar: "Resize sidebar",
     sidebarWidth: "Sidebar width: {{width}} pixels",
+    resizeChatWidth: "Resize conversation width",
+    chatWidth: "Conversation width: {{width}} pixels",
     sessionActions: "Session actions",
     renameTask: "Rename task",
     sessionRunning: "Working",

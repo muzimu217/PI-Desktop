@@ -93,6 +93,12 @@ export type AppSettings = {
    * does not change meaning with this preference.
    */
   contextUsageDisplay?: ContextUsageDisplay;
+  /**
+   * Preferred centered chat band width in CSS px (D439). Absent means 760.
+   * The live band is `min(available pane, this value)` so a squeezed sidebar
+   * or work panel compresses without rewriting the preference.
+   */
+  chatContentMaxWidth?: number;
   onboardingDismissed: boolean;
 };
 

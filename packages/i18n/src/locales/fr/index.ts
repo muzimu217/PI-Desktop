@@ -129,6 +129,8 @@ export const fr = {
     "expandSidebar": "Développer la barre latérale",
     "resizeSidebar": "Redimensionner la barre latérale",
     "sidebarWidth": "Largeur de la barre latérale : {{width}} pixels",
+    "resizeChatWidth": "Redimensionner la conversation",
+    "chatWidth": "Largeur de la conversation : {{width}} pixels",
     "sessionActions": "Actions de session",
     "renameTask": "Renommer la tâche",
     "sessionRunning": "En cours d'exécution",

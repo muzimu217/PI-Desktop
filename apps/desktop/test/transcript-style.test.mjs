@@ -123,7 +123,7 @@ test("assistant turns stay transparent full-width prose", () => {
   );
   assert.match(
     stylesSource,
-    /\.message-row\.assistant[\s\S]*?\.message-col[\s\S]*?width:\s*min\(100%,\s*720px\);/,
+    /\.message-row\.assistant[\s\S]*?\.message-col[\s\S]*?width:\s*min\(100%,\s*var\(--chat-prose-max-width,\s*720px\)\);/,
   );
   // D323: the live parent turn stays transparent; no rail, no reserved
   // inset, no whole-turn tile. The tile belongs only to the delegation card.

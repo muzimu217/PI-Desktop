@@ -138,6 +138,8 @@ export const ko = {
     expandSidebar: "사이드바 펼치기",
     resizeSidebar: "사이드바 크기 조절",
     sidebarWidth: "사이드바 너비: {{width}}픽셀",
+    resizeChatWidth: "대화 너비 조절",
+    chatWidth: "대화 너비: {{width}}픽셀",
     sessionActions: "세션 작업",
     renameTask: "작업 이름 바꾸기",
     sessionRunning: "작업 중",

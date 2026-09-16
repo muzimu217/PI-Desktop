@@ -131,6 +131,8 @@ export const zhCN = {
     expandSidebar: "展开侧边栏",
     resizeSidebar: "调整侧边栏宽度",
     sidebarWidth: "侧边栏宽度：{{width}} 像素",
+    resizeChatWidth: "调整对话宽度",
+    chatWidth: "对话宽度：{{width}} 像素",
     sessionActions: "会话操作",
     renameTask: "重命名任务",
     sessionRunning: "进行中",

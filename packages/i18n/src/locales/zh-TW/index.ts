@@ -131,6 +131,8 @@ export const zhTW = {
     expandSidebar: "展開側邊欄",
     resizeSidebar: "調整側邊欄寬度",
     sidebarWidth: "側邊欄寬度：{{width}} 畫素",
+    resizeChatWidth: "調整對話寬度",
+    chatWidth: "對話寬度：{{width}} 畫素",
     sessionActions: "會話操作",
     renameTask: "重新命名任務",
     sessionRunning: "進行中",

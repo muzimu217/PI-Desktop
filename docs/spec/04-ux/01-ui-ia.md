@@ -56,9 +56,9 @@ destination, chat as the home surface, tools and permissions inline.
   pane (they are pages, not modals). Once Settings or Extensions is selected,
   bootstrap completion and background refreshes must not replace that
   destination with the chat home; only an explicit navigation action may do so.
-  The outer pane stays fluid while the sidebar is collapsed, but the centered
-  chat content band tightens to 640px from its expanded 760–768px ceiling so
-  the wider shell does not create an over-wide, low-density reading surface.
+  The outer pane stays fluid while the sidebar is collapsed. The centered chat
+  content band defaults to 760px and is user-resizable (D439); it compresses
+  with `min(available pane, preferred)` instead of tightening to a 640px ceiling.
 - **Titlebar**: platform-native desktop chrome (D118). macOS uses
   `hiddenInset` traffic lights and the system application menu. The expanded
   sidebar keeps Collapse sidebar in the same 46px row, aligned to

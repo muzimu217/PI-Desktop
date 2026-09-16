@@ -5791,6 +5791,20 @@ that was sitting at the bottom — including after the turn had finished.
   RPC, permission, storage, or preference change. See ADR 0273,
   `03-runtime/01-ipc-protocol.md` §9, `04-ux/08-component-spec.md`, and E2E-258.
 
+## 2026-09-16 — Draggable chat content width (D439)
+
+- The centered conversation band, empty-home stack, and composer share one
+  preferred max width, default 760px, persisted as
+  `AppSettings.chatContentMaxWidth`. Dual edge handles (invisible at rest,
+  glow on hover, hairline while dragging) change that width together so the
+  column stays centered. Drag floor is 560px.
+- The live used width is `min(available pane minus 24px gutters, preferred)`,
+  so a squeezed sidebar or work panel compresses the band without rewriting
+  the preference. The collapsed-sidebar 640px ceiling is removed.
+- Assistant, tool, and decision rows follow the band. User plates stay
+  `min(82%, 600px)`. Renderer only. See ADR 0274, E2E-208, and
+  E2E-CHAT-content-width-handles.
+
 ## 2026-09-17 — Session and project rows delete on the second click (D441)
 
 - The sidebar's session item and both project menus (sidebar and Projects index)

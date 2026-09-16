@@ -129,6 +129,8 @@ export const es = {
     "expandSidebar": "Expandir barra lateral",
     "resizeSidebar": "Cambiar tamaño de barra lateral",
     "sidebarWidth": "Ancho de barra lateral: {{width}} píxeles",
+    "resizeChatWidth": "Cambiar ancho de la conversación",
+    "chatWidth": "Ancho de la conversación: {{width}} píxeles",
     "sessionActions": "Acciones de sesión",
     "renameTask": "Cambiar nombre de tarea",
     "sessionRunning": "Trabajando",

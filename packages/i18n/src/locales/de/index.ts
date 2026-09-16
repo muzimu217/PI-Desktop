@@ -129,6 +129,8 @@ export const de = {
     "expandSidebar": "Seitenleiste erweitern",
     "resizeSidebar": "Größe der Seitenleiste ändern",
     "sidebarWidth": "Breite der Seitenleiste: {{width}} Pixel",
+    "resizeChatWidth": "Gesprächsbreite ändern",
+    "chatWidth": "Gesprächsbreite: {{width}} Pixel",
     "sessionActions": "Sitzungsaktionen",
     "renameTask": "Aufgabe umbenennen",
     "sessionRunning": "In Arbeit",

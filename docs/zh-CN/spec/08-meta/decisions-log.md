@@ -4332,6 +4332,13 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
 - 项目创建语义不变：两种来源调用同一个项目 slice 助手，`project-group/create` 仍写入唯一的持久记录，检出目录成为同一逻辑项目组的主要根（ADR 0233）。
 - 渲染器加一条窄的主进程能力：协议、schema、host RPC、权限、存储与偏好均无变化。见 ADR 0273、`03-runtime/01-ipc-protocol.md` §9、`04-ux/08-component-spec.md` 与 E2E-258。
 
+## 2026-09-16 —— 可拖拽的对话内容宽度（D439）
+
+- 居中的对话带、空首页和输入框共用一个首选最大宽度，默认 760px，持久化为
+  `AppSettings.chatContentMaxWidth`。左右边缘各一条手柄（静止不可见、悬停光晕、拖拽时显示细线）同步改这个宽度，列保持居中。拖拽下限 560px。
+- 实际宽度是 `min(可用窗格减去两侧 24px, 首选值)`，侧栏或工作区挤压时自适应压缩，不改写偏好。收起侧栏不再把内容带到 640px。
+- 助手/工具/决策行跟随内容带；用户气泡仍是 `min(82%, 600px)`。仅渲染器。见 ADR 0274、E2E-208、E2E-CHAT-content-width-handles。
+
 ## 2026-09-17 —— 窗口开关键避开 macOS 的关闭窗口组合键（#360，D439）
 
 - D438 把两个键合并到了 `Mod+W`，但这个键不能作为*系统级*全局加速键的默认值：

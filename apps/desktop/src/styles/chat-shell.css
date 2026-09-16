@@ -46,18 +46,16 @@
   flex-direction: column;
   background: var(--ds-bg-primary);
   --chat-content-max-width: 760px;
-  --chat-composer-max-width: 768px;
+  --chat-composer-max-width: var(--chat-content-max-width);
+  --chat-prose-max-width: var(--chat-content-max-width);
   --chat-width-transition: var(--motion-duration-normal) var(--motion-ease-out);
 }
 
 /*
- * A collapsed sidebar gives the shell more room, but the chat content should
- * not become a wide, low-density reading surface. Keep the outer pane fluid
- * while tightening the centered content band to preserve focus.
+ * Collapsing the sidebar frees pane width; the centered band keeps the user's
+ * preferred max (D439) and only compresses when the pane itself is narrower.
  */
 .app-shell.sidebar-collapsed .main-pane {
-  --chat-content-max-width: 640px;
-  --chat-composer-max-width: 640px;
   --chat-width-transition: var(--motion-duration-fast) var(--motion-ease-in);
 }
 
@@ -381,6 +379,92 @@
 :root[data-platform="linux"] .thread-content,
 :root[data-platform="darwin"] .thread-content {
   padding-top: var(--ds-toolbar-height);
+}
+
+
+/* Conversation width handles (D439). Rest: invisible. Hover: glow. Drag: hairline. */
+.chat-width-handles {
+  position: absolute;
+  inset: 0 0 var(--composer-dock-height, 168px);
+  z-index: 7;
+  pointer-events: none;
+}
+
+.chat-width-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  pointer-events: auto;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.chat-width-handle-left {
+  left: max(0px, calc((100% - min(100%, var(--chat-content-max-width))) / 2 - 6px));
+}
+
+.chat-width-handle-right {
+  right: max(0px, calc((100% - min(100%, var(--chat-content-max-width))) / 2 - 6px));
+}
+
+.chat-width-handle::before {
+  content: "";
+  position: absolute;
+  inset-block: 18%;
+  left: 50%;
+  width: 2px;
+  border-radius: var(--radius-full);
+  background: transparent;
+  box-shadow: none;
+  opacity: 0;
+  transform: translateX(-50%);
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-out),
+    background var(--motion-duration-fast) var(--motion-ease-out),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-out),
+    width var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.chat-width-handle:hover::before,
+.chat-width-handle:focus-visible::before {
+  opacity: 1;
+  width: 2px;
+  background: color-mix(in oklab, var(--ds-focus) 28%, transparent);
+  box-shadow: 0 0 12px 3px color-mix(in oklab, var(--ds-focus) 22%, transparent);
+}
+
+.chat-width-handle:focus-visible {
+  outline: none;
+}
+
+.chat-width-handle.is-resizing::before,
+.chat-surface[data-chat-resizing="true"] .chat-width-handle::before {
+  opacity: 1;
+  width: 1px;
+  background: color-mix(in oklab, var(--ds-focus) 55%, transparent);
+  box-shadow: 0 0 16px 4px color-mix(in oklab, var(--ds-focus) 28%, transparent);
+}
+
+.chat-surface[data-chat-resizing="true"] .thread-content,
+.chat-surface[data-chat-resizing="true"] .composer-stack,
+.chat-surface[data-chat-resizing="true"] .home-stack-inner {
+  transition: none;
+}
+
+:root[data-chat-resizing="true"],
+:root[data-chat-resizing="true"] * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-width-handle::before {
+    transition: none;
+  }
 }
 
 /* Conversation minimap: packed stack of dashes on the thread's left edge,

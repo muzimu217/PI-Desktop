@@ -362,7 +362,7 @@ pub fn summary(db: &Database, range_days: i64, project_id: Option<i64>) -> Resul
                 tokens,
             })
             .collect();
-        usage.sort_by(|a, b| b.tokens.cmp(&a.tokens));
+        usage.sort_by_key(|b| std::cmp::Reverse(b.tokens));
         usage
     };
     let project_names = project_names(db)?;
@@ -375,7 +375,7 @@ pub fn summary(db: &Database, range_days: i64, project_id: Option<i64>) -> Resul
             tokens,
         })
         .collect();
-    project_usage.sort_by(|a, b| b.tokens.cmp(&a.tokens));
+    project_usage.sort_by_key(|b| std::cmp::Reverse(b.tokens));
 
     let session_total = session_tokens.values().copied().sum::<i64>().max(1) as f64;
     let top5: i64 = {
@@ -480,7 +480,7 @@ pub fn top_sessions(
             (id, tokens, turns, last_active_ms, title)
         })
         .collect();
-    list.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+    list.sort_unstable_by_key(|b| std::cmp::Reverse(b.1));
     Ok(list
         .into_iter()
         .take(limit.max(0) as usize)
@@ -525,6 +525,9 @@ mod tests {
             .unwrap();
     }
 
+    // Mirrors the `turns` table columns one-for-one; bundling them into a
+    // struct would only add ceremony to a test helper.
+    #[allow(clippy::too_many_arguments)]
     fn insert_turn(
         db: &Database,
         id: &str,
@@ -605,7 +608,7 @@ mod tests {
         assert!(summary.diagnostics.cache_leverage > 0.0);
         assert!(summary.diagnostics.large_context_turn_share > 0.0);
         assert_eq!(summary.model_usage[0].model_id, "model-b");
-        assert_eq!(summary.heatmap.last().unwrap().tokens > 0, true);
+        assert!(summary.heatmap.last().unwrap().tokens > 0);
         // Every in-range row is counted once: the daily totals must add up to
         // the headline figure instead of the ~2x double-count.
         assert_eq!(

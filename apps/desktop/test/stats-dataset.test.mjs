@@ -14,6 +14,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readStatsSource } from "./helpers/source-contracts.mjs";
 import {
   STATS_CONCENTRATION_THRESHOLD,
   buildStatsDataset,
@@ -292,12 +293,19 @@ test("dataset is pure: two builds from one summary are deep-equal", () => {
 });
 
 // --- Source contract: the page must consume the dataset, not re-walk it. ---
+//
+// The page is one facade plus a `stats/` module per chart, so the contract is
+// asserted over the whole surface (`readStatsSource`). The two activity views
+// are also read on their own where a test depends on the order the code was
+// written in, which a directory-wide concatenation cannot preserve.
 
-const page = await readFile(
-  new URL("../src/components/settings/StatsPage.tsx", import.meta.url),
-  "utf8",
-);
+const page = await readStatsSource();
 const api = await readFile(new URL("../src/lib/api.ts", import.meta.url), "utf8");
+const readStatsModule = (name) =>
+  readFile(new URL(`../src/components/settings/stats/${name}`, import.meta.url), "utf8");
+const weeklySource = await readStatsModule("WeeklyActivity.tsx");
+const cumulativeSource = await readStatsModule("CumulativeActivity.tsx");
+const trendSource = await readStatsModule("Trend.tsx");
 
 test("StatsPage renders heatmap cells from the dataset, not a UTC date key", () => {
   assert.match(page, /buildStatsDataset/);
@@ -514,8 +522,8 @@ test("trend card owns a 7/30-day slice independent of the global range", () => {
 test("trend legend sits above the plot with a hover crosshair readout", () => {
   assert.match(page, /stats-trend-crosshair/);
   assert.match(page, /stats-trend-marker/);
-  const legendAt = page.indexOf('"stats-trend-legend"');
-  const svgAt = page.indexOf('"stats-trend"');
+  const legendAt = trendSource.indexOf('"stats-trend-legend"');
+  const svgAt = trendSource.indexOf('"stats-trend"');
   assert.ok(legendAt !== -1 && svgAt !== -1 && legendAt < svgAt, "legend must render before the svg");
 });
 
@@ -562,24 +570,17 @@ test("weekly and cumulative views share one axis frame and hover readout", () =>
   assert.match(page, /stats-cumulative-line/);
   assert.match(page, /stats\.dayDelta/);
 
-  const weeklyAt = page.indexOf("function WeeklyActivity");
-  const cumulativeAt = page.indexOf("function CumulativeActivity");
-  assert.ok(weeklyAt !== -1 && cumulativeAt !== -1 && weeklyAt < cumulativeAt);
   // Each view owns its crosshair, marker and bubble inside its own positioned
   // plot wrapper — a bubble hoisted to the daily grid would never fire here.
-  for (const at of [weeklyAt, cumulativeAt]) {
-    const body = page.slice(at, at + 6000);
-    assert.match(body, /stats-trend-crosshair/);
-    assert.match(body, /className="stats-trend-plot" ref=\{plotRef\}/);
-    assert.match(body, /className="stats-tooltip"/);
+  for (const source of [weeklySource, cumulativeSource]) {
+    assert.match(source, /stats-trend-crosshair/);
+    assert.match(source, /className="stats-trend-plot" ref=\{plotRef\}/);
+    assert.match(source, /className="stats-tooltip"/);
   }
 });
 
 test("the weekly bar view keeps empty weeks visible and reads turns", () => {
-  const body = page.slice(
-    page.indexOf("function WeeklyActivity"),
-    page.indexOf("function CumulativeActivity"),
-  );
+  const body = weeklySource;
   // A sparse year (one active week out of ~53) must not render as a single bar
   // floating in an empty card: every week gets its own track.
   assert.match(body, /className="stats-week-track"/);

@@ -33,4 +33,6 @@ export {
   readPluginsSourceSync,
   readSettingsSource,
   readSettingsSourceSync,
+  readStatsSource,
+  readStatsSourceSync,
 } from "./domain-source.mjs";

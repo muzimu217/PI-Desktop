@@ -68,6 +68,22 @@ export function readSettingsSourceSync() {
   return readDomainSourceSync("pages/SettingsPage.tsx", "features/settings");
 }
 
+/**
+ * Read the stable StatsPage facade and its chart modules together.
+ *
+ * The page keeps the toolbar, metric cards and session table; the charts live
+ * under `components/settings/stats/` so no single module outgrows the
+ * repository's source-size budget. The contract tests assert against the
+ * behaviour, not the file it happens to sit in, so they read the whole surface.
+ */
+export function readStatsSource() {
+  return readDomainSource("components/settings/StatsPage.tsx", "components/settings/stats");
+}
+
+export function readStatsSourceSync() {
+  return readDomainSourceSync("components/settings/StatsPage.tsx", "components/settings/stats");
+}
+
 /** Read the stable PluginsPage facade and all plugin domain modules together. */
 export function readPluginsSource() {
   return readDomainSource("pages/PluginsPage.tsx", "features/plugins");

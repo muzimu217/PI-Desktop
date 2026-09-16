@@ -2349,6 +2349,32 @@
 }
 
 /*
+  Full-width board cards (project breakdown) keep the heading inside the tile
+  like the chart panels do, so they need the same inset. Without it the
+  padding-free base parks the title in the tile's corner, where the 16px radius
+  plus `overflow: hidden` clip the first glyph and the left edge of the rows
+  lands on the radius instead of the content column. Deliberately not
+  `.stats-chart-panel`: this card is not inside the pair grid, so the
+  `flex: 1` / `overflow: visible` parts of that variant do not apply.
+*/
+.stats-scope .stats-block-panel {
+  padding: 14px 16px;
+}
+
+/*
+  The top-sessions panel dissolves into per-row tiles (see
+  `.settings-panel:has(> .settings-row)` above), so its rows deliberately stay
+  full-bleed and keep lining up with the block tile directly above. The heading
+  is the exception: left at the base inset it sits 16px to the left of its own
+  row text and of every other card title on the page — the two full-width cards
+  are stacked, so that kick is immediately visible. Inset the heading only; the
+  rows keep their edges.
+*/
+.stats-scope .settings-panel:has(> .settings-row) > .settings-card-heading {
+  padding-left: 16px;
+}
+
+/*
   Card head row: title on the left, chart-scoped segmented control (activity
   granularity, trend range) on the right. Flex-wrap keeps the control under
   the title once the column is narrower than both.

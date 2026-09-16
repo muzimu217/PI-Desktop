@@ -349,7 +349,7 @@ export function StatsPage() {
         follows, so the page reads pairs → row cards.
       */}
       <section className="settings-card-block">
-        <div className="settings-panel">
+        <div className="settings-panel stats-block-panel">
           <h3 className="settings-card-heading">{t("stats.projectUsage")}</h3>
           <ProjectUsage projects={dataset.projectUsage} />
         </div>

@@ -5,9 +5,6 @@
     "packages/agent-runtime/src/native-pi-session.ts": "Native Pi discovery, immutable projection, guarded continuation, and fork publication share one sidecar-private source boundary; split by lifecycle once the native adapter contract stabilises without widening path ownership."
   },
   "rust": {
-    "crates/host-core/src/agent_capabilities.rs": "Legacy capability-level document service shared by skills, MCP servers, and subagents; its extraction is outside this refactor scope.",
-    "crates/host-core/src/mcp_servers.rs": "Legacy MCP server registry; its extraction is outside this refactor scope.",
-    "crates/host-core/src/user_skills.rs": "Legacy user skill registry; its extraction is outside this refactor scope.",
     "crates/host-core/src/rpc/mod.rs": "Legacy RPC dispatch module; its extraction is outside this refactor scope.",
     "crates/host-core/src/sessions.rs": "Legacy session service module; its extraction is outside this refactor scope.",
     "crates/host-core/src/tools/mod.rs": "Legacy builtin tool dispatch module; its extraction is outside this refactor scope.",

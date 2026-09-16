@@ -1,5 +1,5 @@
 /**
- * Usage statistics and workspace index wire types (Data & Statistics group).
+ * Usage statistics and workspace index wire types (stats RPC surface).
  */
 export type StatsDayTotal = { date: string; tokens: number };
 export type StatsDayModel = { date: string; modelId: string; tokens: number };

@@ -1656,14 +1656,11 @@ identify the platform validation still needed.
 
 #### E2E-STATS-summary-cards-range: usage summary renders host aggregation
 
-> **Suite note (2026-09-16)**: the Usage destination is not in Settings while
-> D335 / ADR 0173 stands, so `pnpm test:e2e:stats` reports SKIPPED and exits 0
-> instead of asserting against whichever tab happens to be active. The journeys
-> below stay the plan for when a plugin routes the board, and host-core
-> `stats::tests` is the reproducible floor meanwhile.
+> **Suite note (2026-09-16)**: the dashboard ships as a plugin (ADR 0273), so
+> the UI journeys below are parked. The host-core `stats::tests` suite stays
+> the reproducible floor for what the board used to assert.
 
-- **Preconditions**: Completed turns exist in the host database (fixture);
-  the Usage destination is available under Data & Statistics.
+- **Preconditions**: Completed turns exist in the host database (fixture).
 - **Steps**: 1) Open Settings → Usage. 2) Switch the range between 7 and 30
   days. 3) Refresh. 4) Export CSV and JSON.
 - **Expected**: Cards, heatmap, trend, model donut, insights, and top
@@ -1674,8 +1671,8 @@ identify the platform validation still needed.
   `03-runtime/06-host-rpc-protocol.md`
 - **Acceptance**: B (model config adjacent), Quality (data correctness)
 - **Milestone**: M6+
-- **Status**: Automated by `pnpm test:e2e:stats` (UI journey) and host-core
-  unit tests (`stats::tests`)
+- **Status**: Parked — the dashboard ships as a plugin (ADR 0273); the stats
+  RPC stays covered by host unit tests
 
 #### E2E-STATS-heatmap-today: today's heatmap cell is highlighted
 
@@ -1689,7 +1686,8 @@ identify the platform validation still needed.
   `04-ux/06-settings-ia.md`
 - **Acceptance**: B (data correctness), D (visual), Quality
 - **Milestone**: M6+
-- **Status**: Automated by `pnpm test:e2e:stats`
+- **Status**: Parked — the dashboard ships as a plugin (ADR 0273); the stats
+  RPC stays covered by host unit tests
 
 #### E2E-STATS-project-breakdown: Top8 + Other fold + No-project bucket
 
@@ -1705,7 +1703,8 @@ identify the platform validation still needed.
   `04-ux/06-settings-ia.md`
 - **Acceptance**: B (data correctness), D (visual)
 - **Milestone**: M6+
-- **Status**: Automated by `pnpm test:e2e:stats`
+- **Status**: Parked — the dashboard ships as a plugin (ADR 0273); the stats
+  RPC stays covered by host unit tests
 
 #### E2E-STATS-soft-deleted-excluded: trashed sessions never reach the totals (R12)
 
@@ -1720,8 +1719,9 @@ identify the platform validation still needed.
   `04-ux/06-settings-ia.md`
 - **Acceptance**: B (data correctness), Quality (R12 invariant)
 - **Milestone**: M6+
-- **Status**: Automated by `pnpm test:e2e:stats`; invariant also covered by
-  host-core `soft_deleted_sessions_exit_summary_and_top_sessions`
+- **Status**: Parked — the dashboard ships as a plugin (ADR 0273); the stats
+  RPC stays covered by host unit tests
+  (`soft_deleted_sessions_exit_summary_and_top_sessions`)
 
 #### E2E-STATS-empty-state: zero completed turns shows the whole-page empty state
 
@@ -1734,7 +1734,8 @@ identify the platform validation still needed.
   `03-runtime/06-host-rpc-protocol.md`
 - **Acceptance**: D (state completeness), B
 - **Milestone**: M6+
-- **Status**: Automated by `pnpm test:e2e:stats`
+- **Status**: Parked — the dashboard ships as a plugin (ADR 0273); the stats
+  RPC stays covered by host unit tests
 
 ### Workspace Open
 

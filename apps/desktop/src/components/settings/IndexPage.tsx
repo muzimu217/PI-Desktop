@@ -22,7 +22,7 @@ type LoadState =
   | { kind: "ready"; root: WorkspaceIndexRoot | null };
 
 /** localStorage flag for the one-time local-only nudge under the index page. */
-const NUDGE_DISMISSED_KEY = "pi.dataStats.nudgeDismissed.v1";
+const NUDGE_DISMISSED_KEY = "pi.index.nudgeDismissed.v1";
 
 function formatBytes(bytes: number): string {
   if (bytes <= 0) return "0 B";
@@ -193,9 +193,8 @@ export function IndexPage({ settings, saveSettings }: IndexPageProps) {
 
   return (
     <div className="settings-stack">
-      {/* Sits directly under the page title the settings shell renders, same
-          posture (and class) as the usage page's provenanceShort line. */}
-      <p className="stats-subtitle">{t("index.indexSubtitle")}</p>
+      {/* Sits directly under the page title the settings shell renders. */}
+      <p className="idx-subtitle">{t("index.indexSubtitle")}</p>
 
       <section className="settings-card-block">
         <h3 className="settings-card-heading">{t("index.card.health")}</h3>
@@ -363,9 +362,9 @@ export function IndexPage({ settings, saveSettings }: IndexPageProps) {
 
       {nudgeVisible ? (
         <div className="idx-nudge" role="note">
-          <span className="idx-nudge-text">{t("stats.nudgeText")}</span>
+          <span className="idx-nudge-text">{t("index.nudgeText")}</span>
           <Button variant="ghost" onClick={dismissNudge}>
-            {t("stats.nudgeDismiss")}
+            {t("index.nudgeDismiss")}
           </Button>
         </div>
       ) : null}

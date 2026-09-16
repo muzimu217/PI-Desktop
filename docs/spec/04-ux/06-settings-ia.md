@@ -159,13 +159,12 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
 
 ### Usage statistics (no Settings destination)
 
-D335 / ADR 0173 stands, and ADR 0271 is superseded: no `usage` destination
+D335 / ADR 0173 stands, and ADR 0273 is superseded: no `usage` destination
 ships, and no group is reserved for one. The host-owned aggregation
 (`stats.summary` / `stats.topSessions`, over the durable completed-turn
-history) stays on the Core surface alongside
-`stats.getTokenUsageHistory`, and `components/settings/StatsPage.tsx` is
-retained as its reference consumer. The cross-tool dashboard remains the
-`pi.token-insights` plugin.
+history) stays on the Core surface alongside `stats.getTokenUsageHistory`.
+The cross-tool dashboard remains the `pi.token-insights` plugin, which ships
+its own UI and cannot import app internals.
 
 ### Shortcuts (`shortcuts` tab)
 - **Keyboard shortcuts** card:
@@ -566,11 +565,11 @@ system while preserving their different data ownership:
   actions keep Project archive open even when the active workspace changes
 
 ### Index library (`index` tab, `Workspace` group)
-- One health card for the host-owned workspace index cache: an opt-in toggle,
-  then status, indexed file count, indexed size, unreadable-file count, and
-  last-update time
-- The single opt-in toggle, `Grep index boost` (`indexGrepBoost`, default
-  off), owns both sides of the index, because Grep is its only consumer. When
+- One health card for the host-owned workspace index cache: status, indexed
+  file count, indexed size, unreadable-file count, and last-update time
+- A standalone `Codebase` section below the health card carries the single
+  opt-in toggle, `Grep index boost` (`indexGrepBoost`, default off), which
+  owns both sides of the index, because Grep is its only consumer. When
   on, opening a different workspace marks its index `building` and rebuilds
   it on the blocking pool, so `workspace.set` stays fast and the health card
   polls `index.status` once a second while building, pausing when the window
@@ -578,7 +577,7 @@ system while preserving their different data ownership:
   index while every other query keeps walking. The copy promises speed for
   eligible searches, never changed results. A second "index new folders"
   toggle would either duplicate this switch or build an index that nothing
-  reads, so the card carries exactly one
+  reads, so the section carries exactly one
 - Actions are Rebuild index and Clear index; both call the host lifecycle
   RPCs and refresh the card from the returned status. Rebuild is offered only
   while the opt-in toggle is on, because an index the switch never feeds is

@@ -1,4 +1,4 @@
-# ADR 0271: Settings usage statistics destination (amends D335 / ADR 0173)
+# ADR 0273: Settings usage statistics destination (amends D335 / ADR 0173)
 
 - Status: Superseded (2026-09-16) — D335 / ADR 0173 stands
 - Related: D331, D335, ADR 0171, ADR 0173
@@ -19,13 +19,11 @@ kept on the Core surface.
 
 ## Consequences
 
-- `apps/desktop/src/components/settings/StatsPage.tsx` and the `stats.*` copy in
-  the locale bundles are retained, but nothing routes to them, so a plugin can
-  reuse the page without a re-translate pass.
-- `token-usage-settings.test.mjs` guards both directions: it fails if the
-  destination creeps back into the rail, and it fails if the retained component
-  or its RPCs are deleted as dead code.
-- `scripts/e2e-stats.mjs` reports SKIPPED with a stated reason instead of
-  asserting against whichever settings tab happens to be active.
+- The Settings page component was removed entirely; what stays on the Core
+  surface is the stats RPC (`stats.summary` / `stats.topSessions`), its shared
+  types, and the locale-agnostic host tests. A plugin (e.g. `pi.token-insights`)
+  ships its own UI and cannot import app internals.
+- `token-usage-settings.test.mjs` keeps guarding the rail: it fails if the
+  `usage` destination creeps back into Settings.
 - The workspace index destination lands in the existing `Workspace` group rather
   than in a group of its own.

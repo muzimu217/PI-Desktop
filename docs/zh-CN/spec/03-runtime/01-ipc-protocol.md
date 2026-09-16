@@ -38,7 +38,7 @@
 | `menu` | 列入许可名单的应用程序菜单命令和本机 editing/window 操作 |
 | `notification` | 持久收件箱 list/read/clear 和 new/activated 事件 |
 | `stats` | 已完成回合的 token 历史（host RPC；仪表板由插件拥有） |
-| `index` | 工作区索引生命周期（host RPC；构建本地缓存，Grep 暂不读取） |
+| `index` | 工作区索引生命周期（host RPC；构建本地缓存，仅在开启 `indexGrepBoost` 快路径时被 Grep 读取） |
 
 ## 3. 通道约定
 

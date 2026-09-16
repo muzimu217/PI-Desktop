@@ -161,8 +161,8 @@ try {
   check("F-G2 cache_leverage", Math.abs(rpcCacheLev - sqlCacheLev) < 1e-6, `rpc=${rpcCacheLev.toFixed(4)} sql=${sqlCacheLev.toFixed(4)}`);
   // R12 effect: if there were any soft-deleted sessions, the with-filter total
   // must be strictly less. Here deleted=0 so they are equal — R12 is covered by
-  // the host unit test + e2e-stats R12 scenario instead.
-  check("F-G2 R12_filter_applied", sqlTotal === sqlTotalNoDel, "no soft-deleted sessions in real DB (delta=0); R12 covered by unit+e2e");
+  // the host unit test instead.
+  check("F-G2 R12_filter_applied", sqlTotal === sqlTotalNoDel, "no soft-deleted sessions in real DB (delta=0); R12 covered by host unit test");
 
   const evidence = {
     generated_at: new Date().toISOString(),

@@ -35,7 +35,7 @@ Principles:
 | `menu` | Allowlisted application-menu commands and native editing/window actions |
 | `notification` | Durable inbox list/read/clear and new/activated events |
 | `stats` | Completed-turn token history (host RPC; dashboard is plugin-owned) |
-| `index` | Workspace index lifecycle (host RPC; builds a local cache, Grep does not read it yet) |
+| `index` | Workspace index lifecycle (host RPC; builds a local cache Grep reads only behind the opt-in `indexGrepBoost` fast path) |
 
 ## 3. Channel Conventions
 

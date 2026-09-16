@@ -298,5 +298,5 @@ Each ADR includes:
 | 0271 | [Rebuild the shared provider transport after repeated unanswered failures](0271-provider-transport-rebuild.md) | Accepted for implementation (issue #234) |
 | 0269 | [Move capability documents between the global and project levels](0269-capability-level-transfer.md) | Accepted for implementation (amends ADR 0112) |
 | 0268 | Remove quotes, annotations, and side chats | Accepted (supersedes message-quotes-and-side-chats / response-annotations / floating-annotation-index) |
-| 0271 | [Settings usage statistics destination](0271-settings-usage-statistics.md) | Superseded — D335 / ADR 0173 stands |
 | 0272 | [Judge a public-network address on the route the request will dial](0272-connection-time-public-network-route.md) | Accepted for implementation (amends ADR 0243; issue #419 / PR #473) |
+| 0273 | [Settings usage statistics destination](0273-settings-usage-statistics.md) | Superseded — D335 / ADR 0173 stands |

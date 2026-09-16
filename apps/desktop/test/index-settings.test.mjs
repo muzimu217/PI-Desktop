@@ -115,8 +115,8 @@ test("the index page explains itself once and can be dismissed for good", () => 
   assert.match(page, /const NUDGE_DISMISSED_KEY = /);
   assert.match(page, /localStorage\.getItem\(NUDGE_DISMISSED_KEY\) !== "1"/);
   assert.match(page, /localStorage\.setItem\(NUDGE_DISMISSED_KEY, "1"\)/);
-  assert.match(page, /t\("stats\.nudgeText"\)/);
-  assert.match(page, /t\("stats\.nudgeDismiss"\)/);
+  assert.match(page, /t\("index\.nudgeText"\)/);
+  assert.match(page, /t\("index\.nudgeDismiss"\)/);
   // The switch left the health card: it is a setting, not telemetry.
   assert.match(page, /t\("index\.sectionCode"\)/);
   assert.match(page, /t\("index\.indexSubtitle"\)/);

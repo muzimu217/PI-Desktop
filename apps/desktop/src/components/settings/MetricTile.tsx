@@ -4,11 +4,8 @@ import { cx } from "../ui";
 export type MetricTone = "accent" | "success" | "warning" | "danger";
 
 /**
- * Shared metric tile for the Data & Statistics destinations. Both the index
- * library and the usage statistics page render the same card language:
- * a tinted icon chip, a muted label, a large tabular value, and an optional
- * badge or caption. Keeping one component is what stops the two pages from
- * drifting apart visually.
+ * Shared metric tile for the index library destination: a tinted icon chip,
+ * a muted label, a large tabular value, and an optional badge or caption.
  */
 export function MetricTile({
   icon,

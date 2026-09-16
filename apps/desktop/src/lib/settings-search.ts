@@ -9,10 +9,9 @@
  * Settings destinations.
  *
  * Usage statistics is deliberately absent: the boundary that keeps the
- * cross-session dashboard out of Settings (D335 / ADR 0173) stands. Core owns
- * the turns / usage / stats RPCs, the dashboard belongs to a plugin — so
- * `components/settings/StatsPage.tsx` is retained but nothing routes to it,
- * and its copy stays in the locale bundles for that reuse.
+ * cross-session dashboard out of Settings (D335 / ADR 0173) stands. The
+ * dashboard ships as a plugin (ADR 0273), so only the index destination
+ * lives here; Core still owns the turns / usage / stats RPCs.
  */
 export type SettingsTabId =
   | "general"

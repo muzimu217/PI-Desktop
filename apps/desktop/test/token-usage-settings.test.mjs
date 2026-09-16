@@ -1,7 +1,6 @@
 import { readSettingsSource } from "./helpers/source-contracts.mjs";
 import assert from "node:assert/strict";
-import { access, readFile } from "node:fs/promises";
-import { constants } from "node:fs";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const search = await readFile(
@@ -19,33 +18,44 @@ const zhLocale = await readFile(
   "utf8",
 );
 
-// D335 / ADR 0173 stands: the cross-session usage dashboard belongs to a plugin,
-// not to Settings. Core still owns the turns / usage / stats RPCs and the page
-// stays on disk, but nothing routes to it.
+// D335 / ADR 0173 stands, and ADR 0273 settles the follow-up: the dashboard
+// ships as the pi.token-insights plugin, so the whole stats UI layer is gone
+// from the app. Core keeps the turns / usage / stats RPCs and their shared
+// types — that is the surface a plugin calls.
 //
 // This guards the boundary in both directions. It fails if the usage
-// destination quietly creeps back into the sidebar, and it fails if the
-// retained component, its RPCs or its copy get swept away as "dead code" —
-// which is the state the dashboard needs to be reusable from a plugin.
-test("usage statistics is retained but is not a settings destination", async () => {
+// destination quietly creeps back into the sidebar or its copy resurfaces in
+// the catalogs, and it fails if the stats RPCs the plugin depends on get
+// swept away as dead code.
+test("usage statistics is not a settings destination", () => {
   assert.doesNotMatch(search, /id: "usage"/);
   assert.doesNotMatch(search, /settings\.nav\.usage/);
+  assert.doesNotMatch(search, /settings\.groupData/);
   assert.doesNotMatch(settingsPage, /StatsPage/);
   assert.doesNotMatch(settingsPage, /tab === "usage"/);
+  // The retired page's scope wrapper must not survive as a stray route or
+  // stylesheet hook.
+  assert.doesNotMatch(settingsPage, /stats-scope/);
 });
 
-test("the retained dashboard keeps its component, its RPCs and its copy", async () => {
-  await access(
-    new URL("../src/components/settings/StatsPage.tsx", import.meta.url),
-    constants.F_OK,
-  );
-  // The host surface the dashboard reads is what a plugin would call.
+test("the stats UI layer stays deleted while the RPCs stay on Core", () => {
+  // The dashboard is plugin-owned (ADR 0273): no first-party page component
+  // may come back for a plugin to "reuse" — a plugin cannot import app
+  // internals and ships its own UI.
+  assert.doesNotMatch(settingsPage, /stats/);
+  // The host surface the plugin calls is what Core keeps.
   assert.match(api, /getTokenUsageHistory/);
   assert.match(api, /statsSummary: \(rangeDays: 7 \| 30/);
-  // Copy stays in the catalogs so the page can be reused without a re-translate
-  // pass, including the group label it used to sit under.
+  assert.match(api, /statsTopSessions: \(rangeDays: 7 \| 30/);
+});
+
+test("the locale bundles carry no usage-dashboard copy", () => {
   for (const catalog of [enLocale, zhLocale]) {
-    assert.match(catalog, /"?groupData"?:/);
-    assert.match(catalog, /"?usage"?:/);
+    assert.doesNotMatch(catalog, /"?groupData"?:/);
+    assert.doesNotMatch(catalog, /^ {4}"?usage"?:/m);
+    assert.doesNotMatch(catalog, /^ {2}"?stats"?: \{/m);
+    // The one-time note lives on the index page under its own keys now.
+    assert.match(catalog, /nudgeText:/);
+    assert.match(catalog, /nudgeDismiss:/);
   }
 });

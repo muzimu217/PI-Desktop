@@ -21,10 +21,10 @@ export type CloseBehavior = "ask" | "tray" | "quit";
 
 export type AppSettings = {
   /**
-   * Data & Statistics group (D5). One switch, default off: it owns both
-   * sides of the workspace index, because the index has no other consumer.
-   * On, it indexes newly opened workspaces and lets Grep serve eligible
-   * literal searches from that index.
+   * Workspace group. One switch, default off: it owns both sides of the
+   * workspace index, because the index has no other consumer. On, it indexes
+   * newly opened workspaces and lets Grep serve eligible literal searches
+   * from that index.
    */
   indexGrepBoost: boolean;
   defaultProviderId?: string;

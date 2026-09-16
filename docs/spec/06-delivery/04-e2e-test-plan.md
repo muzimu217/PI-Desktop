@@ -1770,7 +1770,7 @@ and identify the platform validation still needed.
   file content; the outside root fails with `INDEX_ROOT_OUTSIDE_WORKSPACE`;
   clear removes exactly the selected root and leaves status empty. All index
   files live under the temporary data directory and are removed by harness
-  cleanup. Grep behavior remains unchanged in P2-A.
+  cleanup. Grep results stay identical whether or not the cache exists.
 - **Specs linked**: `03-runtime/04-data-storage.md`,
   `03-runtime/06-host-rpc-protocol.md`
 - **Acceptance**: C (workspace tools and boundaries), Quality (data safety)
@@ -1820,12 +1820,12 @@ and identify the platform validation still needed.
 
 #### E2E-INDEX-auto-index: switching workspaces builds the index only when switched on
 
-- **Preconditions**: Host RPC available; two temporary workspaces; switches at
-  defaults.
-- **Steps**: 1) `workspace.set` to workspace A with both switches off and read
-  `index.status`. 2) Turn `indexNewFolders` on. 3) `workspace.set` to
+- **Preconditions**: Host RPC available; two temporary workspaces; the switch
+  at its default.
+- **Steps**: 1) `workspace.set` to workspace A with the switch off and read
+  `index.status`. 2) Turn `indexGrepBoost` on. 3) `workspace.set` to
   workspace B and poll `index.status`.
-- **Expected**: With switches off, status stays empty. With the switch on,
+- **Expected**: With the switch off, status stays empty. With it on,
   the changed workspace is marked `building` immediately and a background
   rebuild lands it at `fresh` with the fixture file counted; `workspace.set`
   returns promptly without waiting for the scan.
@@ -1834,7 +1834,7 @@ and identify the platform validation still needed.
 - **Acceptance**: D (workspace), Quality (responsiveness)
 - **Milestone**: M6+
 - **Status**: Automated at the RPC boundary in host-core
-  (`workspace_set_auto_indexes_only_when_a_switch_is_on`)
+  (`workspace_set_auto_indexes_only_while_the_grep_boost_is_on`)
 
 #### E2E-STATS-summary-cards-range: usage summary renders host aggregation
 

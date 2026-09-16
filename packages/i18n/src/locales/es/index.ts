@@ -2143,9 +2143,7 @@ sklm: {
   "index": {
     "loading": "Cargando estado del índice…",
     "grepBoost": "Aceleración de Grep por índice",
-    "grepBoostDesc": "Las búsquedas literales sensibles a mayúsculas usan el índice local; todo lo demás vuelve a rg.",
-    "newFolders": "Indexar carpetas nuevas",
-    "newFoldersDesc": "Indexa en segundo plano los espacios recién abiertos. Todo queda en este equipo.",
+    "grepBoostDesc": "Indexa en segundo plano los espacios recién abiertos y sirve desde ese índice las búsquedas literales sensibles a mayúsculas; todo lo demás vuelve a rg. Todo queda en este equipo.",
     "loadErrorTitle": "Estado del índice no disponible",
     "loadErrorDesc": "El host no respondió. Grep funciona sin índice.",
     "retry": "Reintentar",

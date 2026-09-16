@@ -2152,9 +2152,7 @@ sklm: {
   index: {
     loading: "正在讀取索引狀態…",
     "grepBoost": "索引加速 Grep（測試版）",
-    "grepBoostDesc": "對符合條件的字面量查詢使用本地索引；其他查詢自動回退 rg。",
-    "newFolders": "索引新資料夾",
-    "newFoldersDesc": "在背景自動索引新開啟的工作區。所有資料均保存在本機。",
+    "grepBoostDesc": "開啟後自動為新開啟的工作區建立索引，並加速符合條件的字面量查詢；其他查詢自動回退 rg。所有資料均保存在本機。",
     loadErrorTitle: "索引狀態不可用",
     loadErrorDesc: "主機未回應。沒有索引時 Grep 仍正常運作。",
     retry: "重試",

@@ -540,20 +540,20 @@ system while preserving their different data ownership:
 - One health card for the host-owned workspace index cache: an opt-in toggle,
   then status, indexed file count, indexed size, unreadable-file count, and
   last-update time
-- A second opt-in toggle, `Index new folders` (`indexNewFolders`, default
-  off): when on, opening a different workspace marks its index `building`
-  and rebuilds it on the blocking pool, so `workspace.set` stays fast and
-  the health card polls `index.status` once a second while building,
-  pausing when the window is hidden
 - The single opt-in toggle, `Grep index boost` (`indexGrepBoost`, default
-  off): when on, case-sensitive literal Grep searches may be served from the
-  index; every other query keeps walking. The copy promises speed for
-  eligible searches, never changed results
+  off), owns both sides of the index, because Grep is its only consumer. When
+  on, opening a different workspace marks its index `building` and rebuilds
+  it on the blocking pool, so `workspace.set` stays fast and the health card
+  polls `index.status` once a second while building, pausing when the window
+  is hidden; case-sensitive literal Grep searches may then be served from the
+  index while every other query keeps walking. The copy promises speed for
+  eligible searches, never changed results. A second "index new folders"
+  toggle would either duplicate this switch or build an index that nothing
+  reads, so the card carries exactly one
 - Actions are Rebuild index and Clear index; both call the host lifecycle
   RPCs and refresh the card from the returned status
 - The copy states that the index is a rebuildable local cache whose data
-  never leaves the machine, and that Grep results never depend on it while
-  the toggle is off
+  never leaves the machine, and that Grep results never depend on it
 - Empty state: no root yet for the active workspace, with Build index as the
   single action. Load failure shows a retry instead of a blank card
 

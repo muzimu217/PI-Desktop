@@ -895,7 +895,8 @@ sidecar 用于显示每秒输出令牌的流时间。 `ToolTokenUsage`
 host 所有的工作区索引缓存生命周期通道。`rootPath` 可选；提供时必须等于当前工作区
 （否则返回 `INDEX_ROOT_OUTSIDE_WORKSPACE`）。`rebuild` 在固定的文件数与字节预算下
 把工作区扫描进 `<data-dir>/index/index.db` 并返回 root 状态。`status` 只返回生命周期
-元数据，绝不返回文件内容。P2-A 中 Grep 结果不读取该缓存。
+元数据，绝不返回文件内容。仅在开启 `indexGrepBoost` 快路径时，
+Grep 才读取该缓存来缩小候选文件，结果不变。
 
 ## 8. 设置/秘密 API
 

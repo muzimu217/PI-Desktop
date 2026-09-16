@@ -89,8 +89,9 @@ metadata, and indexed text in FTS5. It stores no credentials, message history,
 project entity records, or file hashes. It is excluded from application backup,
 export, and sync surfaces; corruption or an unsupported index schema quarantines
 the old cache and creates a new empty index without touching `pi.sqlite`.
-P2-A exposes only lifecycle RPCs. Grep does not read this cache until the
-separate P2-B equivalence and fallback work lands.
+The index RPCs are lifecycle-only. Grep reads this cache only through the
+opt-in `indexGrepBoost` fast path, which narrows the candidate file list and
+still verifies every hit with the same scanner, so results stay identical.
 
 ### 2.0 Message-owned review snapshots (ADR 0043)
 

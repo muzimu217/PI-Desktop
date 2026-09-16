@@ -759,7 +759,7 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
   5）尝试重建工作区外目录。6）清理工作区 root，再次读取状态。
 - **预期**：重建产生一个 `fresh` root；状态仅暴露元数据、不暴露文件内容；
   工作区外 root 返回 `INDEX_ROOT_OUTSIDE_WORKSPACE`；clear 只删除所选 root，状态随后为空。
-  所有索引文件都位于临时 data 目录并由测试框架清理；P2-A 不改变 Grep 行为。
+  所有索引文件都位于临时 data 目录并由测试框架清理；索引存在与否都不改变 Grep 的结果。
 - **关联规格**：`03-runtime/04-data-storage.md`、`03-runtime/06-host-rpc-protocol.md`
 - **验收**：C（工作区工具与边界）、质量（数据安全）
 - **里程碑**：M6+
@@ -797,15 +797,15 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 #### E2E-INDEX-auto-index：仅在开关开启时随工作区切换建立索引
 
 - **前置条件**：host RPC 可用；两个临时工作区；开关为默认值。
-- **步骤**：1）开关全关时 `workspace.set` 到工作区 A 并读取 `index.status`。
-  2）开启 `indexNewFolders`。3）`workspace.set` 到工作区 B 并轮询 `index.status`。
-- **预期**：开关全关时状态保持为空。开关开启后，变更的工作区立即标记 `building`，
+- **步骤**：1）开关关闭时 `workspace.set` 到工作区 A 并读取 `index.status`。
+  2）开启 `indexGrepBoost`。3）`workspace.set` 到工作区 B 并轮询 `index.status`。
+- **预期**：开关关闭时状态保持为空。开关开启后，变更的工作区立即标记 `building`，
   后台重建最终落到 `fresh` 并统计到 fixture 文件；`workspace.set` 立即返回、不等待扫描。
 - **关联规格**：`03-runtime/06-host-rpc-protocol.md`、`04-ux/06-settings-ia.md`
 - **验收**：D（工作区）、质量（响应性）
 - **里程碑**：M6+
 - **状态**：host-core RPC 边界已自动化
-  （`workspace_set_auto_indexes_only_when_a_switch_is_on`）
+  （`workspace_set_auto_indexes_only_while_the_grep_boost_is_on`）
 
 #### E2E-STATS-summary-cards-range：使用统计页渲染宿主聚合
 

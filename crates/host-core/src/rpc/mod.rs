@@ -721,15 +721,6 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
             ));
         }
     }
-    if let Some(flag) = object.get("indexNewFolders") {
-        if !flag.is_boolean() {
-            return Err(rpc_err(
-                1002,
-                "indexNewFolders must be a boolean",
-                "INVALID_PARAMS",
-            ));
-        }
-    }
     let Some(shell_value) = object.get("defaultCommandShell") else {
         return Ok(());
     };
@@ -1815,17 +1806,14 @@ async fn handle_request(
             st.db
                 .kv_set("app", "currentProjectId", &json!(pid))
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-            // P2-B: auto-index a changed workspace when either switch is on.
-            // The scan runs on the blocking pool, so workspace.set stays fast
-            // and `index.status` reports `building` until it lands.
+            // P2-B: auto-index a changed workspace while the Grep boost is on.
+            // That one switch owns both sides of the index because Grep is its
+            // only consumer. The scan runs on the blocking pool, so
+            // workspace.set stays fast and `index.status` reports `building`
+            // until it lands.
             let settings = st.db.get_setting("app").ok().flatten();
-            let auto_on = settings
-                .as_ref()
-                .and_then(|value| value.get("indexNewFolders"))
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
             let changed = previous.as_deref() != Some(ws.path.as_str());
-            if changed && (auto_on || index_grep_boost_enabled(settings.as_ref())) {
+            if changed && index_grep_boost_enabled(settings.as_ref()) {
                 let index = st.index.clone();
                 let root = PathBuf::from(ws.path.clone());
                 drop(st);
@@ -6315,12 +6303,10 @@ mod tests {
         // A truthy string must not be able to switch the fast path on.
         assert!(validate_settings_value(&json!({ "indexGrepBoost": "true" })).is_err());
         assert!(validate_settings_value(&json!({ "indexGrepBoost": 1 })).is_err());
-        assert!(validate_settings_value(&json!({ "indexNewFolders": true })).is_ok());
-        assert!(validate_settings_value(&json!({ "indexNewFolders": "yes" })).is_err());
     }
 
     #[tokio::test]
-    async fn workspace_set_auto_indexes_only_when_a_switch_is_on() {
+    async fn workspace_set_auto_indexes_only_while_the_grep_boost_is_on() {
         let data_dir = tempfile::tempdir().unwrap();
         let workspace = tempfile::tempdir().unwrap();
         std::fs::write(workspace.path().join("auto.txt"), "auto index target\n").unwrap();
@@ -6329,7 +6315,7 @@ mod tests {
         let state = Arc::new(Mutex::new(app_state));
         let (tx, _rx) = mpsc::unbounded_channel();
 
-        // Switches off (the default): no index rows are created for the root.
+        // Switch off (the default): no index rows are created for the root.
         handle_request(
             state.clone(),
             "workspace.set",
@@ -6343,12 +6329,12 @@ mod tests {
             .unwrap();
         assert_eq!(off["roots"].as_array().unwrap().len(), 0);
 
-        // Turn auto-index on, then switch to a different workspace: the
+        // Turn the Grep boost on, then switch to a different workspace: the
         // background rebuild must land at a fresh root.
         handle_request(
             state.clone(),
             "settings.set",
-            json!({ "indexNewFolders": true }),
+            json!({ "indexGrepBoost": true }),
             tx.clone(),
         )
         .await

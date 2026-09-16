@@ -2143,9 +2143,7 @@ sklm: {
   "index": {
     "loading": "Index-Status wird geladen…",
     "grepBoost": "Grep-Indexbeschleunigung",
-    "grepBoostDesc": "Case-sensitive literale Suchen über den lokalen Index; alles andere fällt auf rg zurück.",
-    "newFolders": "Neue Ordner indexieren",
-    "newFoldersDesc": "Neu geöffnete Arbeitsbereiche im Hintergrund indexieren. Alles bleibt auf diesem Rechner.",
+    "grepBoostDesc": "Neu geöffnete Arbeitsbereiche im Hintergrund indexieren und case-sensitive literale Suchen aus diesem Index bedienen; alles andere fällt auf rg zurück. Alles bleibt auf diesem Rechner.",
     "loadErrorTitle": "Index-Status nicht verfügbar",
     "loadErrorDesc": "Der Host hat nicht geantwortet. Grep funktioniert auch ohne Index.",
     "retry": "Erneut versuchen",

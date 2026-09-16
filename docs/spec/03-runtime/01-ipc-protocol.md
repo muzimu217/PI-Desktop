@@ -1090,7 +1090,8 @@ optional and must equal the active workspace when present
 (`INDEX_ROOT_OUTSIDE_WORKSPACE` otherwise). `rebuild` scans the workspace into
 `<data-dir>/index/index.db` under fixed file-count and byte budgets and returns
 the resulting root status. `status` returns lifecycle metadata only and never
-file contents. Grep results do not read this cache in P2-A.
+file contents. Grep reads this cache only behind the opt-in `indexGrepBoost`
+fast path, which narrows candidates without changing results.
 
 ## 8. Settings / Secrets API
 

@@ -2184,9 +2184,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
   index: {
     loading: "Loading index status…",
     grepBoost: "Grep index boost",
-    grepBoostDesc: "Serve case-sensitive literal searches from the local index; everything else falls back to rg.",
-    "newFolders": "Index new folders",
-    "newFoldersDesc": "Automatically index newly opened workspaces in the background. Everything stays on this machine.",
+    grepBoostDesc: "Index newly opened workspaces in the background and serve case-sensitive literal searches from that index; everything else falls back to rg. Everything stays on this machine.",
     loadErrorTitle: "Index status unavailable",
     loadErrorDesc: "The host did not answer. Grep works without the index.",
     retry: "Retry",

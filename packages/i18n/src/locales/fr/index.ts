@@ -2143,9 +2143,7 @@ sklm: {
   "index": {
     "loading": "Chargement de l'état de l'index…",
     "grepBoost": "Accélération de Grep par index",
-    "grepBoostDesc": "Les recherches littérales sensibles à la casse passent par l'index local ; le reste retombe sur rg.",
-    "newFolders": "Indexer les nouveaux dossiers",
-    "newFoldersDesc": "Indexe en arrière-plan les espaces nouvellement ouverts. Tout reste sur cette machine.",
+    "grepBoostDesc": "Indexe en arrière-plan les espaces nouvellement ouverts et sert depuis cet index les recherches littérales sensibles à la casse ; le reste retombe sur rg. Tout reste sur cette machine.",
     "loadErrorTitle": "État de l'index indisponible",
     "loadErrorDesc": "L'hôte n'a pas répondu. Grep fonctionne sans index.",
     "retry": "Réessayer",

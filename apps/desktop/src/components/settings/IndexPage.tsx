@@ -58,7 +58,6 @@ export function IndexPage({ settings, saveSettings }: IndexPageProps) {
   const [busy, setBusy] = useState<"rebuild" | "clear" | null>(null);
   const [actionError, setActionError] = useState(false);
   const grepBoost = settings.indexGrepBoost === true;
-  const newFolders = settings.indexNewFolders === true;
   const building = state.kind === "ready" && state.root?.status === "building";
 
   const refresh = useCallback(async () => {
@@ -169,24 +168,6 @@ export function IndexPage({ settings, saveSettings }: IndexPageProps) {
                 aria-checked={grepBoost}
                 aria-label={t("index.grepBoost")}
                 onClick={() => void saveSettings({ indexGrepBoost: !grepBoost })}
-              >
-                <span className="settings-toggle-thumb" />
-              </button>
-            </div>
-          </div>
-          <div className="settings-row">
-            <div className="settings-row-copy">
-              <div className="settings-row-title">{t("index.newFolders")}</div>
-              <div className="settings-row-desc">{t("index.newFoldersDesc")}</div>
-            </div>
-            <div className="settings-row-control">
-              <button
-                type="button"
-                className={cx("settings-toggle", newFolders && "on")}
-                role="switch"
-                aria-checked={newFolders}
-                aria-label={t("index.newFolders")}
-                onClick={() => void saveSettings({ indexNewFolders: !newFolders })}
               >
                 <span className="settings-toggle-thumb" />
               </button>

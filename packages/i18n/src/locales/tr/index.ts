@@ -2184,9 +2184,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
   index: {
     loading: "Dizin durumu yükleniyor…",
     "grepBoost": "Grep dizin hızlandırma",
-    "grepBoostDesc": "Koşula uyan hazır değer aramaları yerel dizini kullanır; diğerleri rg'ye geri döner.",
-    "newFolders": "Yeni klasörleri dizinle",
-    "newFoldersDesc": "Yeni açılan çalışma alanlarını arka planda otomatik dizinler. Her şey bu makinede kalır.",
+    "grepBoostDesc": "Yeni açılan çalışma alanlarını arka planda otomatik dizinler ve koşula uyan hazır değer aramalarını bu dizinden sunar; diğerleri rg'ye geri döner. Her şey bu makinede kalır.",
     loadErrorTitle: "Dizin durumu kullanılamıyor",
     loadErrorDesc: "Ana makine yanıt vermedi. Dizin olmadan da Grep çalışır.",
     retry: "Yeniden dene",

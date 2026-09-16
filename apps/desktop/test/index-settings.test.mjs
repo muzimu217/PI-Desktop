@@ -32,7 +32,7 @@ test("workspace index is a workspace-group settings destination", () => {
   assert.match(settingsPage, /import \{ IndexPage \}/);
 });
 
-test("index page renders host lifecycle state without promising Grep changes", async () => {
+test("index page drives one switch and keeps the index a rebuildable cache", async () => {
   await access(
     new URL("../src/components/settings/IndexPage.tsx", import.meta.url),
     constants.F_OK,
@@ -43,14 +43,19 @@ test("index page renders host lifecycle state without promising Grep changes", a
   assert.match(page, /index\.card\.health/);
   assert.match(page, /settings\.indexGrepBoost === true/);
   assert.match(page, /saveSettings\(\{ indexGrepBoost: !grepBoost \}\)/);
-  assert.match(page, /saveSettings\(\{ indexNewFolders: !newFolders \}\)/);
   assert.match(page, /setInterval\(poll, 1000\)/);
-  assert.match(enLocale, /grepBoost: "Grep index boost"/);
-  assert.match(enLocale, /"?newFolders"?: "Index new folders"/);
-  assert.match(settingsTypes, /indexNewFolders: boolean/);
   assert.match(page, /index\.status\.\$\{root\.status\}/);
-  // The page must not claim the fast path is active: P2-A only builds the
-  // cache, so the copy has to describe the index as a rebuildable cache.
+  // One switch owns both sides of the index. Grep is its only consumer, so a
+  // second "index new folders" toggle could only duplicate this one or build
+  // an index that nothing reads.
+  assert.equal(page.match(/role="switch"/g)?.length, 1);
+  assert.doesNotMatch(page, /indexNewFolders/);
+  assert.doesNotMatch(settingsTypes, /indexNewFolders/);
+  assert.doesNotMatch(enLocale, /newFolders/);
+  assert.match(enLocale, /grepBoost: "Grep index boost"/);
+  assert.match(enLocale, /grepBoostDesc: "Index newly opened workspaces/);
+  // The switch promises speed, never different results, so the copy still has
+  // to describe the index as a rebuildable cache Grep does not depend on.
   assert.match(enLocale, /Grep results never depend on it/);
 });
 

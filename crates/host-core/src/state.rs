@@ -98,7 +98,17 @@ impl AppState {
             Err(error) => tracing::warn!(%error, "in-flight reply sweep failed"),
         }
         let secrets = SecretStore::open(data_dir)?;
-        let index = IndexStore::open(data_dir)?;
+        // The index is an optimization layer: if its store cannot be opened
+        // even after the quarantine-and-retry, degrade to a disabled store
+        // (Grep falls back, the status RPC reports unavailable) instead of
+        // costing the host its boot.
+        let index = match IndexStore::open(data_dir) {
+            Ok(index) => index,
+            Err(error) => {
+                tracing::warn!(%error, "index store unavailable; indexing stays disabled");
+                IndexStore::disabled()
+            }
+        };
         // The marketplace source is read before the manager builds its first
         // catalog, so a mirror configured for networks without GitHub access
         // applies on launch instead of only after a manual refresh.

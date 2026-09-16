@@ -8,9 +8,10 @@ use anyhow::{Context, Result};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, Mutex};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 pub mod fast_path;
 pub mod metrics;
@@ -20,6 +21,10 @@ use metrics::{BuildProgress, IndexMetrics, WorkspaceIndexMetrics};
 pub const MAX_FILES: usize = 50_000;
 pub const MAX_FILE_BYTES: u64 = 1024 * 1024;
 pub const MAX_INDEXED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+/// Minimum spacing between same-path auto refreshes of a workspace index.
+/// Bounds how long Grep's fast path can keep serving candidates that predate
+/// an in-place edit, without paying for a re-walk on every `workspace.set`.
+pub const AUTO_REFRESH_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_secs(600);
 // v2 stores the whole *visible* file set, not just the ingested subset: the
 // `files` table gained `content_indexed`. The index is a rebuildable cache, so
 // `open` quarantines a v1 database and re-crawls rather than migrating.
@@ -143,6 +148,29 @@ pub struct IndexStore {
     metrics: Arc<IndexMetrics>,
     /// Live crawl counters for the root currently being rebuilt.
     progress: Arc<BuildProgress>,
+    /// Roots with a build running in *this* process. A `building` row in the
+    /// store without a matching entry here is crash residue from a previous
+    /// host process, and may be re-armed instead of answered InProgress.
+    building_roots: Arc<Mutex<HashSet<String>>>,
+    /// Root → last same-path auto refresh, so an unchanged workspace still
+    /// gets a periodic re-walk while the Grep boost stays on.
+    last_refresh: Arc<Mutex<HashMap<String, Instant>>>,
+    /// Set when opening the real store failed: every operation then answers
+    /// as unavailable instead of blocking host startup. Indexing is an
+    /// optimization layer, so losing it must not cost the boot.
+    disabled: bool,
+}
+
+/// Removes a root from [`IndexStore::building_roots`] when the build call
+/// ends, whatever the outcome.
+struct BuildingGuard<'a>(&'a Mutex<HashSet<String>>, String);
+
+impl Drop for BuildingGuard<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut roots) = self.0.lock() {
+            roots.remove(&self.1);
+        }
+    }
 }
 
 impl IndexStore {
@@ -154,6 +182,9 @@ impl IndexStore {
             path,
             metrics: Arc::new(IndexMetrics::default()),
             progress: Arc::new(BuildProgress::default()),
+            building_roots: Arc::new(Mutex::new(HashSet::new())),
+            last_refresh: Arc::new(Mutex::new(HashMap::new())),
+            disabled: false,
         };
         if let Err(error) = store.initialize() {
             store.quarantine_corrupt_db();
@@ -162,6 +193,56 @@ impl IndexStore {
                 .with_context(|| format!("rebuild index database after failure: {error}"))?;
         }
         Ok(store)
+    }
+
+    /// A store that answers every operation as unavailable. Used when opening
+    /// the real store failed and the quarantine-and-retry could not recover
+    /// it: Grep simply never sees a candidate set, and the status RPC reports
+    /// the store as unavailable.
+    pub fn disabled() -> Self {
+        Self {
+            path: PathBuf::new(),
+            metrics: Arc::new(IndexMetrics::default()),
+            progress: Arc::new(BuildProgress::default()),
+            building_roots: Arc::new(Mutex::new(HashSet::new())),
+            last_refresh: Arc::new(Mutex::new(HashMap::new())),
+            disabled: true,
+        }
+    }
+
+    /// Whether a same-path auto refresh of `root` is due now. Calling this
+    /// consumes the answer: the interval restarts from the call, whether or
+    /// not the caller goes through with the refresh (a workspace the user
+    /// keeps switching to should not queue up refreshes).
+    pub fn refresh_due(&self, root: &Path) -> bool {
+        let root_id = root_id(&normalize_root(root));
+        let mut last = self.last_refresh.lock().unwrap();
+        let due = match last.get(&root_id) {
+            Some(at) => at.elapsed() >= AUTO_REFRESH_MIN_INTERVAL,
+            None => true,
+        };
+        if due {
+            last.insert(root_id, Instant::now());
+        }
+        due
+    }
+
+    /// Mark a `fresh` root `building` ahead of a same-path auto refresh, so
+    /// `index.status` tells the truth while the re-walk runs.
+    pub fn request_refresh(&self, root: &Path) -> Result<()> {
+        let root = normalize_root(root);
+        let root_id = root_id(&root);
+        self.set_root_status(
+            &root_id,
+            &root,
+            RootUpdate {
+                status: IndexStatus::Building,
+                file_count: 0,
+                indexed_bytes: 0,
+                error_count: 0,
+                last_error: None,
+            },
+        )
     }
 
     /// Shared fast-path counters, for callers that record into them (the Grep
@@ -214,9 +295,14 @@ impl IndexStore {
     pub fn rebuild(&self, root: &Path, limits: IndexLimits) -> Result<RootStatus> {
         let root = normalize_root(root);
         if !root.is_dir() {
-            anyhow::bail!("INDEX_ROOT_NOT_FOUND: {}", root.display());
+            anyhow::bail!("workspace root does not exist: {}", root.display());
         }
         let root_id = root_id(&root);
+        // Mark the build as live in this process for the whole call — the
+        // guard also covers early returns — so a `building` row that outlives
+        // the process is recognizable as crash residue, not a running build.
+        self.building_roots.lock().unwrap().insert(root_id.clone());
+        let _guard = BuildingGuard(&self.building_roots, root_id.clone());
         // Seed the progress denominator from the previous visible set (or 0 on
         // a first build). The crawler advances `done` as it visits files.
         let previous_files: i64 = self
@@ -309,14 +395,21 @@ impl IndexStore {
     pub fn ensure_index(&self, root: &Path) -> Result<EnsureOutcome> {
         let root = normalize_root(root);
         if !root.is_dir() {
-            anyhow::bail!("INDEX_ROOT_NOT_FOUND: {}", root.display());
+            anyhow::bail!("workspace root does not exist: {}", root.display());
         }
         let root_id = root_id(&root);
+        let building_in_process = self.building_roots.lock().unwrap().contains(&root_id);
         match self.status(Some(&root))?.into_iter().next() {
             Some(status) if status.status == IndexStatus::Fresh.as_str() => {
                 Ok(EnsureOutcome::Fresh)
             }
-            Some(status) if status.status == IndexStatus::Building.as_str() => {
+            // A live build answers InProgress. A `building` row with no
+            // in-process build behind it is crash residue — the previous host
+            // process died mid-build — so it falls through and re-arms
+            // instead of answering InProgress forever.
+            Some(status)
+                if status.status == IndexStatus::Building.as_str() && building_in_process =>
+            {
                 Ok(EnsureOutcome::InProgress)
             }
             _ => {
@@ -383,6 +476,9 @@ impl IndexStore {
     }
 
     fn connection(&self) -> Result<Connection> {
+        if self.disabled {
+            anyhow::bail!("index store is unavailable");
+        }
         fts::open(&self.path)
     }
 
@@ -682,6 +778,99 @@ mod tests {
         let store = IndexStore::open(data.path()).unwrap();
         assert!(store.status(None).unwrap().is_empty());
         assert_eq!(store.clear(None).unwrap(), 0);
+    }
+
+    #[test]
+    fn building_residue_from_a_dead_process_is_rearmed() {
+        let data = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("one.txt"), "one\n").unwrap();
+        let store = IndexStore::open(data.path()).unwrap();
+        // Simulate crash residue: a `building` row with no in-process build
+        // behind it (as if the previous host process died mid-build).
+        store
+            .set_root_status(
+                &root_id(&normalize_root(root.path())),
+                &normalize_root(root.path()),
+                RootUpdate {
+                    status: IndexStatus::Building,
+                    file_count: 0,
+                    indexed_bytes: 0,
+                    error_count: 0,
+                    last_error: None,
+                },
+            )
+            .unwrap();
+        assert!(matches!(
+            store.ensure_index(root.path()).unwrap(),
+            EnsureOutcome::Triggered,
+        ));
+
+        // The same row while a build IS running in this process must still
+        // answer InProgress.
+        let rebuilding = IndexStore::open(data.path()).unwrap();
+        rebuilding
+            .set_root_status(
+                &root_id(&normalize_root(root.path())),
+                &normalize_root(root.path()),
+                RootUpdate {
+                    status: IndexStatus::Building,
+                    file_count: 0,
+                    indexed_bytes: 0,
+                    error_count: 0,
+                    last_error: None,
+                },
+            )
+            .unwrap();
+        rebuilding
+            .building_roots
+            .lock()
+            .unwrap()
+            .insert(root_id(&normalize_root(root.path())));
+        assert!(matches!(
+            rebuilding.ensure_index(root.path()).unwrap(),
+            EnsureOutcome::InProgress,
+        ));
+    }
+
+    #[test]
+    fn same_path_refresh_is_due_once_then_spacing_kicks_in() {
+        let data = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("one.txt"), "one\n").unwrap();
+        let store = IndexStore::open(data.path()).unwrap();
+
+        assert!(store.refresh_due(root.path()), "first set is due");
+        assert!(
+            !store.refresh_due(root.path()),
+            "the interval restarts on the first call"
+        );
+        // An unrelated root has its own clock.
+        let other = tempfile::tempdir().unwrap();
+        assert!(store.refresh_due(other.path()));
+    }
+
+    #[test]
+    fn request_refresh_marks_a_fresh_root_building() {
+        let data = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("one.txt"), "one\n").unwrap();
+        let store = IndexStore::open(data.path()).unwrap();
+        store.rebuild(root.path(), IndexLimits::default()).unwrap();
+        assert_eq!(store.status(Some(root.path())).unwrap()[0].status, "fresh");
+
+        store.request_refresh(root.path()).unwrap();
+        assert_eq!(
+            store.status(Some(root.path())).unwrap()[0].status,
+            "building"
+        );
+    }
+
+    #[test]
+    fn disabled_store_answers_every_read_as_unavailable() {
+        let store = IndexStore::disabled();
+        assert!(store.status(None).is_err());
+        assert!(store.ensure_index(Path::new("/nonexistent")).is_err());
     }
 
     #[test]

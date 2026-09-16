@@ -1840,18 +1840,29 @@ async fn handle_request(
             st.db
                 .kv_set("app", "currentProjectId", &json!(pid))
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-            // P2-B: auto-index a changed workspace while the Grep boost is on.
-            // That one switch owns both sides of the index because Grep is its
-            // only consumer. The scan runs on the blocking pool, so
-            // workspace.set stays fast and `index.status` reports `building`
-            // until it lands.
+            // P2-B: auto-index the workspace while the Grep boost is on. That
+            // one switch owns both sides of the index because Grep is its
+            // only consumer. A changed path always (re)indexes; an unchanged
+            // path refreshes at most once per refresh interval, so in-place
+            // edits are picked up without re-walking on every workspace.set.
+            // The scan runs on the blocking pool, so workspace.set stays fast
+            // and `index.status` reports `building` until it lands.
             let settings = st.db.get_setting("app").ok().flatten();
             let changed = previous.as_deref() != Some(ws.path.as_str());
-            if changed && index_grep_boost_enabled(settings.as_ref()) {
+            if index_grep_boost_enabled(settings.as_ref()) {
                 let index = st.index.clone();
                 let root = PathBuf::from(ws.path.clone());
+                let outcome = if changed {
+                    index.ensure_index(&root)
+                } else if index.refresh_due(&root) {
+                    index
+                        .request_refresh(&root)
+                        .map(|_| crate::index::EnsureOutcome::Triggered)
+                } else {
+                    Ok(crate::index::EnsureOutcome::Fresh)
+                };
                 drop(st);
-                match index.ensure_index(&root) {
+                match outcome {
                     Ok(crate::index::EnsureOutcome::Triggered) => {
                         tokio::task::spawn_blocking(move || {
                             if let Err(error) =

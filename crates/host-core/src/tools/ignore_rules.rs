@@ -229,6 +229,12 @@ pub const VENDOR_COMPONENTS: &[&str] = &[".git", ".pi-desktopignore", "node_modu
 pub fn visible_walker(root: &Path, scoped: bool) -> WalkBuilder {
     let mut walker = WalkBuilder::new(root);
     walker.hidden(false).git_ignore(true);
+    if scoped {
+        // Same as rg's --no-ignore-parent for a scoped search: an explicitly
+        // named directory stays reachable even when a parent directory
+        // ignores it.
+        walker.parents(false);
+    }
     configure_walker(&mut walker, root, scoped);
     walker
 }
@@ -344,6 +350,24 @@ mod vendor_visibility_tests {
             visible_from_walker(&root.path().join("node_modules/pkg"), true),
             vec!["index.js"]
         );
+    }
+
+    #[test]
+    fn scoped_walk_drops_parent_ignore_files_like_the_rg_side() {
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join(".ignore"), "node_modules\n").unwrap();
+        fs::create_dir_all(root.path().join("node_modules/pkg")).unwrap();
+        fs::write(root.path().join("node_modules/pkg/index.js"), "x\n").unwrap();
+
+        // A scoped walk rooted below the ignore file must not honor it —
+        // the same contract rg gets via --no-ignore-parent — while the
+        // whole-workspace walk keeps filtering (only the ignore file itself
+        // stays visible; `node_modules/` is dropped).
+        assert_eq!(
+            visible_from_walker(&root.path().join("node_modules/pkg"), true),
+            vec!["index.js"]
+        );
+        assert_eq!(visible_from_walker(root.path(), false), vec![".ignore"]);
     }
 
     #[test]

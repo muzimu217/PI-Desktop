@@ -17,7 +17,6 @@ use tokio::sync::{mpsc, watch};
 
 use crate::index::IndexStore;
 use crate::workspace::{resolve_tool_path_with_external, simple_canonicalize, ToolRoot};
-use ignore::WalkBuilder;
 
 mod grep_rg;
 pub mod hashline;
@@ -1573,7 +1572,6 @@ fn search_root(
 
 fn candidate_files(
     search_root: &Path,
-    ignore_root: &Path,
     scoped: bool,
     include: Option<&globset::GlobSet>,
     max_files: usize,
@@ -1592,12 +1590,6 @@ fn candidate_files(
         return (vec![search_root.to_path_buf()], false);
     }
 
-    let mut walker = WalkBuilder::new(search_root);
-    walker.hidden(false).git_ignore(true);
-    if scoped {
-        walker.parents(false);
-    }
-    ignore_rules::configure_walker(&mut walker, ignore_root, scoped);
     let mut candidates: Vec<(PathBuf, SystemTime)> = Vec::new();
     let mut capped = false;
     for entry in ignore_rules::visible_walker(search_root, scoped)
@@ -1667,18 +1659,8 @@ fn tool_glob(
         .filter(|v| *v > 0)
         .unwrap_or(GLOB_DEFAULT_LIMIT);
 
-    let ignore_root = if root_kind == ToolRoot::Workspace {
-        root
-    } else {
-        search_dir.as_path()
-    };
-    let (files, mut truncated) = candidate_files(
-        &search_dir,
-        ignore_root,
-        scoped,
-        Some(&set),
-        GLOB_MAX_LIMIT * 8,
-    );
+    let (files, mut truncated) =
+        candidate_files(&search_dir, scoped, Some(&set), GLOB_MAX_LIMIT * 8);
     let mut matches: Vec<String> = Vec::new();
     let mut bytes = 0_usize;
     for path in &files {
@@ -1833,7 +1815,6 @@ fn tool_grep(
         Some(files) => (files, false),
         None => candidate_files(
             &search_dir,
-            ignore_root,
             scoped,
             include.as_ref(),
             GREP_MAX_CANDIDATE_FILES,
@@ -3942,7 +3923,7 @@ mod tests {
         let mut indexed = store.indexed_rel_paths(root.path()).unwrap();
         indexed.sort();
 
-        let (candidates, _capped) = candidate_files(root.path(), root.path(), false, None, 20_000);
+        let (candidates, _capped) = candidate_files(root.path(), false, None, 20_000);
         let mut candidate_rel: Vec<String> = candidates
             .iter()
             .map(|path| {

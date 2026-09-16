@@ -1626,7 +1626,8 @@ sklm: {
       "net.websocket": "Abrir conexiones en tiempo real",
       "bus.publish": "Enviar mensajes a otros complementos",
       "bus.subscribe": "Recibir mensajes de otros complementos",
-      "browser.cdp": "Controlar el navegador del panel de trabajo"
+      "browser.cdp": "Controlar el navegador del panel de trabajo",
+      "usage.read": "Leer estadísticas de uso"
     },
     "permissionHelp": {
       "ui.panel": "Permite que el complemento muestre su propio panel dentro de la aplicación.",
@@ -1662,7 +1663,8 @@ sklm: {
       "net.websocket": "Abre conexiones bidireccionales en tiempo real con los hosts que declara el complemento.",
       "bus.publish": "Puede enviar mensajes sobre los temas que declaró.",
       "bus.subscribe": "Puede recibir mensajes sobre los temas que declaró.",
-      "browser.cdp": "Puede navegar por el navegador del panel de trabajo, leer la página, ejecutar JavaScript y enviar comandos de Chrome DevTools incluidos en la lista permitida. Las cookies y los métodos de almacenamiento están bloqueados."
+      "browser.cdp": "Puede navegar por el navegador del panel de trabajo, leer la página, ejecutar JavaScript y enviar comandos de Chrome DevTools incluidos en la lista permitida. Las cookies y los métodos de almacenamiento están bloqueados.",
+      "usage.read": "Muestra contadores de uso agregados — totales de tokens, rachas de actividad y las sesiones más activas. Nunca incluye el contenido de los mensajes."
     }
   },
   "extensions": {

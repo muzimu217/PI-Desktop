@@ -1626,7 +1626,8 @@ sklm: {
       "net.websocket": "Echtzeitverbindungen öffnen",
       "bus.publish": "Nachrichten an andere Plugins senden",
       "bus.subscribe": "Nachrichten von anderen Plugins empfangen",
-      "browser.cdp": "Den Arbeitspanel-Browser steuern"
+      "browser.cdp": "Den Arbeitspanel-Browser steuern",
+      "usage.read": "Nutzungsstatistiken lesen"
     },
     "permissionHelp": {
       "ui.panel": "Lässt das Plugin sein eigenes Panel innerhalb der App anzeigen.",
@@ -1662,7 +1663,8 @@ sklm: {
       "net.websocket": "Öffnet bidirektionale Echtzeitverbindungen zu den Hosts, die das Plugin deklariert hat.",
       "bus.publish": "Kann Nachrichten zu den angegebenen Themen senden.",
       "bus.subscribe": "Kann Nachrichten zu den angegebenen Themen empfangen.",
-      "browser.cdp": "Kann im Arbeitsbereichsbrowser navigieren, die Seite lesen, JavaScript ausführen und auf der Zulassungsliste stehende Chrome DevTools-Befehle senden. Cookies und Speichermethoden sind blockiert."
+      "browser.cdp": "Kann im Arbeitsbereichsbrowser navigieren, die Seite lesen, JavaScript ausführen und auf der Zulassungsliste stehende Chrome DevTools-Befehle senden. Cookies und Speichermethoden sind blockiert.",
+      "usage.read": "Zeigt aggregierte Nutzungsdaten — Token-Summen, Aktivitätsserien und die aktivsten Sitzungen. Nachrichteninhalte sind nie enthalten."
     }
   },
   "extensions": {

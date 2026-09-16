@@ -311,3 +311,104 @@ test("plugin session read, update, and delete permissions are independent", asyn
     "delete:PERMISSION_DENIED",
   ]);
 });
+
+test("plugin usage aggregates require usage.read and forward the plugin id", async (t) => {
+  const calls = [];
+  const runtime = new PluginRuntime({
+    hostEntry: hostProcessEntry,
+    spawnProcess: forkPluginProcess,
+    usage: {
+      summary: async (pluginId, input) => {
+        calls.push(["summary", pluginId, input]);
+        return { cards: { totalTokens: 12_000 } };
+      },
+      topSessions: async (pluginId, input) => {
+        calls.push(["topSessions", pluginId, input]);
+        return { sessions: [] };
+      },
+    },
+  });
+  t.after(async () => {
+    for (const loaded of runtime.listLoaded()) await runtime.unload(loaded.manifest.id);
+  });
+  const dir = writePlugin({
+    id: "demo.usage",
+    permissions: ["usage.read"],
+    main: `
+      module.exports = {
+        async onLoad() {
+          await pi.commands.register({
+            id: "read-usage",
+            title: "Read usage",
+            run: async () => {
+              const summary = await pi.usage.summary({ rangeDays: 7 });
+              await pi.ui.showToast("tokens:" + summary.cards.totalTokens);
+              await pi.usage.topSessions({ limit: 5, projectId: 3 });
+              for (const [name, call] of [
+                ["badRange", () => pi.usage.summary({ rangeDays: 366 })],
+                ["badLimit", () => pi.usage.topSessions({ limit: 0 })],
+                ["badProject", () => pi.usage.summary({ projectId: "seven" })]
+              ]) {
+                try { await call(); }
+                catch (error) { await pi.ui.showToast(name + ":" + error.code); }
+              }
+            }
+          });
+        }
+      };
+    `,
+  });
+  await runtime.loadFromPath(dir, ["usage.read"]);
+  await runCommand(runtime, "read-usage");
+  // Authorized calls forward with the plugin id and only the normalized fields.
+  assert.deepEqual(calls, [
+    ["summary", "demo.usage", { rangeDays: 7 }],
+    ["topSessions", "demo.usage", { limit: 5, projectId: 3 }],
+  ]);
+  assert.deepEqual(runtime.drainToasts(), [
+    "tokens:12000",
+    "badRange:INVALID_PARAMS",
+    "badLimit:INVALID_PARAMS",
+    "badProject:INVALID_PARAMS",
+  ]);
+});
+
+test("plugin usage aggregates are refused without the usage.read permission", async (t) => {
+  const calls = [];
+  const runtime = new PluginRuntime({
+    hostEntry: hostProcessEntry,
+    spawnProcess: forkPluginProcess,
+    usage: {
+      summary: async () => calls.push("summary"),
+      topSessions: async () => calls.push("topSessions"),
+    },
+  });
+  t.after(async () => {
+    for (const loaded of runtime.listLoaded()) await runtime.unload(loaded.manifest.id);
+  });
+  const dir = writePlugin({
+    id: "demo.usage-denied",
+    permissions: ["session.read.own"],
+    main: `
+      module.exports = {
+        async onLoad() {
+          await pi.commands.register({
+            id: "peek",
+            title: "Peek",
+            run: async () => {
+              try { await pi.usage.summary(); }
+              catch (error) { await pi.ui.showToast("summary:" + error.code); }
+              try { await pi.usage.topSessions(); }
+              catch (error) { await pi.ui.showToast("top:" + error.code); }
+            }
+          });
+        }
+      };
+    `,
+  });
+  await runtime.loadFromPath(dir, ["session.read.own"]);
+  await runCommand(runtime, "peek");
+  assert.deepEqual(calls, []);
+  assert.deepEqual(runtime.drainToasts(), ["summary:PERMISSION_DENIED", "top:PERMISSION_DENIED"]);
+});
+

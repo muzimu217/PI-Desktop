@@ -451,6 +451,55 @@ storage. P2/P3 operations (session create, message mutation, arbitrary re-bindin
 provider/model binding, batch delete, and tags) are intentionally not part of
 this contract.
 
+### usage (requires `usage.read`)
+
+Read-only aggregates over the completed turns of non-deleted sessions,
+computed by the host's stats domain — the same engine the dashboard uses.
+The payload carries counters, shares, and session titles; it never carries a
+message body, and there is no write path. `rangeDays` is a whole-day window
+between 1 and 365 (default 30); `projectId` optionally scopes every aggregate
+to one durable project.
+
+```ts
+pi.usage.summary(input?: {
+  rangeDays?: number // 1..=365 whole days; default 30
+  projectId?: number | null
+}): Promise<{
+  range: { startMs: number; endMs: number }
+  scope: { projectId: number | null }
+  cards: {
+    totalTokens: number; peakDayTokens: number; peakDayDate: string | null
+    longestChatMs: number; currentStreakDays: number; longestStreakDays: number
+    sessionCount: number; turnCount: number
+  }
+  diagnostics: {
+    cacheLeverage: number; cacheReadTokens: number
+    largeContextTurnShare: number; top5SessionShare: number
+  }
+  dailyTotals: Array<{ date: string; tokens: number }>
+  dailyByModel: Array<{ date: string; modelId: string; tokens: number }>
+  modelUsage: Array<{ modelId: string; tokens: number; share: number }>
+  projectUsage: Array<{ projectId: number | null; projectName: string | null; tokens: number; share: number }>
+  heatmap: Array<{ date: string; tokens: number; turns: number }> // always the full 365-day window
+  generatedAt: number
+}>
+
+pi.usage.topSessions(input?: {
+  rangeDays?: number // 1..=365 whole days; default 30
+  limit?: number     // 1..=50 rows; default 10
+  projectId?: number | null
+}): Promise<{ sessions: Array<{
+  sessionId: string; title: string | null
+  tokens: number; turnCount: number; lastActiveMs: number
+}> }>
+```
+
+Both methods are aggregation-only reads: no message text, no transcript
+projection, and no session mutation path. Sessions the user deleted leave the
+aggregates. An out-of-window `rangeDays` / `limit` or a non-integer
+`projectId` fails with `INVALID_PARAMS` in Electron main, and the host RPC
+boundary re-checks the same bounds.
+
 ### session collaboration (requires `desktop.control`)
 
 The official Session Orchestrator composes the reviewed desktop-control

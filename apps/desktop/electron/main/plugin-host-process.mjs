@@ -315,6 +315,13 @@ function buildApi() {
       rename: (input) => call("session.rename", [input ?? {}]),
       delete: (input) => call("session.delete", [input ?? {}]),
     },
+    // Read-only usage aggregates (`usage.read`). The main-process dispatch
+    // owns the permission check and parameter bounds; the host returns
+    // aggregate counters only, so no message body crosses this bridge.
+    usage: {
+      summary: (input) => call("usage.summary", [input ?? {}]),
+      topSessions: (input) => call("usage.topSessions", [input ?? {}]),
+    },
     /**
      * Resident background workers (spec 07 §3). Registration is local: the
      * manifest already declared the service, and the broker starts it only when

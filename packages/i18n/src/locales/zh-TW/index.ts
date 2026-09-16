@@ -1627,6 +1627,7 @@ sklm: {
       "bus.publish": "向其他外掛傳送訊息",
       "bus.subscribe": "接收其他外掛的訊息",
       "browser.cdp": "控制工作面板瀏覽器",
+      "usage.read": "讀取用量統計",
     },
     permissionHelp: {
       "ui.panel": "允許外掛在應用內顯示獨立面板。",
@@ -1665,6 +1666,8 @@ sklm: {
       "bus.subscribe": "可在其宣告的主題上接收訊息。",
       "browser.cdp":
         "可導航工作面板瀏覽器、讀取頁面、執行 JavaScript，併發送白名單內的 Chrome DevTools 命令。Cookie 與儲存相關方法會被拒絕。",
+      "usage.read":
+        "檢視彙總的用量資料——tokens 總量、活躍天數與高頻會話。不包含任何訊息內容。",
     },
   },
   extensions: {

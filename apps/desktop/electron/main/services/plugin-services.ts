@@ -338,6 +338,14 @@ export function createPluginServices({
     project: {
       create: (pluginId, input) => callPluginProjectHost(pluginId, input),
     },
+    // Read-only aggregates: the same host-owned session transport, no
+    // mutation, so no `sessionsChanged` fan-out (callPluginSessionHost only
+    // announces the mutating methods).
+    usage: {
+      summary: (pluginId, input) => callPluginSessionHost("plugin.usage.summary", pluginId, input),
+      topSessions: (pluginId, input) =>
+        callPluginSessionHost("plugin.usage.topSessions", pluginId, input),
+    },
     complete: async (input): Promise<PluginCompleteResult> => {
       if (!getHost()) {
         throw Object.assign(new Error("host unavailable"), { code: "UNSUPPORTED" });

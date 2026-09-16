@@ -282,6 +282,7 @@ type PluginPermission =
  | "session.read.own"
  | "session.update.own"
  | "session.delete.own"
+ | "usage.read"
  | "audio.capture.background"
  | "audio.playback.background"
  | "speech.adapter.register"

@@ -486,6 +486,83 @@ fn checked_index_root(
     Ok(current)
 }
 
+/// Stats range selector. Missing/null keeps the historical default (30 days);
+/// any other value must be one of the supported windows, so an illegal range
+/// is a client error rather than a silent 30-day fallback.
+fn stats_range_days_param(params: &Value) -> Result<i64, JsonRpcError> {
+    match params.get("rangeDays") {
+        None => Ok(30),
+        Some(value) if value.is_null() => Ok(30),
+        Some(value) => match value.as_i64() {
+            Some(days @ 7) | Some(days @ 30) => Ok(days),
+            _ => Err(rpc_err(
+                1002,
+                "rangeDays must be one of 7, 30",
+                "INVALID_PARAMS",
+            )),
+        },
+    }
+}
+
+/// Clamp `limit` to the documented 1..=50 window so a hostile or accidental
+/// value cannot turn the top-sessions scan into an unbounded response.
+fn stats_limit_param(params: &Value) -> i64 {
+    params
+        .get("limit")
+        .and_then(Value::as_i64)
+        .unwrap_or(5)
+        .clamp(1, 50)
+}
+
+/// Plugin usage range selector. Wider than the renderer's 7/30 stats tabs:
+/// `stats::summary` scans a fixed 365-day window anyway, so any whole-day
+/// range up to a year is safe. Bounds mirror the Electron main-process side;
+/// a missing or null value keeps the 30-day default.
+fn plugin_usage_range_days_param(params: &Value) -> Result<i64, JsonRpcError> {
+    match params.get("rangeDays") {
+        None => Ok(30),
+        Some(value) if value.is_null() => Ok(30),
+        Some(value) => match value.as_i64() {
+            Some(days @ 1..=365) => Ok(days),
+            _ => Err(rpc_err(
+                1002,
+                "rangeDays must be an integer between 1 and 365",
+                "INVALID_PARAMS",
+            )),
+        },
+    }
+}
+
+/// Plugin usage top-sessions row count. Unlike the renderer's clamp-on-read
+/// `stats.topSessions`, the plugin domain rejects: main process validates the
+/// same window, so a mismatch here is a caller bug worth surfacing.
+fn plugin_usage_limit_param(params: &Value) -> Result<i64, JsonRpcError> {
+    match params.get("limit") {
+        None => Ok(10),
+        Some(value) if value.is_null() => Ok(10),
+        Some(value) => match value.as_i64() {
+            Some(limit @ 1..=50) => Ok(limit),
+            _ => Err(rpc_err(
+                1002,
+                "limit must be an integer between 1 and 50",
+                "INVALID_PARAMS",
+            )),
+        },
+    }
+}
+
+/// Absent/null means "every project"; anything present must be an integer id.
+fn plugin_usage_project_id_param(params: &Value) -> Result<Option<i64>, JsonRpcError> {
+    match params.get("projectId") {
+        None => Ok(None),
+        Some(value) if value.is_null() => Ok(None),
+        Some(value) => value
+            .as_i64()
+            .map(Some)
+            .ok_or_else(|| rpc_err(1002, "projectId must be an integer", "INVALID_PARAMS")),
+    }
+}
+
 fn provider_rpc_err(error: impl ToString) -> JsonRpcError {
     let message = error.to_string();
     if message.starts_with("MODEL_ALIAS_TOO_LONG:") {
@@ -2727,6 +2804,51 @@ async fn handle_request(
                 return Err(rpc_err(1006, "plugin delete rate exceeded", "RATE_LIMITED"));
             }
             plugin_sessions::delete(&st.db, plugin_id, &params).map_err(plugin_session_rpc_err)
+        }
+
+        // Plugin usage is a read-only aggregate domain: the same completed-turn
+        // scan the renderer's stats tabs use, served to plugins that hold
+        // `usage.read` (checked in Electron main before dispatch). The payload
+        // carries counters, shares, and session titles — never a message body —
+        // and Electron main remains the only caller that can supply pluginId.
+        "plugin.usage.summary" => {
+            let plugin_id = params
+                .get("pluginId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
+            let range_days = plugin_usage_range_days_param(&params)?;
+            let project_id = plugin_usage_project_id_param(&params)?;
+            let st = state.lock().await;
+            let summary = crate::stats::summary(&st.db, range_days, project_id)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            tracing::debug!(
+                method = "plugin.usage.summary",
+                plugin_id,
+                range_days,
+                "plugin usage rpc served"
+            );
+            serde_json::to_value(&summary).map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))
+        }
+        "plugin.usage.topSessions" => {
+            let plugin_id = params
+                .get("pluginId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
+            let range_days = plugin_usage_range_days_param(&params)?;
+            let project_id = plugin_usage_project_id_param(&params)?;
+            let limit = plugin_usage_limit_param(&params)?;
+            let st = state.lock().await;
+            let sessions = crate::stats::top_sessions(&st.db, range_days, project_id, limit)
+                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            tracing::debug!(
+                method = "plugin.usage.topSessions",
+                plugin_id,
+                range_days,
+                limit,
+                count = sessions.len(),
+                "plugin usage rpc served"
+            );
+            Ok(json!({ "sessions": sessions }))
         }
 
         "session.beginTurn" => {
@@ -5740,6 +5862,112 @@ mod tests {
         )
         .await
         .unwrap();
+    }
+
+    #[tokio::test]
+    async fn plugin_usage_rpc_serves_read_only_aggregates() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        // Two sessions with completed turns: s2 out-earns s1 so the ranking is
+        // observable, and one s2 turn sits 10 days back so the range selector
+        // demonstrably bounds the aggregate.
+        let now = chrono::Utc::now().timestamp_millis();
+        let day = |back: i64| now - back * 24 * 3600 * 1000;
+        {
+            let st = state.lock().await;
+            let conn = st.db.conn();
+            for (id, title) in [("s1", "Small"), ("s2", "Big")] {
+                conn.execute(
+                    "INSERT INTO sessions (id, title, created_at, updated_at) VALUES (?1, ?2, ?3, ?3)",
+                    rusqlite::params![id, title, now],
+                )
+                .unwrap();
+            }
+            let turn = |id: &str, session: &str, started: i64, input: i64, output: i64| {
+                conn.execute(
+                    "INSERT INTO turns (id, session_id, status, input_tokens, output_tokens, started_at, ended_at)
+                     VALUES (?1, ?2, 'completed', ?3, ?4, ?5, ?6)",
+                    rusqlite::params![id, session, input, output, started, started + 1_000],
+                )
+                .unwrap();
+            };
+            turn("t1", "s1", day(0), 1_000, 1_000);
+            turn("t2", "s2", day(1), 5_000, 5_000);
+            turn("t3", "s2", day(10), 9_000, 9_000);
+        }
+
+        // Missing pluginId is a client error, same as the session domain.
+        let missing = handle_request(
+            state.clone(),
+            "plugin.usage.summary",
+            json!({ "rangeDays": 7 }),
+            tx.clone(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(missing.code, 1002);
+        assert_eq!(missing.data.unwrap()["errorCode"], "INVALID_PARAMS");
+
+        // The aggregate counts only the requested window: today + yesterday,
+        // excluding the 10-day-old turn.
+        let summary = handle_request(
+            state.clone(),
+            "plugin.usage.summary",
+            json!({ "pluginId": "plugin.one", "rangeDays": 7 }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(summary["cards"]["turnCount"], 2);
+        assert_eq!(summary["cards"]["totalTokens"], 12_000);
+        assert_eq!(summary["cards"]["sessionCount"], 2);
+        // No message body ever travels with the aggregate: counters only.
+        assert!(summary.get("messages").is_none());
+        assert!(summary.get("dailyTotals").is_some());
+
+        let top = handle_request(
+            state.clone(),
+            "plugin.usage.topSessions",
+            json!({ "pluginId": "plugin.one", "rangeDays": 30, "limit": 1 }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let sessions = top["sessions"].as_array().unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0]["sessionId"], "s2");
+        assert_eq!(sessions[0]["title"], "Big");
+        assert_eq!(sessions[0]["tokens"], 28_000);
+        assert_eq!(sessions[0]["turnCount"], 2);
+
+        // Main-process-side bounds are mirrored: an out-of-window range or
+        // limit is a client error, not a silent clamp.
+        for (method, bad) in [
+            ("plugin.usage.summary", json!({ "pluginId": "p", "rangeDays": 366 })),
+            ("plugin.usage.summary", json!({ "pluginId": "p", "rangeDays": "7" })),
+            ("plugin.usage.topSessions", json!({ "pluginId": "p", "limit": 0 })),
+            ("plugin.usage.topSessions", json!({ "pluginId": "p", "limit": 51 })),
+        ] {
+            let error = handle_request(state.clone(), method, bad.clone(), tx.clone())
+                .await
+                .unwrap_err();
+            assert_eq!(error.data.unwrap()["errorCode"], "INVALID_PARAMS", "{bad}");
+        }
+        // A missing rangeDays defaults to 30 days rather than erroring.
+        let defaulted = handle_request(
+            state.clone(),
+            "plugin.usage.summary",
+            json!({ "pluginId": "plugin.one" }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(defaulted["cards"]["turnCount"], 3);
+        assert_eq!(defaulted["cards"]["totalTokens"], 30_000);
     }
 
     fn available_test_shell_id() -> Option<String> {

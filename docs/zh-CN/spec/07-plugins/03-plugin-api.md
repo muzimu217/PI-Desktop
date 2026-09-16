@@ -369,6 +369,52 @@ Projects 页面也会据此刷新持久项目索引；插件不需要、也不�
 5 次批量导入和 20 次删除。写入前会移除工具 `__pi*` 与 `piDesktop.*` 对象键。
 P2/P3（会话创建、消息变更、任意重新绑定、provider/model 绑定、批量删除、标签）不属于本次接口。
 
+### 用量（需要 `usage.read`）
+
+对未删除会话的已完成 turns 做只读聚合，由宿主的 stats 域计算——与仪表盘使用
+的是同一套引擎。返回内容只包含计数、占比和会话标题，绝不包含消息正文，也不提供
+任何写路径。`rangeDays` 是 1 到 365 的整天窗口（默认 30）；`projectId` 可选，
+用于把所有聚合限定到某一个持久项目。
+
+```ts
+pi.usage.summary(input?: {
+  rangeDays?: number // 1..=365 整天；默认 30
+  projectId?: number | null
+}): Promise<{
+  range: { startMs: number; endMs: number }
+  scope: { projectId: number | null }
+  cards: {
+    totalTokens: number; peakDayTokens: number; peakDayDate: string | null
+    longestChatMs: number; currentStreakDays: number; longestStreakDays: number
+    sessionCount: number; turnCount: number
+  }
+  diagnostics: {
+    cacheLeverage: number; cacheReadTokens: number
+    largeContextTurnShare: number; top5SessionShare: number
+  }
+  dailyTotals: Array<{ date: string; tokens: number }>
+  dailyByModel: Array<{ date: string; modelId: string; tokens: number }>
+  modelUsage: Array<{ modelId: string; tokens: number; share: number }>
+  projectUsage: Array<{ projectId: number | null; projectName: string | null; tokens: number; share: number }>
+  heatmap: Array<{ date: string; tokens: number; turns: number }> // 始终是完整的 365 天窗口
+  generatedAt: number
+}>
+
+pi.usage.topSessions(input?: {
+  rangeDays?: number // 1..=365 整天；默认 30
+  limit?: number     // 1..=50 行；默认 10
+  projectId?: number | null
+}): Promise<{ sessions: Array<{
+  sessionId: string; title: string | null
+  tokens: number; turnCount: number; lastActiveMs: number
+}> }>
+```
+
+两个方法都是纯聚合读数：不含消息文本、不含转录投影，也没有任何会话变更路径。
+用户删除的会话会从聚合中消失。越界的 `rangeDays` / `limit` 或非整数的
+`projectId` 会在 Electron main 侧返回 `INVALID_PARAMS`，宿主 RPC 边界会按
+同样的界限再次校验。
+
 ### 会话协作（需要 `desktop.control`）
 
 官方 Session Orchestrator 组合了已审查的 desktop-control 目录；这不是第二套 session API，

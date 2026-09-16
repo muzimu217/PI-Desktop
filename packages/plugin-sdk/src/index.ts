@@ -280,6 +280,51 @@ export type PluginSessionGetResult = {
   updatedAt: string;
 };
 
+/**
+ * Read-only usage aggregates (`usage.read`). The host computes them from
+ * completed turns of non-deleted sessions; no message body ever crosses the
+ * bridge, only counters, shares, and session titles.
+ */
+export type PluginUsageSummary = {
+  range: { startMs: number; endMs: number };
+  scope: { projectId: number | null };
+  cards: {
+    totalTokens: number;
+    peakDayTokens: number;
+    peakDayDate: string | null;
+    longestChatMs: number;
+    currentStreakDays: number;
+    longestStreakDays: number;
+    sessionCount: number;
+    turnCount: number;
+  };
+  diagnostics: {
+    cacheLeverage: number;
+    cacheReadTokens: number;
+    largeContextTurnShare: number;
+    top5SessionShare: number;
+  };
+  dailyTotals: Array<{ date: string; tokens: number }>;
+  dailyByModel: Array<{ date: string; modelId: string; tokens: number }>;
+  modelUsage: Array<{ modelId: string; tokens: number; share: number }>;
+  projectUsage: Array<{
+    projectId: number | null;
+    projectName: string | null;
+    tokens: number;
+    share: number;
+  }>;
+  heatmap: Array<{ date: string; tokens: number; turns: number }>;
+  generatedAt: number;
+};
+
+export type PluginUsageTopSession = {
+  sessionId: string;
+  title: string | null;
+  tokens: number;
+  turnCount: number;
+  lastActiveMs: number;
+};
+
 export type PluginSessionMessageResult = {
   id: string;
   role: "user" | "assistant" | "tool";
@@ -1097,6 +1142,27 @@ export type PluginHostApi = {
       mode?: "trash" | "purge";
     }) => Promise<{ deleted: boolean }>;
   };
+  /**
+   * Read-only usage aggregates computed by the host from completed turns
+   * (`usage.read`). Aggregate counters and session titles only; there is no
+   * message-body access and no write path.
+   */
+  usage: {
+    summary: (input?: {
+      /** Whole days covered by the aggregate, 1..=365; default 30. */
+      rangeDays?: number;
+      /** Limit every aggregate to one durable project id. */
+      projectId?: number | null;
+    }) => Promise<PluginUsageSummary>;
+    topSessions: (input?: {
+      /** Whole days covered by the ranking, 1..=365; default 30. */
+      rangeDays?: number;
+      /** 1..=50 rows; default 10. */
+      limit?: number;
+      /** Limit the ranking to one durable project id. */
+      projectId?: number | null;
+    }) => Promise<{ sessions: PluginUsageTopSession[] }>;
+  };
   services: {
     /**
      * Register a resident service declared in `contributes.services`. Local
@@ -1204,6 +1270,9 @@ export const PLUGIN_PERMISSIONS = [
   "session.read.own",
   "session.update.own",
   "session.delete.own",
+  // Read-only usage aggregates (pi.usage.summary / pi.usage.topSessions):
+  // completed-turn counters and session titles, never message bodies.
+  "usage.read",
   "net.fetch",
   "shell.openExternal",
   "mcp.server.local",

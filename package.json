@@ -22,6 +22,7 @@
     "test:host": "cargo test -p host-core",
     "test:e2e": "node scripts/e2e-smoke.mjs",
     "test:e2e:index": "node scripts/e2e-index.mjs",
+    "test:e2e:stats": "node scripts/e2e-stats.mjs",
     "test:e2e:plan": "node scripts/e2e-plan.mjs",
     "test:e2e:plan-ui": "node scripts/e2e-plan-ui.mjs",
     "test:e2e:theme-surfaces": "node scripts/e2e-theme-surfaces.mjs",

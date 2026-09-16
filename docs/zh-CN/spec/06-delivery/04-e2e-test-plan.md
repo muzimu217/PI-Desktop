@@ -817,7 +817,47 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 - **关联规格**：`04-ux/06-settings-ia.md`、`03-runtime/06-host-rpc-protocol.md`
 - **验收**：质量（数据正确性）
 - **里程碑**：M6+
-- **状态**：聚合由 host-core 单测覆盖（`stats::tests`）；UI 旅程待补
+- **状态**：由 `pnpm test:e2e:stats` 自动化（UI 旅程）且由 host-core 单测覆盖（`stats::tests`）
+
+#### E2E-STATS-heatmap-today：热力图当日单元格高亮
+
+- **前置条件**：fixture 含本地当天的已完成回合。
+- **步骤**：1）注入已知 fixture（当日有已完成回合）。2）打开 设置 → 使用统计。3）检查活动热力图。
+- **预期**：仅当前日单元格带 `.stats-heat-today` 高亮，其余单元格不带。本地日期取键避免历史上导致热力图空白的 UTC 差一天问题。
+- **关联规格**：`03-runtime/06-host-rpc-protocol.md`、`04-ux/06-settings-ia.md`
+- **验收**：质量（数据正确性）、D（视觉）
+- **里程碑**：M6+
+- **状态**：由 `pnpm test:e2e:stats` 自动化
+
+#### E2E-STATS-project-breakdown：Top8 + Other 折叠 + 无项目桶
+
+- **前置条件**：fixture 的已完成回合分布在超过 8 个项目，另有一个无项目会话。
+- **步骤**：1）注入 fixture。2）打开 设置 → 使用统计 → 项目细分。3）读取渲染行。
+- **预期**：前 8 个项目渲染为整行；尾部折叠为单个「Other」行，其份额等于折叠份额之和；无项目的会话归入「无项目」。折叠后份额重归一为 1。
+- **关联规格**：`03-runtime/06-host-rpc-protocol.md`、`04-ux/06-settings-ia.md`
+- **验收**：质量（数据正确性）、D（视觉）
+- **里程碑**：M6+
+- **状态**：由 `pnpm test:e2e:stats` 自动化
+
+#### E2E-STATS-soft-deleted-excluded：已删除会话永不计入合计（R12）
+
+- **前置条件**：fixture 中某个已完成会话被软删除（`deleted_at` 已置）且 token 量很大。
+- **步骤**：1）注入 fixture（含被删会话）。2）打开 设置 → 使用统计。3）读取「总 tokens」指标卡。
+- **预期**：显示合计等于「已完成且未删除会话」回合的 SQL 合计；被删会话的 token 不计入。这是 R12 回归门。
+- **关联规格**：`03-runtime/06-host-rpc-protocol.md`、`04-ux/06-settings-ia.md`
+- **验收**：质量（数据正确性）、质量（R12 不变量）
+- **里程碑**：M6+
+- **状态**：由 `pnpm test:e2e:stats` 自动化；不变量亦由 host-core `soft_deleted_sessions_exit_summary_and_top_sessions` 覆盖
+
+#### E2E-STATS-empty-state：零已完成回合显示整页空态
+
+- **前置条件**：存在会话但无已完成回合。
+- **步骤**：1）注入一个无回合的会话。2）打开 设置 → 使用统计。
+- **预期**：页面渲染整页空态（「No usage data yet」）并提供「Back to app」动作；无残缺/幽灵卡片，provenance 不显示为错误红。
+- **关联规格**：`04-ux/06-settings-ia.md`、`03-runtime/06-host-rpc-protocol.md`
+- **验收**：D（状态完整性）、B
+- **里程碑**：M6+
+- **状态**：由 `pnpm test:e2e:stats` 自动化
 
 ### 工作区打开
 

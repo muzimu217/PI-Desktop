@@ -1666,8 +1666,67 @@ identify the platform validation still needed.
   `03-runtime/06-host-rpc-protocol.md`
 - **Acceptance**: B (model config adjacent), Quality (data correctness)
 - **Milestone**: M6+
-- **Status**: Aggregation covered by host-core unit tests
-  (`stats::tests`); UI journey pending
+- **Status**: Automated by `pnpm test:e2e:stats` (UI journey) and host-core
+  unit tests (`stats::tests`)
+
+#### E2E-STATS-heatmap-today: today's heatmap cell is highlighted
+
+- **Preconditions**: A fixture with completed turns on the local day.
+- **Steps**: 1) Seed a known fixture (today has completed turns). 2) Open
+  Settings → Usage. 3) Inspect the activity heatmap.
+- **Expected**: Exactly the current-day cell carries the `.stats-heat-today`
+  highlight; other cells do not. Local-date keying prevents the historical UTC
+  off-by-one that blanked the heatmap.
+- **Specs linked**: `03-runtime/06-host-rpc-protocol.md`,
+  `04-ux/06-settings-ia.md`
+- **Acceptance**: B (data correctness), D (visual), Quality
+- **Milestone**: M6+
+- **Status**: Automated by `pnpm test:e2e:stats`
+
+#### E2E-STATS-project-breakdown: Top8 + Other fold + No-project bucket
+
+- **Preconditions**: A fixture with completed turns spread across more than
+  eight projects plus one session with no project.
+- **Steps**: 1) Seed the fixture. 2) Open Settings → Usage → Project
+  breakdown. 3) Read the rendered rows.
+- **Expected**: The top eight projects render as full-width rows; the tail
+  folds into a single "Other" row whose share equals the sum of folded shares;
+  sessions without a project appear under "No project". Shares renormalise to 1
+  after folding.
+- **Specs linked**: `03-runtime/06-host-rpc-protocol.md`,
+  `04-ux/06-settings-ia.md`
+- **Acceptance**: B (data correctness), D (visual)
+- **Milestone**: M6+
+- **Status**: Automated by `pnpm test:e2e:stats`
+
+#### E2E-STATS-soft-deleted-excluded: trashed sessions never reach the totals (R12)
+
+- **Preconditions**: A fixture where one completed session is soft-deleted
+  (`deleted_at` set) and carries a large token sum.
+- **Steps**: 1) Seed the fixture (including the trashed session). 2) Open
+  Settings → Usage. 3) Read the Total tokens tile.
+- **Expected**: The displayed total equals the SQL sum over completed turns of
+  NON-deleted sessions; the trashed session's tokens are absent. This is the R12
+  regression gate.
+- **Specs linked**: `03-runtime/06-host-rpc-protocol.md`,
+  `04-ux/06-settings-ia.md`
+- **Acceptance**: B (data correctness), Quality (R12 invariant)
+- **Milestone**: M6+
+- **Status**: Automated by `pnpm test:e2e:stats`; invariant also covered by
+  host-core `soft_deleted_sessions_exit_summary_and_top_sessions`
+
+#### E2E-STATS-empty-state: zero completed turns shows the whole-page empty state
+
+- **Preconditions**: A session exists but has no completed turns.
+- **Steps**: 1) Seed a session with no turns. 2) Open Settings → Usage.
+- **Expected**: The page renders the whole-page empty state ("No usage data
+  yet") with a "Back to app" action; no partial/ghost cards and no error-red
+  provenance.
+- **Specs linked**: `04-ux/06-settings-ia.md`,
+  `03-runtime/06-host-rpc-protocol.md`
+- **Acceptance**: D (state completeness), B
+- **Milestone**: M6+
+- **Status**: Automated by `pnpm test:e2e:stats`
 
 ### Workspace Open
 

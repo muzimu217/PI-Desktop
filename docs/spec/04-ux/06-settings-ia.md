@@ -580,7 +580,11 @@ system while preserving their different data ownership:
   it on the blocking pool, so `workspace.set` stays fast and the health card
   polls `index.status` once a second while building, pausing when the window
   is hidden; case-sensitive literal Grep searches may then be served from the
-  index while every other query keeps walking. The copy promises speed for
+  index while every other query keeps walking. Re-opening the same workspace
+  re-walks it at most once per ten minutes, and that re-walk is preceded by
+  a stat-only pass that skips the crawl entirely when no visible file
+  changed; regardless of freshness, per-candidate stat verification keeps
+  Grep's answer identical to the fallback's. The copy promises speed for
   eligible searches, never changed results. A second "index new folders"
   toggle would either duplicate this switch or build an index that nothing
   reads, so the section carries exactly one

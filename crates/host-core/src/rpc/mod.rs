@@ -1857,39 +1857,49 @@ async fn handle_request(
             // need the app state lock; drop the lock before doing them so
             // concurrent RPCs are not serialized behind this one.
             drop(st);
-            let mut triggered = false;
-            if boost {
-                let outcome = if changed {
-                    index.ensure_index(&root)
-                } else if refresh_due {
-                    index
-                        .request_refresh(&root)
-                        .map(|_| crate::index::EnsureOutcome::Triggered)
-                } else {
-                    Ok(crate::index::EnsureOutcome::Fresh)
-                };
-                match outcome {
+            if boost && changed {
+                match index.ensure_index(&root) {
                     Ok(crate::index::EnsureOutcome::Triggered) => {
                         // Mark only on a successful trigger: a failed one
                         // stays due and retries on the next workspace.set.
                         index.refresh_mark(&root);
-                        triggered = true;
+                        let build_index = index.clone();
+                        let build_root = root.clone();
+                        tokio::task::spawn_blocking(move || {
+                            if let Err(error) = build_index
+                                .rebuild(&build_root, crate::index::IndexLimits::default())
+                            {
+                                tracing::warn!(error = %error, "background index rebuild failed");
+                            }
+                        });
                     }
                     Ok(_) => {}
                     Err(error) => {
                         tracing::warn!(error = %error, "auto index ensure failed");
                     }
                 }
-            }
-            if triggered {
+            } else if boost && refresh_due {
+                // Same-path refresh: a stat-only probe first, and the crawl
+                // only runs when the probe says something actually changed.
+                // Both the probe and the crawl belong on the blocking pool;
+                // the interval is consumed by the attempt either way.
                 let build_index = index.clone();
                 let build_root = root.clone();
                 tokio::task::spawn_blocking(move || {
-                    if let Err(error) =
-                        build_index.rebuild(&build_root, crate::index::IndexLimits::default())
-                    {
-                        tracing::warn!(error = %error, "background index rebuild failed");
+                    match build_index.refresh_if_changed(&build_root) {
+                        Ok(true) => {
+                            if let Err(error) = build_index
+                                .rebuild(&build_root, crate::index::IndexLimits::default())
+                            {
+                                tracing::warn!(error = %error, "background index rebuild failed");
+                            }
+                        }
+                        Ok(false) => {}
+                        Err(error) => {
+                            tracing::warn!(error = %error, "index freshness probe failed");
+                        }
                     }
+                    build_index.refresh_mark(&build_root);
                 });
             }
             Ok(json!({ "workspace": ws }))

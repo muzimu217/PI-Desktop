@@ -7,10 +7,13 @@
 //! `index.status` tells the truth while the re-walk runs.
 
 use anyhow::Result;
+use std::collections::HashMap;
 use std::path::Path;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, UNIX_EPOCH};
 
-use super::{normalize_root, root_id, IndexStatus, IndexStore, RootUpdate};
+use super::{
+    normalize_rel_path, normalize_root, root_id, IndexStatus, IndexStore, RootUpdate, MAX_FILES,
+};
 
 /// Minimum spacing between same-path auto refreshes of a workspace index.
 /// Bounds how long Grep's fast path can keep serving candidates that predate
@@ -42,6 +45,95 @@ impl IndexStore {
             .lock()
             .unwrap()
             .insert(root_id, Instant::now());
+    }
+
+    /// Stat-only freshness probe run before committing to a full re-crawl.
+    /// Returns `true` when the root needs a rebuild — it is not `fresh`, or
+    /// the visible set's on-disk sizes/mtimes disagree with the stored rows
+    /// (a file changed, appeared, or vanished) — after marking it `building`
+    /// via [`Self::request_refresh`], so the caller goes straight to
+    /// `rebuild`. Returns `false` only when the walk reproduces the stored
+    /// visible set exactly, letting the caller skip the re-crawl and keep
+    /// the root fresh. On any uncertain outcome (unreadable entry, vanished
+    /// file mid-walk) the probe answers `true` and lets the crawl decide.
+    pub fn refresh_if_changed(&self, root: &Path) -> Result<bool> {
+        let root = normalize_root(root);
+        let root_id = root_id(&root);
+        let fresh = self
+            .status(Some(&root))?
+            .into_iter()
+            .next()
+            .is_some_and(|status| status.status == IndexStatus::Fresh.as_str());
+        let changed = !fresh || self.visible_set_changed(&root, &root_id)?;
+        if changed {
+            self.request_refresh(&root)?;
+        }
+        Ok(changed)
+    }
+
+    /// Walk the visible set the way the crawler does (unscoped visible walk,
+    /// vendor prune) minus the content read: stat is all the staleness
+    /// decision needs. Returns `true` on any disagreement with the stored
+    /// rows or on any uncertain outcome.
+    fn visible_set_changed(&self, root: &Path, root_id: &str) -> Result<bool> {
+        let connection = self.connection()?;
+        let mut stored: HashMap<String, (i64, i64)> = HashMap::new();
+        {
+            let mut statement = connection
+                .prepare("SELECT rel_path, size, mtime_ms FROM files WHERE root_id = ?1")?;
+            let rows = statement.query_map([root_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            })?;
+            for row in rows {
+                let (rel_path, size, mtime_ms) = row?;
+                stored.insert(rel_path, (size, mtime_ms));
+            }
+        }
+        let mut seen = 0_usize;
+        for entry in crate::tools::ignore_rules::visible_walker(root, false).build() {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(_) => return Ok(true),
+            };
+            if !entry
+                .file_type()
+                .is_some_and(|file_type| file_type.is_file())
+                || crate::tools::ignore_rules::is_vendor_path(root, entry.path())
+            {
+                continue;
+            }
+            seen += 1;
+            if seen > MAX_FILES {
+                return Ok(true); // over budget: the crawl re-arms the limit state
+            }
+            let path = entry.path().to_path_buf();
+            let Ok(metadata) = std::fs::metadata(&path) else {
+                return Ok(true); // vanished mid-walk
+            };
+            let rel_path = match path.strip_prefix(root) {
+                Ok(rel) => normalize_rel_path(rel),
+                Err(_) => return Ok(true),
+            };
+            let mtime_ms = metadata
+                .modified()
+                .ok()
+                .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+                .map(|duration| duration.as_millis() as i64)
+                .unwrap_or(0);
+            match stored.remove(&rel_path) {
+                Some((size, stored_mtime)) => {
+                    if size != metadata.len() as i64 || stored_mtime != mtime_ms {
+                        return Ok(true);
+                    }
+                }
+                None => return Ok(true), // a file the index never saw
+            }
+        }
+        Ok(!stored.is_empty()) // leftover rows are files no longer on disk
     }
 
     /// Mark a `fresh` root `building` ahead of a same-path auto refresh, so
@@ -97,6 +189,66 @@ mod tests {
         // An unrelated root has its own clock.
         let other = tempfile::tempdir().unwrap();
         assert!(store.refresh_due(other.path()));
+    }
+
+    #[test]
+    fn probe_skips_the_recrawl_when_the_visible_set_is_unchanged() {
+        let data = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("one.txt"), "one\n").unwrap();
+        let store = IndexStore::open(data.path()).unwrap();
+        store.rebuild(root.path(), IndexLimits::default()).unwrap();
+
+        assert!(!store.refresh_if_changed(root.path()).unwrap());
+        assert_eq!(
+            store.status(Some(root.path())).unwrap()[0].status,
+            "fresh",
+            "an unchanged root is never flipped to building"
+        );
+    }
+
+    #[test]
+    fn probe_detects_edited_added_and_removed_files() {
+        let data = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("one.txt"), "one\n").unwrap();
+        let store = IndexStore::open(data.path()).unwrap();
+        store.rebuild(root.path(), IndexLimits::default()).unwrap();
+
+        // Edited in place (mtime moves): rebuild is required.
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        fs::write(root.path().join("one.txt"), "one edited\n").unwrap();
+        assert!(store.refresh_if_changed(root.path()).unwrap());
+        assert_eq!(
+            store.status(Some(root.path())).unwrap()[0].status,
+            "building",
+            "a changed root is marked building for the re-crawl"
+        );
+        store.rebuild(root.path(), IndexLimits::default()).unwrap();
+
+        // A new file appears.
+        fs::write(root.path().join("two.txt"), "two\n").unwrap();
+        assert!(store.refresh_if_changed(root.path()).unwrap());
+        store.rebuild(root.path(), IndexLimits::default()).unwrap();
+
+        // A stored file disappears.
+        fs::remove_file(root.path().join("two.txt")).unwrap();
+        assert!(store.refresh_if_changed(root.path()).unwrap());
+    }
+
+    #[test]
+    fn probe_falls_through_to_a_full_rebuild_for_a_non_fresh_root() {
+        let data = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("one.txt"), "one\n").unwrap();
+        let store = IndexStore::open(data.path()).unwrap();
+
+        // Unknown root: not fresh, so the probe takes the rebuild path.
+        assert!(store.refresh_if_changed(root.path()).unwrap());
+        assert_eq!(
+            store.status(Some(root.path())).unwrap()[0].status,
+            "building"
+        );
     }
 
     #[test]

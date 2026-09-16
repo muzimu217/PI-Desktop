@@ -1677,20 +1677,28 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 
 #### E2E-SUBAGENT-settings-lists-builtin-defaults
 
-- **前提条件**：应用已运行。`~/.agents/subagents` 为空。五个内置定义存在，且没有用户文档覆盖它们。
+- **前提条件**：应用已运行。`~/.agents/subagents` 为空。五个内置定义存在，没有一个被关闭，且没有用户文档覆盖它们。
 - **步骤**：
   1. 打开设置 → 智能体 → 子智能体。确认内置分组列出 `explorer`、`code-reviewer`、
-     `test-runner`、`fixer`、`ui-designer`，带本地化名称、`Task(<handle>)`、工具授权和「内置」徽标；
-     这些行没有启用开关、在文件夹中显示或删除。
+     `test-runner`、`fixer`、`ui-designer`，带本地化名称、`Task(<handle>)`、工具授权、「内置」徽标、
+     「复制为我的定义」，以及处于打开位置的启用开关。确认这些行没有在文件夹中显示或删除。
   2. 确认全局分组仍显示本地化的 `settings.subagentsEmpty` 文案和「新建子智能体」。
-  3. 在 explorer 上选择「复制为我的定义」。确认新建表单按该定义预填，且选中的是探索者模板芯片而不是空白开始。保存后确认 explorer 只出现在全局用户行，并从内置分组消失。
-  4. 禁用该用户 explorer 并重新加载。确认用户行关闭，explorer 重新出现在内置分组（未启用的用户文档不会进入加载器，因此内置定义重新生效）。
-- **预期**：设置页展示主智能体实际可委派的默认子智能体。复制内置项是用户改写它的方式；启用、显示和删除只作用于用户自建文件。
+  3. 在内置行上关掉 `fixer`。确认该行随开关关闭而变暗，toast 指出它的名字，
+     `~/.agents/subagents` 中没有出现任何东西，且该行仍留在列表里，因为那个开关就是重新打开的入口。
+  4. 在 `fixer` 关闭的情况下发送一次提示。确认 `Task` 目录不再提供它，而其余四个仍在；然后把它重新打开，
+     确认下一次提示又提供它。
+  5. 在 explorer 上选择「复制为我的定义」。确认新建表单按该定义预填（名称、描述、工具、正文），
+     且选中的是探索者模板芯片而不是空白开始。保存后确认 explorer 只出现在全局用户行，并从内置分组
+     消失，且下一次提示的 `Task` 目录使用该用户文档。
+  6. 禁用该用户 explorer 并重新加载。确认用户行关闭，explorer 重新出现在内置分组（未启用的用户文档不会进入加载器，因此内置定义重新生效）。
+- **预期**：设置页展示主智能体实际可委派的默认子智能体，且每一个都能从自己的行上关闭。内置项的启用状态是应用本地状态而不是文档，因此被关闭的默认项保留自己的行；复制内置项仍是改写它的方式；在文件夹中显示与删除仍然只作用于用户自建的行，因为它们以文件为后端。
 - **链接规格**：`04-ux/06-settings-ia.md` §2、`03-runtime/01-ipc-protocol.md` §12c、
-  `03-runtime/02-agent-runtime.md` §5f、ADR 0062、ADR 0063
+  `03-runtime/02-agent-runtime.md` §5f、ADR 0062、ADR 0063、ADR 0270
 - **验收**：E（工具与权限）、品质
 - **里程碑**：M6+
-- **状态**：源代码/单元已覆盖；完整 UI 旅程为草稿
+- **状态**：源代码/单元已覆盖（`apps/desktop/test/agent-capability-settings.test.mjs`、
+  `apps/desktop/test/subagent-wiring.test.mjs`、`packages/agent-runtime/src/subagent-definitions.test.ts`、
+  `packages/shared/src/subagent-presets.test.ts`）；完整 UI 旅程为草稿
 
 #### E2E-200：Linux RPM 保留 Wayland 桌面身份
 
@@ -4630,7 +4638,7 @@ IPC 请求无法关闭。
   11. 打开子代理，确认它是以 `~/.agents/subagents` 为根的单块全局面板，没有级别筛选、
       没有项目选择器、也没有项目级控制。确认即使用户目录为空，内置分组仍列出五个默认
       子智能体（`explorer`、`code-reviewer`、`test-runner`、`fixer`、`ui-designer`），
-      带「内置」徽标和工具授权，且没有启用开关、在文件夹中显示或删除。确认全局分组标题
+      带「内置」徽标、工具授权和启用开关，但没有在文件夹中显示或删除。确认全局分组标题
       带有全局级别标签和数量，新建 / 编辑 / 删除 / 在文件管理器中显示都能对用户自建行
       在页面内完成，且空的用户目录仍通过
       `settings.subagentsEmpty` 在全局分组下解析为本地化空态文案，不显示原始翻译键。
@@ -5080,6 +5088,8 @@ IPC 请求无法关闭。
 | 品质（旧版子代理回合上限） | E2E-SUBAGENT-legacy-turn-limit-frontmatter-is-ignored |
 | M6+（展开详情保持阅读位置） | E2E-CHAT-disclosure-toggle-keeps-reading-position |
 | M6+（能力跨级别迁移） | E2E-CAPABILITY-move-across-levels |
+| E — 工具与权限（内置子智能体默认项） | E2E-SUBAGENT-settings-lists-builtin-defaults |
+| 品质（内置子智能体默认项） | E2E-SUBAGENT-settings-lists-builtin-defaults |
 
 `US-UI-*` 视觉场景（§UI shell 视觉场景）追踪到
 [决策日志 §D](/zh-CN/spec/08-meta/decisions-log) 中的法典平价决策

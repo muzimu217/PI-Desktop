@@ -607,8 +607,9 @@ builtins shipped inline in `agent-runtime` (`explorer`, `code-reviewer`,
 `test-runner`, `fixer`, `ui-designer`) and the global user documents under
 `~/.agents/subagents/*.md`. There is no project-level subagent directory and
 `.pi/agents` is not scanned for capabilities. User documents are filtered by
-the app-local enabled state before they reach the loader. Electron main loads
-the global catalog on every launch and passes `subagents` /
+the app-local enabled state before they reach the loader, and the shipped
+builtins are filtered by that same app-local state inside it (ADR 0270).
+Electron main loads
 `subagentProviders` in the sidecar params, so editing a definition takes effect
 on the next prompt. The catalog is capped at `MAX_SUBAGENT_DEFINITIONS` (16);
 a malformed or unreadable document becomes a launch diagnostic and never fails

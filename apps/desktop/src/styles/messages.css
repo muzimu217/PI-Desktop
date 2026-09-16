@@ -1338,11 +1338,19 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Compact composer plate: same surface and radius as the bottom composer,
+   without the floating shadow. The textarea is unboxed; actions sit in a
+   28px footer. */
 .message-edit {
   display: flex;
   width: min(100%, 720px);
+  margin: 0;
   flex-direction: column;
-  gap: 8px;
+  border: 0;
+  border-radius: var(--ds-composer-radius, var(--radius-xl));
+  background: var(--ds-bg-composer);
+  box-shadow: none;
+  isolation: isolate;
 }
 
 /* A prompt being edited needs typing room, so the user column drops its
@@ -1354,34 +1362,65 @@
 
 .message-row.user .message-bubble:has(.message-edit) {
   width: 100%;
+  max-width: 100%;
+  border-radius: 0;
   background: transparent;
   padding: 0;
 }
 
 .message-edit-input {
+  display: block;
   width: 100%;
-  min-height: 112px;
-  max-height: 50vh;
-  resize: vertical;
+  min-height: 3lh;
+  max-height: min(12lh, 50vh);
+  resize: none;
+  overflow-y: auto;
   border: 0;
-  border-radius: var(--radius-md-plus);
-  background: var(--ds-raised);
-  box-shadow: var(--ds-raised-shadow);
-  padding: 10px 12px;
+  background: transparent;
+  padding: 12px 14px 8px;
   color: var(--ds-text-primary);
   font: inherit;
+  font-size: var(--text-base);
   line-height: var(--leading-chat);
   outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 
-.message-edit-input:focus {
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 30%, transparent);
+.message-edit-input:focus,
+.message-edit-input:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 .message-edit-actions {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 4px;
+  padding: 4px 8px 8px;
+}
+
+.message-edit-cancel {
+  height: 28px;
+  min-height: 28px;
+  padding: 0 10px;
+  color: var(--ds-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--leading-compact);
+  white-space: nowrap;
+}
+
+.send-btn.message-edit-submit {
+  width: auto;
+  min-width: 28px;
+  flex: 0 0 auto;
+  padding: 0 12px;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--leading-compact);
+  white-space: nowrap;
 }
 
 .message-revision-label {

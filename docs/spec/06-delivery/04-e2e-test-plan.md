@@ -2964,11 +2964,13 @@ identify the platform validation still needed.
   is up.
 - **Expected**: The card appears after a 500ms dwell, never appears during
   quick pointer passes, and re-targets to the latest hovered row when the
-  pointer changes. Each card shows: the localized session title, two tag
-  chips (Local task + mode/permission badge), the project name under
-  Workspace (or "Temporary" / "临时对话" for scratch rows), the latest
-  externally selected Git branch for the active project, and the row's
-  `Updated` timestamp formatted by the active locale. Refreshing the branch
+  pointer changes. Each card shows: the localized session title, the
+  mode/permission badge, live status, the readable model display name when
+  known, the project name (or "Temporary" / "临时对话" for scratch rows)
+  with the latest Git branch on the same row, and the row's `Updated`
+  timestamp formatted by the active locale without seconds. Ordinary
+  sessions do not show a Local task chip, session UUID, separate Provider
+  label, or a status-checked timestamp. Refreshing the branch
   does not activate a project or change the selected conversation. The session
   row has no native `title` tooltip; the hover card is the only full-title
   surface. The card never widens past 320px, never causes the underlying row
@@ -4308,8 +4310,8 @@ identify the platform validation still needed.
   streaming, its toolbar omits
   Copy; after the response settles, the assistant toolbar offers Copy, Fork,
   Regenerate. The user toolbar offers the pager (when variants exist), Copy,
-  Edit, Delete. Edit replaces the prompt bubble with a wider inline
-  textarea with Retry and Cancel controls; Escape or Cancel restores the bubble
+  Edit, Delete. Edit replaces the prompt bubble with a wider composer-matched
+  inline editor plate with Retry and Cancel controls; Escape or Cancel restores the bubble
   unchanged. Retry truncates the transcript from that prompt and streams a new
   answer whether or not the text changed, leaving a `current / total` pager on
   the user turn that restores the original prompt with its full answer tail in
@@ -4731,7 +4733,7 @@ identify the platform validation still needed.
   - Work panel body reads as quiet `#fafafa` inset paper with a white header band.
   - Settings fields, browser URL, segment tracks, and shortcut keycaps use light inset fills; focused fields lift with a neutral ring.
   - Toggle on-state keeps a white knob on the near-black track.
-  - Hover fills on file-tree/diff/resize ease with shared motion tokens.
+  - Hover fills on file-tree/diff/resize ease with shared motion tokens, and the divider's 2px line is a 50% accent tint while hovered or dragged, so it never paints a solid white hairline across the dark plate; keyboard focus keeps the full accent.
   - Light dialog scrim is softer than the dark 45% veil (~28% ink).
   - Tool output keeps its cascade: light paints the same lighter tile over error
     output and over plain tool blocks, while dark shows the error tint and leaves
@@ -6678,8 +6680,8 @@ identify the platform validation still needed.
       project-level controls. Confirm a Built-in group lists the five shipped
       defaults (`explorer`, `code-reviewer`, `test-runner`, `fixer`,
       `ui-designer`) even when the user directory is empty, each with a
-      Built-in badge, its tool grant, and no enablement switch, reveal, or
-      delete. Confirm the Global group header carries the global level label
+      Built-in badge, its tool grant, and an enablement switch, but no reveal
+      or delete. Confirm the Global group header carries the global level label
       and item count, that create/edit/delete/reveal all work from the page
       for user-owned rows, that leaving the output limit empty writes a
       definition with no `maxTokens`, and that an empty user
@@ -7623,6 +7625,8 @@ identify the platform validation still needed.
 | Quality (legacy subagent turn limit) | E2E-SUBAGENT-legacy-turn-limit-frontmatter-is-ignored |
 | M6+ (disclosure reading position) | E2E-CHAT-disclosure-toggle-keeps-reading-position |
 | M6+ (capability level move) | E2E-CAPABILITY-move-across-levels |
+| E — Tools & permissions (builtin subagent defaults) | E2E-SUBAGENT-settings-lists-builtin-defaults |
+| Quality (builtin subagent defaults) | E2E-SUBAGENT-settings-lists-builtin-defaults |
 
 The `US-UI-*` visual scenarios (§UI shell visual scenarios) trace to the
 Codex parity decisions in [decisions-log §D](../08-meta/decisions-log.md)
@@ -9344,33 +9348,42 @@ This test plan spec is accepted when:
 #### E2E-SUBAGENT-settings-lists-builtin-defaults
 
 - **Preconditions**: A running app. `~/.agents/subagents` is empty. The five
-  shipped builtins are present and no user document shadows them.
+  shipped builtins are present, none is switched off, and no user document
+  shadows them.
 - **Steps**:
   1. Open Settings → Agent → Subagents. Confirm a Built-in group lists
      `explorer`, `code-reviewer`, `test-runner`, `fixer`, and `ui-designer`
-     with localized names, `Task(<handle>)` copy, tool grants, and a Built-in
-     badge. Confirm none of those rows has an enablement switch, Reveal, or
-     Delete.
+     with localized names, `Task(<handle>)` copy, tool grants, a Built-in
+     badge, **Copy as mine**, and an enablement switch in the on position.
+     Confirm none of those rows has Reveal or Delete.
   2. Confirm the Global group still shows localized `settings.subagentsEmpty`
      copy and the New subagent action.
-  3. Choose **Copy as mine** on explorer. Confirm the create sheet opens
+  3. Switch `fixer` off from its Built-in row. Confirm the row dims with its
+     switch off, the toast names it, nothing appears in `~/.agents/subagents`,
+     and the row stays listed, because that switch is the way back on.
+  4. Send a prompt with `fixer` switched off. Confirm the Task catalog does not
+     offer it while the other four remain, then switch it back on and confirm
+     the next prompt offers it again.
+  5. Choose **Copy as mine** on explorer. Confirm the create sheet opens
      pre-filled from that definition (name, description, tools, body) with
      the Explorer template chip selected, not Blank. Save. Confirm
      explorer now appears only as a user-owned Global row and is omitted from
      Built-in, and the next prompt's Task catalog uses the user document.
-     row and is omitted from Built-in, and the next prompt's Task catalog
-     uses the user document.
-  4. Disable the user explorer and reload the page. Confirm the user row is
+  6. Disable the user explorer and reload the page. Confirm the user row is
      off and explorer reappears under Built-in (disabled user documents do
      not reach the loader, so the shipped definition wins again).
-- **Expected**: Settings shows the defaults the agent can actually delegate
-  to. Copying a builtin is how a user retunes it; enablement, reveal, and
-  delete remain file-backed actions on user-owned rows only.
+- **Expected**: Settings shows the defaults the agent can actually delegate to,
+  and every one of them can be turned off from its own row. Builtin activation
+  is app-local state rather than a document, so a switched-off default keeps its
+  row; copying a builtin stays the way to retune one, and reveal and delete
+  remain file-backed actions on user-owned rows only.
 - **Specs linked**: `04-ux/06-settings-ia.md` §2, `03-runtime/01-ipc-protocol.md`
-  §12c, `03-runtime/02-agent-runtime.md` §5f, ADR 0062, ADR 0063
+  §12c, `03-runtime/02-agent-runtime.md` §5f, ADR 0062, ADR 0063, ADR 0270
 - **Acceptance**: E (tools & permissions), Quality
 - **Milestone**: M6+
 - **Status**: Source/unit covered (`apps/desktop/test/agent-capability-settings.test.mjs`,
+  `apps/desktop/test/subagent-wiring.test.mjs`,
+  `packages/agent-runtime/src/subagent-definitions.test.ts`,
   `packages/shared/src/subagent-presets.test.ts`); full UI journey Draft
   (run only in a capable environment when this surface changes)
 
@@ -11136,8 +11149,8 @@ are withdrawn with ADR 0165.
   4) Delete (or otherwise remove) one referenced session, or use a session whose
   reference is already stale, then revisit the card. 5) Inspect an independent
   session's card as well.
-- **Expected**: The card shows the provider's readable name and model display
-  name instead of the provider ID. A collaboration-created session shows its
+- **Expected**: The card shows the model's display name, falling back to
+  the provider's readable name, instead of the provider ID. A collaboration-created session shows its
   creator, and a creator shows its bounded created-session list. Each live
   reference is a native keyboard-focusable button with an accessible
   open-session name; activating it opens that durable session and focuses the

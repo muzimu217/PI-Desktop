@@ -785,10 +785,15 @@ export const api = {
   // --- Subagents the user owns ----------------------------------------------
   listUserSubagents: (query?: Pick<AgentCapabilityQuery, "level">) =>
     invoke<{ subagents: UserSubagentRecord[] }>(IPC.invoke.subagentList, query),
-  /** What `Task` would offer right now, merged across all three sources. */
+  /**
+   * What `Task` would offer right now, merged across the shipped builtins and
+   * the registry. `builtins` keeps a switched-off default in the list, flagged
+   * `enabled: false`, so Settings can still show that row and its switch.
+   */
   subagentCatalog: () =>
     invoke<{
       subagents: SubagentDefinition[];
+      builtins: Array<SubagentDefinition & { enabled: boolean }>;
       diagnostics: string[];
       projectPath: string | null;
     }>(IPC.invoke.subagentCatalog),
@@ -808,6 +813,15 @@ export const api = {
   removeUserSubagent: (id: string) => invoke(IPC.invoke.subagentRemove, id),
   setUserSubagentEnabled: (id: string, enabled: boolean) =>
     invoke(IPC.invoke.subagentSetEnabled, { id, enabled }),
+  /**
+   * Turn one shipped default off, or back on. The id is the `Task` handle
+   * (`explorer`), never a document id: a builtin has no file to switch.
+   */
+  setBuiltinSubagentEnabled: (id: string, enabled: boolean) =>
+    invoke<{ id: string; enabled: boolean }>(IPC.invoke.subagentSetBuiltinEnabled, {
+      id,
+      enabled,
+    }),
   setUserSubagentScope: (id: string, scope: ActivationScope) =>
     invoke(IPC.invoke.subagentSetScope, { id, scope }),
   /** Registry entries reveal by id; project documents pass their own path. */

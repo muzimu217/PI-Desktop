@@ -17,6 +17,8 @@ export type SkillsIpcDependencies = {
   getHost: () => HostProcess | null;
   optionalWorkspaceRoot: () => Promise<string | null>;
   activeUserSubagentDocuments: (projectPath: string | undefined) => Promise<UserSubagentDocument[]>;
+  /** Handles whose shipped definition the user turned off (builtin activation). */
+  disabledBuiltinSubagents: () => Promise<string[]>;
   stripWinLongPrefix: (path: string) => string;
   sendToRenderer: (channel: string, payload?: unknown) => void;
   searchSkillMarket: (query: string, sources: { id: string; name: string; url: string }[]) => Promise<SkillMarketSearchResult>;
@@ -30,6 +32,7 @@ export function registerSkillsIpc({
   getHost,
   optionalWorkspaceRoot,
   activeUserSubagentDocuments,
+  disabledBuiltinSubagents,
   stripWinLongPrefix,
   sendToRenderer,
   searchSkillMarket,
@@ -232,16 +235,33 @@ export function registerSkillsIpc({
 
   /**
    * The effective catalog: what `Task` would actually offer right now, merged
-   * across builtin, registry and project documents. The renderer needs this to
-   * show read-only rows and to name the definition that wins each handle.
+   * across builtin and registry documents. The renderer needs this to list the
+   * shipped defaults and to name the definition that wins each handle.
+   *
+   * `builtins` carries a switched-off builtin too, with `enabled: false`, so the
+   * page can keep its row and let the user turn it back on; `subagents` is the
+   * delegation catalog and never lists one.
    */
   handle(IPC.invoke.subagentCatalog, async () => {
     const projectPath = (await optionalWorkspaceRoot()) ?? undefined;
-    const { definitions, diagnostics } = await loadSubagentDefinitions(
+    const disabled = await disabledBuiltinSubagents();
+    const { definitions, builtins, diagnostics } = await loadSubagentDefinitions(
       projectPath,
-      { userDocuments: await activeUserSubagentDocuments(projectPath) },
+      {
+        userDocuments: await activeUserSubagentDocuments(projectPath),
+        disabledBuiltins: disabled,
+      },
     );
-    return { subagents: definitions, diagnostics, projectPath: projectPath ?? null };
+    const off = new Set(disabled);
+    return {
+      subagents: definitions,
+      builtins: builtins.map((definition) => ({
+        ...definition,
+        enabled: !off.has(definition.name),
+      })),
+      diagnostics,
+      projectPath: projectPath ?? null,
+    };
   });
 
   handle(IPC.invoke.subagentCreate, async (subagent: Record<string, unknown>) => {
@@ -280,6 +300,21 @@ export function registerSkillsIpc({
       if (!host) throw new Error("host unavailable");
       const res = await host.call("agents.setEnabled", payload);
       sendToRenderer(IPC.event.pluginChanged,{ reason: "subagent" });
+      return res;
+    },
+  );
+
+  /**
+   * Turn one shipped default off, or back on. The row owns no document:
+   * host-core keeps the handle in app-local state, and the exclusion lands on
+   * the next catalog load — this prompt's catalog if it has not launched yet.
+   */
+  handle(
+    IPC.invoke.subagentSetBuiltinEnabled,
+    async (payload: { id: string; enabled: boolean }) => {
+      if (!host) throw new Error("host unavailable");
+      const res = await host.call("agents.setBuiltinEnabled", payload);
+      sendToRenderer(IPC.event.pluginChanged, { reason: "subagent" });
       return res;
     },
   );

@@ -1290,14 +1290,20 @@ Project drag/drop follows these patterns:
 - Hovering or focusing a session row reveals a multi-line hover card after
   the same 500ms delay used by the project path tooltip; the card never
   anchors to a torn-down row.
-- The card surfaces the row's metadata in this order, top to bottom: title,
-  tag chips, **Workspace**, branch (when the project exposes one), and
-  **Updated {{when}}**. Temporary/scratch sessions show the localized
-  "Temporary" / "临时对话" placeholder instead of a workspace name.
+- The card surfaces only key metadata, in this order, top to bottom: title;
+  a Session task chip when the session was created by another session; the
+  mode/permission chip; live status; collaboration details when present;
+  the readable model display name (falling back to the provider's readable
+  name); workspace name and branch on one row; and **Updated {{when}}**
+  without seconds. Temporary/scratch sessions show the localized
+  "Temporary" / "临时对话" placeholder instead of a workspace name. The
+  card does not show the session UUID, a Local task chip, a separate
+  Provider/Model label pair, or the collaboration poll timestamp.
 - For a session with host-owned collaboration activity, the card adds a
-  bounded collaboration section after the standard metadata: localized
-  status, creator/source session when present, current task preview, and up to
-  four recent exchanges with direction, kind, and terminal result. It may
+  bounded collaboration section after the chips: creator/source session
+  when present (title, not UUID), current task preview, up to two recent
+  exchanges with direction, and terminal result. Created-session
+  references remain keyboard-navigable buttons (at most eight). It may
   show a live `running` or `waiting_permission` state, but never loads the
   complete transcript or exposes message content beyond the host's bounded
   preview. Completion and failure results are derived from the durable target

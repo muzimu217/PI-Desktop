@@ -406,6 +406,17 @@ test("work panel separator exposes internal panel width resizing", () => {
   assert.match(globalStyles, /\.work-panel-resize \{[^}]*width:\s*10px;/s);
   assert.match(globalStyles, /touch-action:\s*none/);
   assert.match(globalStyles, /\.work-panel-resize:focus-visible/);
+  // The hover/drag line is a tint of the accent, never the solid value: the
+  // accent is pure white on the dark plate, so a solid full-height hairline
+  // reads as a bright seam rather than a control. Keyboard focus keeps it.
+  assert.match(
+    globalStyles,
+    /\.work-panel-resize:hover::after,\s*\.work-panel-resize:active::after,\s*\.work-panel\[data-resizing="true"\] \.work-panel-resize::after \{\s*background: color-mix\(in oklab, var\(--ds-focus\) 50%, transparent\)/s,
+  );
+  assert.match(
+    globalStyles,
+    /\.work-panel-resize:focus-visible::after,[\s\S]*?\{\s*width: 2px;\s*background: var\(--ds-focus\);/,
+  );
 });
 
 test("Electron enforces the responsive shell minimum", () => {

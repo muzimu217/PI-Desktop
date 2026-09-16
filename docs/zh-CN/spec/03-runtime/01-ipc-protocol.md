@@ -1250,6 +1250,8 @@ ASCII slug：frontmatter `name` 能 slugify 时用它，否则 `SKILL.md` 用技
 - `agents.read(id)` → `{ subagent, body }`
 - `agents.remove(id)`
 - `agents.setEnabled(id, enabled)`
+- `agents.disabledBuiltins` → `{ disabled: string[] }`
+- `agents.setBuiltinEnabled(id, enabled)` → `{ id, enabled }`
 
 `agents.create` 和 `agents.update` 接受的 `thinkingLevel` 可以是规范思考档位、
 `omit` 或空字符串。空字符串清除覆盖；`omit` 持久化为
@@ -1260,10 +1262,19 @@ ASCII slug：frontmatter `name` 能 slugify 时用它，否则 `SKILL.md` 用技
 而不会被存储，因为没有任何解析器能查到它。提供商部分在应用两端都按归一化别名
 匹配，因此包含空格的显示名是合法的。
 
+`agents.disabledBuiltins` 和 `agents.setBuiltinEnabled` 承载随应用发布的内置子代理的
+启用状态，这些内置项没有可切换的文档 (ADR 0270)。句柄存放在全局级别的
+`<data>/agent-capabilities/subagent-builtins.json` —— 一个独立文件：用户文档扫描会清理
+它永远看不到的 id 的状态，而内置项从不被扫描，因此共用一个文件会让所有内置项的关闭状态
+在下一次扫描时丢失。`agents.setBuiltinEnabled` 按文档名同样的规则归一化 id，空值以
+`SUBAGENT_INVALID` 拒绝；当前没有任何内置项使用的句柄也会惰性保存而不是拒绝，因为
+host-core 不携带内置清单。
+
 Electron 的 `subagent/list` IPC 通道向设置 > 智能体 > 子代理暴露同一份全局
 列表。`subagent/catalog` 返回当前 `Task` 目录（已启用的用户文档与五个内置定义
-合并后的结果），供设置页把默认子智能体渲染为只读行。运行时目录使用同一套来源；
-不会扫描 `.pi/agents` 或任何项目能力目录。
+合并后，再减去被用户关闭的内置项），并额外返回 `builtins`：每个仍然赢得自己句柄的
+内置定义，各自带 `enabled`，供设置页把关闭的默认项渲染成带自己开关的行。运行时
+目录使用同一套来源并应用同样的排除；不会扫描 `.pi/agents` 或任何项目能力目录。
 
 ## 12d. 能力级别与本地启用状态
 

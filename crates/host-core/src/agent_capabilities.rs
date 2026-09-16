@@ -145,6 +145,28 @@ impl CapabilityState {
         self.save()
     }
 
+    /// Every id of `kind` at `level` whose stored value is an explicit `false`.
+    ///
+    /// Global records default on, so the state file holds only what a user
+    /// turned off. A caller that owns a catalog of records with no document to
+    /// scan — the shipped subagent builtins — needs exactly these ids, because
+    /// the directory scan that prunes state for deleted files can never see
+    /// them. Ids come back sorted so a result never depends on insertion order.
+    pub fn disabled_ids(&self, kind: &str, level: CapabilityLevel) -> Vec<String> {
+        let mut ids: Vec<String> = self
+            .values
+            .iter()
+            .filter(|(_, enabled)| !**enabled)
+            .filter_map(|(raw_key, _)| serde_json::from_str::<StateKey>(raw_key).ok())
+            .filter(|key| {
+                key.kind == kind && key.level == level.as_str() && key.project_path.is_none()
+            })
+            .map(|key| key.id)
+            .collect();
+        ids.sort();
+        ids
+    }
+
     /// Remove state for records that disappeared from the selected directory.
     /// Other project selections remain untouched because they may still exist.
     pub fn prune(

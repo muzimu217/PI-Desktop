@@ -5608,3 +5608,24 @@ that was sitting at the bottom — including after the turn had finished.
   migration change, and no new token. See `04-ux/08-component-spec.md` §2.3 and
   §5.2, `04-ux/07-ui-design-system.md` §4.3, and
   E2E-LAYOUT-three-column-width-priority.
+
+## 2026-09-17 — Builtin subagents can be switched off (D434)
+
+- Settings > Agent > Subagents listed the five shipped defaults as read-only
+  rows while the user's own documents had an enablement switch, so one delegate
+  could not be turned off at all: copying a builtin and disabling the copy left
+  the shipped definition in the catalog, because disabled user documents are
+  filtered out before the loader merges and so shadowed nothing.
+- Every Built-in row now carries the same switch. The handle is stored in
+  `<data>/agent-capabilities/subagent-builtins.json`, a file of its own because
+  the user-document scan prunes state for ids it can never see, and host-core
+  exposes it through `agents.disabledBuiltins` / `agents.setBuiltinEnabled`.
+  Electron main hands the disabled handles to `loadSubagentDefinitions`, which
+  drops them from the delegation catalog while `subagent/catalog` still returns
+  the builtin, flagged `enabled: false`, in its new `builtins` list.
+- A switched-off builtin keeps its row, dimmed, so the switch is the way back
+  on. A user document of the same handle keeps working and keeps shadowing the
+  shipped definition, reveal and delete stay absent because a builtin is not a
+  file, and an unavailable host contributes no exclusions. See ADR 0270,
+  `04-ux/06-settings-ia.md` §2, `03-runtime/01-ipc-protocol.md` §12c, and
+  E2E-SUBAGENT-settings-lists-builtin-defaults.

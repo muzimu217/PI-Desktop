@@ -285,9 +285,12 @@ test("session rows use the hover card instead of a native title tooltip", () => 
 
 test("session hover cards expose readable models and keyboard-navigable session links", () => {
   assert.match(hoverSource, /role="dialog"/);
-  assert.match(hoverSource, /summary\?\.providerName/);
-  assert.match(hoverSource, /summary\?\.modelName/);
+  assert.match(hoverSource, /summary\?\.modelName \|\| summary\?\.providerName/);
   assert.doesNotMatch(hoverSource, /modelKey\?\.includes\("\/"\)/);
+  assert.doesNotMatch(hoverSource, /sidebar-session-hover-card-id/);
+  assert.doesNotMatch(hoverSource, /sessionCollaboration\.checkedAt/);
+  assert.doesNotMatch(hoverSource, /sessionCollaboration\.provider/);
+  assert.doesNotMatch(hoverSource, /nav\.hoverCardLocalTask/);
   assert.match(hoverSource, /data-session-link=\{summary\.createdBySession\.sessionId\}/);
   assert.match(hoverSource, /summary\.createdSessions\.slice\(0, 8\)/);
   assert.match(hoverSource, /type="button"/);

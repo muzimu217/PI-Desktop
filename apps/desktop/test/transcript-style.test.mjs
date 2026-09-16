@@ -269,6 +269,13 @@ test("editing a user prompt regenerates it and keeps the old branch reachable", 
     stylesSource,
     /\.message-row\.user \.message-col:has\(\.message-edit\)/,
   );
+  assert.match(
+    stylesSource,
+    /\.message-edit \{[\s\S]*?background:\s*var\(--ds-bg-composer\);[\s\S]*?box-shadow:\s*none;/,
+  );
+  assert.doesNotMatch(stylesSource, /\.message-edit:focus-within/);
+  assert.match(transcriptSource, /className="icon-btn message-edit-cancel"/);
+  assert.match(transcriptSource, /className="send-btn message-edit-submit"/);
 });
 
 test("message toolbars are icon-only with hover tooltips", () => {

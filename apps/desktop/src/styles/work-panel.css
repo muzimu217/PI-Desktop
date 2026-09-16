@@ -110,6 +110,19 @@
   background: var(--ds-focus);
 }
 
+/*
+ * Pointer states paint a tint of that accent instead of the solid value. The
+ * accent is pure white on the dark plate, so a full-height solid hairline reads
+ * as a bright seam rather than a control; 50% holds the line at roughly 5.3:1
+ * against the dark plates and 3.3:1 against the light ones. Keyboard focus keeps
+ * the full accent, because a focus ring is not a pointer cue.
+ */
+.work-panel-resize:hover::after,
+.work-panel-resize:active::after,
+.work-panel[data-resizing="true"] .work-panel-resize::after {
+  background: color-mix(in oklab, var(--ds-focus) 50%, transparent);
+}
+
 .work-panel-resize:focus-visible {
   outline: none;
 }

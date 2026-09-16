@@ -650,7 +650,7 @@ and give plain tool blocks a fill in light only.
 | Selection (theme, language, level) | Deeper tint or raised pill plus the existing check mark; no selected border |
 | Floating layers (menus, popovers, dialogs, tooltips, toasts, hover cards) | `0 0 0 0.5px border-default` + shadow on the container; no rules inside |
 | Focus rings | accent tint, 2px box-shadow |
-| Control affordances (switch off-ring, resize handles) | Allowed; they are the control, not a partition |
+| Control affordances (switch off-ring, resize handles) | Allowed; they are the control, not a partition. The work-panel divider paints a 50% accent tint on hover and while dragging (roughly 5.3:1 dark, 3.3:1 light); the solid accent is reserved for keyboard focus |
 
 ## 7. Iconography
 

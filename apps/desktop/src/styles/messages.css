@@ -166,6 +166,8 @@
   scroll-padding-block: 2px;
 }
 
+/* The card rides the composer plate below, so its option rows are inlaid fills
+   on that plate rather than the raised layer of an in-flow surface (D297). */
 .asktool-option {
   display: flex;
   width: 100%;
@@ -174,8 +176,7 @@
   min-height: 30px;
   padding: 4px 8px;
   border-radius: var(--radius-sm);
-  background: var(--ds-raised);
-  box-shadow: var(--ds-raised-shadow);
+  background: var(--ds-tile-deep);
   color: var(--ds-text-secondary);
   cursor: pointer;
   font: inherit;
@@ -186,7 +187,7 @@
 
 .asktool-option:hover,
 .asktool-option.selected {
-  background: color-mix(in oklab, var(--ds-accent) 10%, var(--ds-raised));
+  background: color-mix(in oklab, var(--ds-accent) 10%, var(--ds-tile-deep));
   color: var(--ds-text-primary);
 }
 
@@ -218,8 +219,7 @@
   padding: 6px 8px;
   border: 0;
   border-radius: var(--radius-sm);
-  background: var(--ds-raised);
-  box-shadow: var(--ds-raised-shadow);
+  background: var(--ds-tile-deep);
   color: var(--ds-text-primary);
   font: inherit;
   font-size: var(--text-md);
@@ -333,7 +333,8 @@
 
 /* The retry reason borrows the assistant error card's hierarchy without
    adding a second transcript row. It is hover/focus-only so the active row
-   remains compact at rest. */
+   remains compact at rest. The in-flow `.message-error` wash is transparent;
+   this floating tooltip mixes the same tint over an opaque elevated plate. */
 .run-activity-error-popover.message-error {
   position: absolute;
   bottom: calc(100% + 8px);
@@ -342,6 +343,7 @@
   display: block;
   width: min(360px, calc(100vw - 32px));
   padding: 10px 12px;
+  background: color-mix(in oklab, var(--ds-error) 10%, var(--ds-bg-elevated-opaque));
   box-shadow: var(--ds-shadow-dialog);
   opacity: 0;
   pointer-events: none;

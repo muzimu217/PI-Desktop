@@ -618,8 +618,8 @@ type AgentEvent =
 提供程序 `error` 事件可能包括以下中的有限诊断字段：
 `AppError.details`：`phase`（`request` 或 `stream`）、`providerStatus`、
 `providerCode`、`providerWaitMs`、`streamMs`、`retryAttempt`，以及网络故障
-时的 `networkCategory`、`networkCode`、`networkSyscall`、`networkHost` 和请求
-关联字段 `requestMessages`、`requestBytes`、`compactionGeneration`。这些字段
+时的 `networkCategory`、`networkCode`、`networkSyscall`、`networkHost`、
+`networkRoute` 和请求关联字段 `requestMessages`、`requestBytes`、`compactionGeneration`。这些字段
 都是新增且经过编辑的；它们从不携带凭据或不受限制的提供商响应，请求字段
 只有计数与字节大小。瞬时流故障可能会在内部重播
 同一回合，没有终端 `error` 事件或重复的辅助消息。
@@ -1225,12 +1225,12 @@ ASCII slug：frontmatter `name` 能 slugify 时用它，否则 `SKILL.md` 用技
 桌面专用技能市场通道（不是 host RPC）走 Electron IPC：
 
 - `pi-desktop/skill/market/search` — `{ query, sources[] }` →
-  `{ entries, failedSources, failureKinds }`。
+  `{ entries, failedSources, failureKinds, failureDetails }`。
   主进程聚合目录 JSON 与 GitHub 仓库 SKILL.md 扫描。源 URL 必须通过公网 HTTPS 策略（ADR 0243）。单源失败只丢掉该源。
-  `failureKinds` 把 `failedSources` 中的每个名字映射到 `policy`（公网策略守卫拒绝,请求从未离开进程）或 `network`；面板据此区分策略/DNS 拒绝（即代理用户的典型情况）与单纯不可达。
-  守卫拒绝会以 `NETWORK_POLICY_BLOCKED`（spec 08 §3.1）暴露,安装面板正是按该错误码分类。
+  `failureKinds` 把 `failedSources` 中的每个名字映射到 `policy`（公网策略守卫判定了目标并拒绝,请求从未离开进程）、`unresolved`（本地 DNS 解析没有返回答案,因此没有判定任何地址——这是解析器或代理的环境状况,不是对源的判定）或 `network`。`failureDetails` 以同样的键携带真正失败的主机、守卫自己的 `reason`、被拒地址的类别以及判定该地址的线路（`proxied`、`direct`,或传输层读不出线路时的 `unknown`,ADR 0272）；面板据此说明**被拒的是什么**,而不只是哪个源没出结果。
+  判定型拒绝以 `NETWORK_POLICY_BLOCKED` 暴露,解析器无应答以 `NETWORK_RESOLVE_FAILED` 暴露（spec 08 §3.1）；安装面板正是按这两个错误码分类。
 - `pi-desktop/skill/market/fetch` — `{ entry }` → `{ name?, description?, body, resources? }`。
-  主进程按同一策略拉取文档、拆 frontmatter，并可能附上 jsDelivr 目录中的兄弟 `.md`。渲染层通过现有 `skills.create` 安装。该策略即主进程公网网络客户端：语法 URL 防护、DNS 分类、逐跳重定向复核与响应上限——渲染层绝不直接触网。目录 id 会净化为 host `valid_capability_id`。
+  主进程按同一策略拉取文档、拆 frontmatter，并可能附上 jsDelivr 目录中的兄弟 `.md`。渲染层通过现有 `skills.create` 安装。该策略即主进程公网网络客户端：语法 URL 防护、按承载 `net.fetch` 的会话线路判定的逐跳 DNS 分类（ADR 0272）、逐跳重定向复核与响应上限——渲染层绝不直接触网。目录 id 会净化为 host `valid_capability_id`。
 
 
 桌面专用 MCP 市场通道（不是 host RPC）走 Electron IPC：

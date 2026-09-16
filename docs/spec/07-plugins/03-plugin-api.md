@@ -519,8 +519,18 @@ a secret. `includeSessionContext: true` also requires `session.read` and an
 in-flight tool session; the host serializes that context and, if `messages` is
 empty, appends `Please respond to the request.` System prompt
 ≤ 32 KiB; combined messages ≤ 200k characters; eight calls per plugin per
-rolling 60s (`RATE_LIMITED`); 90s budget (`TIMEOUT`). Empty model output is
-`INVALID_ARGUMENT`.
+rolling 60s (`RATE_LIMITED`); 90s budget (`TIMEOUT`). Provider 429 and other
+transient provider failures are retried inside the same call under the shared
+provider retry budget (ADR 0206) and a `Retry-After` header is honored. Empty
+model output is `INVALID_ARGUMENT`.
+
+When the call still fails, the plugin receives the host's classified code
+rather than a single generic failure — `PROVIDER_RATE_LIMITED` once the retry
+budget is exhausted, `PROVIDER_UNAUTHORIZED`, `CONTEXT_TOO_LARGE`,
+`NETWORK_ERROR` — so it can pace itself and report the cause. The broker
+answers with whichever code the failing service classified, in the same
+`data.errorCode` → `errorCode` → `code` precedence every other host boundary
+uses.
 
 ### clipboard / shell
 ```ts
@@ -627,6 +637,14 @@ pi.net.fetch(input: {
  timeoutMs?: number
 }): Promise<{ status: number; headers: Record<string, string>; bodyText: string }>
 ```
+
+`fetch` answers with the upstream response unchanged — `status`, `headers`, and
+`bodyText` — so a `429` is data your plugin can read, `Retry-After` included,
+rather than an error the host hides. The host does not retry, throttle, or
+re-issue the request: retry and backoff after a `429` are your plugin's own
+policy, and the response headers are the only backoff signal you get. A failed
+call (`status >= 400`) is audited as `ok: false`, together with the
+`retryAfter` it advertised when the response states one (§7).
 
 ```ts
 pi.net.websocket.connect(input: {
@@ -981,6 +999,8 @@ Log fields:
 - ts
 - sessionId?
 - ok / errorCode
+- status / retryAfter (`net.fetch`: the upstream status of a completed call, and
+  for a failed one the `Retry-After` it stated — never the header set or body)
 
 ## 8. Versioning strategy
 

@@ -107,18 +107,43 @@ test("the market list explains a policy refusal instead of a bare unreachable", 
   assert.match(panel, /queryError: skillMarketFailureDetail\(error\)/);
 });
 
+test("a resolver with no answer is explained as that, not as an address check", () => {
+  // Issue #419, second round: one `policy` bucket meant a local resolver that
+  // answered nothing produced the same sentence as an address the guard had
+  // judged — "blocked by the app's address check" — for a check that had never
+  // reached a verdict. The two now carry different copy and different hints.
+  assert.match(
+    panel,
+    /if \(hasUnresolvedFailure\(remote\.failureKinds\)\) return t\("settings\.sklm\.remoteErrorUnresolved"\)/,
+  );
+  assert.match(panel, /settings\.sklm\.dnsHint/);
+  assert.match(panel, /previewFailure\.kind === "unresolved"/);
+  assert.match(panel, /settings\.sklm\.previewResolveError/);
+  // The refusal names the host it is about, not just the source label: a policy
+  // refusal is a statement about one address.
+  assert.match(panel, /settings\.sklm\.failureSourceHost/);
+  assert.match(panel, /remote\.failureDetails\[name\]\?\.host/);
+  // And the host reaches the state from the IPC result.
+  assert.match(panel, /failureDetails: result\.failureDetails \?\? \{\}/);
+  assert.match(panel, /failureDetails: current\.failureDetails/);
+});
+
 test("every shipped locale carries the new skill market strings", async () => {
   const { readFile } = await import("node:fs/promises");
   const ids = ["en", "zh-CN", "zh-TW", "de", "es", "fr", "ko", "tr"];
   const keys = [
     "previewError",
     "previewPolicyError",
+    "previewResolveError",
     "proxyHint",
+    "dnsHint",
     "failureDetail",
     "retryPreview",
     "remoteErrorPolicy",
+    "remoteErrorUnresolved",
     "remoteErrorQuery",
     "remotePartial",
+    "failureSourceHost",
   ];
   for (const id of ids) {
     const locale = await readFile(
@@ -126,7 +151,9 @@ test("every shipped locale carries the new skill market strings", async () => {
       "utf8",
     );
     for (const key of keys) {
-      assert.match(locale, new RegExp(`${key}: "`), `${id} ${key}`);
+      // Both layouts ship in these files: `key: "text"` on one line, and the
+      // long strings broken after the colon. Either one carries the key.
+      assert.match(locale, new RegExp(`${key}:\\s*"`), `${id} ${key}`);
     }
   }
 });

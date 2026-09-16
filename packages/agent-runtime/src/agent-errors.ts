@@ -315,6 +315,26 @@ export function describeNetworkFailure(
   };
 }
 
+/**
+ * Network diagnosis for a caller that still holds the rejected request's Error.
+ *
+ * `classifyAgentError` normally sees pi-ai's flattened `errorMessage`, so an
+ * errno that only lives in `error.cause` is invisible to it and `fetch failed`
+ * collapses to `networkCategory: "unknown"` (issue #234). The fetch wrapper in
+ * `provider-retry.ts` is the last layer that still sees the original object, so
+ * it describes the cause chain there and hands these validated fields to the
+ * runtime. The fields come from `describeNetworkFailure`, so a captured cause is
+ * exactly as narrow as a classified one: an errno-shaped code, a lowercase
+ * syscall, and a bare hostname — never a URL, port, path, query, or credential.
+ */
+export function networkFailureDiagnostics(
+  err: unknown,
+  message: string,
+): { category: NetworkFailureCategory; fields: Record<string, unknown> } {
+  const network = describeNetworkFailure(err, message);
+  return { category: network.category, fields: networkDetailFields(network) };
+}
+
 export function classifyAgentError(err: unknown): ClassifiedAgentError {
   const rawMessage =
     typeof err === "string"

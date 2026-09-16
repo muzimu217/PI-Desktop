@@ -499,6 +499,14 @@ export function ModelSelectionPanes({
               const enabledLevels = sortThinkingLevels(binding.thinkingLevels);
               const info = infoById.get(binding.id.toLowerCase());
               const publishedImages = info ? modelMatchesFilter(info, "vision") : false;
+              // The row's published window, so the hint below the field can say
+              // the number still follows it.
+              const publishedContextWindow = info
+                ? (info.contextWindow ?? info.limit?.context)
+                : undefined;
+              const followsCatalog =
+                binding.contextWindowSource !== "user" &&
+                publishedContextWindow !== undefined;
               const publishedDocuments = info ? modelMatchesFilter(info, "pdf") : false;
               const expanded = expandedModelId === binding.id;
               const advancedId = `model-advanced-${binding.id}`;
@@ -601,6 +609,7 @@ export function ModelSelectionPanes({
                                 onClick={() =>
                                   updateBinding(binding.id, {
                                     contextWindow: preset.tokens,
+                                    contextWindowSource: "user",
                                   })
                                 }
                               >
@@ -617,9 +626,17 @@ export function ModelSelectionPanes({
                           onChange={(event) =>
                             updateBinding(binding.id, {
                               contextWindow: Number(event.target.value) || 0,
+                              contextWindowSource: "user",
                             })
                           }
                         />
+                        {/* A catalog window keeps following models.dev; the hint
+                            says so until the user pins a number. */}
+                        {followsCatalog ? (
+                          <span className="provider-chosen-limit-hint">
+                            {t("settings.contextWindowCatalogHint")}
+                          </span>
+                        ) : null}
                       </label>
                       <label className="provider-chosen-field">
                         <span className="provider-chosen-field-label">

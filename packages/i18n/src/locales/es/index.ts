@@ -540,6 +540,13 @@ sklm: {
       failureDetail: "Detalles: ",
       retryPreview: "Reintentar",
       remoteErrorPolicy: "La comprobación de direcciones de la aplicación bloqueó las fuentes del catálogo: se muestran las selecciones integradas",
+      remoteErrorUnresolved:
+        "El resolutor local no pudo resolver las fuentes del catálogo: se muestran las selecciones integradas",
+      previewResolveError:
+        "La comprobación de direcciones de la aplicación no pudo resolver este host: no se instaló nada.",
+      dnsHint:
+        "Esa comprobación resuelve el host localmente, mientras que la descarga usaría tu proxy. Si usas un proxy, una VPN o una configuración de DNS propia, revisa Ajustes → General → Red.",
+      failureSourceHost: "{{name}} ({{host}})",
       remoteErrorQuery: "No se pudo consultar el mercado de skills: se muestran las selecciones integradas",
       remotePartial: "Algunas fuentes del catálogo no están disponibles ({{names}})",
     },
@@ -997,6 +1004,7 @@ sklm: {
     "imageInput": "Imágenes",
     "documentInput": "PDF",
     "thinkingManualOverrideHint": "No en el catálogo; habilitar si es compatible.",
+    "contextWindowCatalogHint": "Sigue a models.dev; al editarlo se fija tu valor.",
     "availableForSubagents": "Disponible para delegación de AI",
     "availableForSubagentsHint": "Permitir que AI use este modelo al delegar tareas a subagentes",
     "searchModelId": "ID de modelo de búsqueda…",

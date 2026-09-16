@@ -66,7 +66,8 @@ registered; reserved codes in §3.7 remain intentionally absent from
 | `APPROVAL_STALE` | no | RACP: the approval was already settled or belongs to an older turn |
 | `PAYLOAD_TOO_LARGE` | no | RACP: a frame exceeded the negotiated size bound |
 | `TIMEOUT` | yes | generic timeout |
-| `NETWORK_POLICY_BLOCKED` | no | the main-process public-network guard refused a fetch: the URL failed the syntactic public-HTTPS check, or the local DNS lookup could not classify the host as public (ADR 0243). A desktop-only code; retrying cannot succeed until the address or the resolver changes. |
+| `NETWORK_POLICY_BLOCKED` | no | the main-process public-network guard refused a fetch because it *judged* the target: the URL failed the syntactic public-HTTPS check, or the local DNS lookup returned an address the policy classifies as non-public (ADR 0243). A desktop-only code; a refusal is a verdict, so retrying cannot succeed until the address changes. A resolver that returned no answer at all is `NETWORK_RESOLVE_FAILED` instead (issue #419). |
+| `NETWORK_RESOLVE_FAILED` | yes | the main-process public-network guard could not classify the target host: the local DNS lookup returned no answer, or threw before returning one. The request is refused exactly as a policy refusal is, but no address was judged, so no page or log may report it as an address-check decision. Distinct from `NETWORK_ERROR`, which is a failure of the request itself. Retriable: a resolver or proxy that starts answering the same host makes the same request succeed (ADR 0243, issue #419). |
 | `HOST_SHUTTING_DOWN` | yes | the host received EOF and is draining; the call was refused rather than started |
 | `RATE_LIMITED` | yes | a per-caller host budget (plugin session import, batch operations) was exceeded inside its window |
 | `LIMIT_EXCEEDED` | no | a payload exceeded a fixed host bound (item count, byte size, or a 64 MiB NDJSON request line) and was refused |
@@ -311,6 +312,28 @@ omitted when it would repeat `networkCode`. Per-layer codes (`DNS_ERROR`,
 splits the layers without adding user-visible codes and locale strings for
 each of them.
 
+The diagnosis is read from the live cause chain at the fetch boundary, not only
+from the provider message. pi-ai flattens a rejected request into
+`errorMessage`, so by the time classification runs the errno undici keeps in
+`error.cause` is already gone and a bare `fetch failed` can only be reported as
+`networkCategory: unknown`; the fetch wrapper still holds the original Error and
+supplies the same validated fields from it. A captured cause also settles the
+phase: the fault is reported as `phase: request` because no response ever
+arrived, which is what distinguishes it from a stream that ended mid-response.
+`networkRoute` (`direct`, `environment-proxy`, `http-proxy`, `socks5-proxy`)
+names the hop the request was taking, so a failure at the proxy is readable
+without guessing from an errno.
+
+When one origin fails this way repeatedly inside a turn — twice in a row,
+without any response — the provider transport is rebuilt before the next attempt
+instead of replaying into the same undici pool. The rebuild is process-wide and
+deliberately bounded: one rebuild per streak, at most one every 30 seconds, and
+never for a `dns` failure, which a fresh pool cannot change. The replacement is
+installed before the previous dispatcher is closed, and the previous one is
+closed gracefully, so a request another session already dispatched finishes on
+the pool it started on. The route in effect is reproduced, never downgraded to a
+direct connection.
+
 ### Permission timeout
 UI/host timeout emits `PERMISSION_TIMEOUT` internally, tool result presented as denied (`TOOL_DENIED`) to agent.
 
@@ -345,7 +368,8 @@ common credential/header values are redacted before event emission or
 persistence. When available, the details disclosure may also show bounded
 `phase`, `providerStatus`, `providerCode`, `providerWaitMs`, `streamMs`,
 `retryAttempt`, `networkCategory`, `networkCode`, `networkSyscall`,
-`networkHost`, `requestMessages`, `requestBytes`, and `compactionGeneration`
+`networkHost`, `networkRoute`, `requestMessages`, `requestBytes`, and
+`compactionGeneration`
 fields. The request fields are counts and byte sizes only and the compaction
 field is the checkpoint generation counter; none of them carries message
 content. While a transient provider failure retries, the activity indicator's

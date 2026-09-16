@@ -426,21 +426,21 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 #### E2E-009：UI 中可见的流式令牌
 
 - **先决条件**：会话处于活动状态；消息已发送。
-- **步骤**：1) 请求包含 Markdown 和 inline/display 的长答案
-  数学。 2) 观察助理的响应。 3）让答案
-  完成并检查渲染器控制台。
-- **预期**：运行时块通过增量逐渐出现
-  Markdown 渲染器和最终响应完成。渲染器不
-启动第二个动画帧打字机循环，引发 React 错误 185，或者
-  拒绝 CSP 下的 Vite 内联 KaTeX 字体。
+- **步骤**：1) 请求包含 Markdown 和行内/块级数学公式的长答案，公式同时使用
+  美元符号（`$…$` / `$$…$$`）和 TeX 括号（`\(…\)` / `\[…\]`）分隔符。
+  2) 观察助理的流式响应。3) 让答案完成并检查渲染器控制台。
+- **预期**：运行时块通过增量 Markdown 渲染器逐渐出现，最终响应完整。
+  四种数学分隔符均由 KaTeX 渲染，其中 `\[…\]` 使用块级布局。渲染器不会
+  启动第二个动画帧打字机循环、触发 React 错误 185，或因 CSP 拒绝 Vite
+  内联的 KaTeX 字体。
 - **链接规格**：`03-runtime/02-agent-runtime.md`，
   `04-ux/08-component-spec.md`、`04-ux/09-interaction-patterns.md`、
   `05-security/01-security.md`
 - **验收**：C（流式输出），质量
 - **里程碑**：M2
-- **状态**：部分自动化（协议实时模型流加上渲染器
-  `renderer-stream-safety.test.mjs` 中的源回归；完整的UI观察
-  仍为草案）
+- **状态**：部分自动化（协议实时模型流、`renderer-stream-safety.test.mjs`
+  中的渲染器源回归，以及 `latex-math.test.mjs` 中的数学分隔符渲染；
+  完整 UI 观察仍为草案）
 
 #### E2E-010：中止生成
 
@@ -3210,15 +3210,18 @@ IPC 请求无法关闭。
   4. 将鼠标悬停在文件树行或 diff 标头上；聚焦浏览器 URL 字段。
   5. 打开 confirmation/provider 对话框并检查稀松布。
   6. 在明暗主题中分别检查设置导航轨、搜索、选中项、开启状态旋钮、输入框壳、插件/
-     能力搜索、代码卡标题带、Mermaid 画布、工具输出、输入占位符与禁用发送芯片，
-     以及对话框遮罩和权限蒙层。应用自定义表面变量，使用键盘聚焦两类搜索，再移除
-     自定义主题。
+     能力搜索、代码卡标题带、Mermaid 画布、工具输出、输入占位符与禁用发送芯片、
+     对话框遮罩与权限蒙层，以及 dock 内的问题卡及其选项行。应用自定义表面变量，
+     使用键盘聚焦两类搜索，再移除自定义主题。
 - **预期**：
   - 工作面板主体读取为安静的 `#fafafa` 插页纸，带有白色标题带。
   - 设置字段、浏览器 URL、分段轨道和快捷键键帽使用浅色嵌入填充；聚焦场通过中性环提升。
   - 切换开启状态使白色旋钮保持在近乎黑色的轨道上。
   - 悬停可通过共享运动令牌轻松填充 file-tree/diff/resize。
   - 浅色对话稀松布比深色 45% 面纱（约 28% 墨水）更柔软。
+  - dock 内的问题卡在两种主题里都绘制 composer 板 —— 浅色 `#ffffff` 配 composer
+    阴影，深色 96% `#212121` —— 它的选项行是无抬升阴影的内嵌 `--ds-tile-deep` 填充。
+    自定义 `--ds-bg-composer` / `--ds-tile-deep` 会同时改变两者，移除后恢复内置配色。
   - 工具输出保持既有级联：浅色在错误输出与纯文本工具块上都绘制同一层较浅底纹，深色
     显示错误色调并让纯文本块保持透明。
   - 自定义变量改变对应表面、键帽墨色及搜索焦点填充；移除后恢复内置 8-bit RGBA
@@ -3875,6 +3878,24 @@ IPC 请求无法关闭。
   并在批准后。 Main/Host/sidecar PID 保持稳定；凭据从不
   输入 CDP 或输出。默认无钥匙运行仍为 5/5 与现场案例
   明确跳过。
+
+#### E2E-CHAT-opaque-floating-decision-and-retry-surfaces：Plan 审批条与重试 hover 保持不透明
+
+- **状态**：已自动化（`apps/desktop/test/plan-mode-source-contract.test.mjs`、`apps/desktop/test/active-turn-surface.test.mjs`）
+- **优先级**：P2
+- **覆盖**：C、品质 / 浮动 Composer 与重试表面
+- **先决条件**：渲染器 CSS 为 `apps/desktop/src/styles` 下的生产源。
+- **步骤**：
+  1. 检查 Composer 停靠栏样式中的 `.plan-approval-bar`。
+  2. 检查记录样式中的 `.run-activity-error-popover.message-error`。
+  3. 在实时会话中悬停或聚焦正在重试的活动行。
+- **预期**：
+  - Plan/Goal 审批条使用 `--ds-bg-composer` 加 `--ds-shadow-composer`，而不是正文流里的 `--ds-tile` 薄洗，因此在透明停靠栏上仍可读。
+  - 重试 hover tooltip 把错误色混在 `--ds-bg-elevated-opaque` 上，记录正文不会透出。
+- **链接规格**：`04-ux/03-permission-ux.md`、`04-ux/08-component-spec.md`
+- **接受**：C、品质
+- **里程碑**：M6
+- **状态细节**：源码契约断言 CSS 标记。实时悬停仍为目视检查。
 
 #### E2E-107：Plan 批准使用一个绝对 30 分钟到期时间
 
@@ -5095,6 +5116,13 @@ IPC 请求无法关闭。
 | M6+（能力跨级别迁移） | E2E-CAPABILITY-move-across-levels |
 | E — 工具与权限（内置子智能体默认项） | E2E-SUBAGENT-settings-lists-builtin-defaults |
 | 品质（内置子智能体默认项） | E2E-SUBAGENT-settings-lists-builtin-defaults |
+| C — 对话与流式（不透明浮动表面） | E2E-CHAT-opaque-floating-decision-and-retry-surfaces |
+| 品质（不透明浮动表面） | E2E-CHAT-opaque-floating-decision-and-retry-surfaces |
+| M6（不透明浮动表面） | E2E-CHAT-opaque-floating-decision-and-retry-surfaces |
+| B — 模型配置（目录窗口来源） | E2E-MODEL-catalog-window-correction-reaches-saved-bindings |
+| F — 持久化（目录窗口来源） | E2E-MODEL-catalog-window-correction-reaches-saved-bindings |
+| 品质（目录窗口来源） | E2E-MODEL-catalog-window-correction-reaches-saved-bindings |
+| M6+（目录窗口来源） | E2E-MODEL-catalog-window-correction-reaches-saved-bindings |
 
 `US-UI-*` 视觉场景（§UI shell 视觉场景）追踪到
 [决策日志 §D](/zh-CN/spec/08-meta/decisions-log) 中的法典平价决策
@@ -6669,7 +6697,8 @@ IPC 请求无法关闭。
   2. 在工具执行之外调用 `pi.session.getLlmContext()`。确认 `INVALID_ARGUMENT`。
   3. 让 Agent 调用插件工具。在 `execute` 内调用 `getLlmContext()`，再调用 `agent.complete({ modelKey, includeSessionContext: true })`。确认工具结果含评审文本和 usage，不含密钥。
   4. 在 60 秒内重复 `agent.complete`，直到第 8 次成功、第 9 次返回 `RATE_LIMITED`。
-  5. 停止 host-core 后再调用 `pi.models.list()`。确认返回 `[]` 且没有 warn 日志。
+  5. 让该补全在供应商侧失败（例如使用一个用户已撤销凭据的模型）。确认插件读到的是分类后的错误码 `PROVIDER_UNAUTHORIZED`，而不是一个通用失败。
+  6. 停止 host-core 后再调用 `pi.models.list()`。确认返回 `[]` 且没有 warn 日志。
 - **预期**：凭据不离开 Electron main。审计行记录插件 id、模型 key、体积和 usage，不含转录或补全文本。Plan 仍对插件工具返回 `PLUGIN_DISABLED_IN_PLAN`。宿主传输不可用时模型列表为空且不记警告（D080）。
 - **链接规格**：`07-plugins/03-plugin-api.md`、`07-plugins/13-plugin-permissions-matrix.md`、ADR 0174、D336
 - **验收**：G（插件智能体工具）、安全
@@ -6698,14 +6727,14 @@ IPC 请求无法关闭。
   1. 打开设置 → 常规。确认网络卡提供系统 / 直连 / 自定义。从未配置过代理的配置文件默认是系统。
   2. 选择自定义。确认代理 URL、默认绕过列表和测试。输入 `not-a-proxy` 并失焦。确认内联错误且未保存。
   3. 输入 `socks5://127.0.0.1:1080` 或 `http://127.0.0.1:7890` 并失焦。确认 `settings.get` 中 `networkProxy.mode` 为 `custom`。
-  4. 对正在监听的代理点测试，确认已连接；对关闭的端口点测试，确认失败且不改已保存 URL。
+  4. 对正在监听的代理点测试，确认已连接；对关闭的端口点测试，确认失败且不改已保存 URL。对需要认证的 HTTP / SOCKS5 代理填入 `user:pass@` 后再测，确认是已连接而不是 `net::ERR_NO_SUPPORTED_PROXIES`（issue #490）。
   5. 保存自定义代理后，通过已配置供应商发送一条简短提示。确认供应商请求和响应经过代理；即使 SOCKS5 代理将完整 bind 响应合并在一个 TCP 数据块中，请求仍能完成。再确认扩展市场刷新和 models.dev 刷新走代理；绕过列表中的回环地址不走代理。
   6. 切到直连再切回系统。确认无需重启应用即可生效。
-- **预期**：自定义覆盖模型请求、市场、更新、插件 `net.fetch` 和内置浏览器。工作区 Bash 的 `env` 看不到该设置写入的 `HTTP_PROXY` / `ALL_PROXY`。OAuth 仍走系统浏览器。`file:` / `ftp:`、SOCKS4 以及百分号编码错误的认证信息均被拒绝。无协议/存储版本升级。
+- **预期**：自定义覆盖模型请求、市场、更新、插件 `net.fetch` 和内置浏览器。工作区 Bash 的 `env` 看不到该设置写入的 `HTTP_PROXY` / `ALL_PROXY`。OAuth 仍走系统浏览器。`file:` / `ftp:`、SOCKS4 以及百分号编码错误的认证信息均被拒绝。带账号密码的 HTTP / SOCKS5 测试与应用不再报 `net::ERR_NO_SUPPORTED_PROXIES`（issue #490）。无协议/存储版本升级。
 - **链接规格**：`04-ux/06-settings-ia.md`、`03-runtime/07-process-model.md`、ADR 0177、D340
 - **验收**：B（设置）、F（供应商）、安全
 - **里程碑**：M5
-- **状态**：单元已覆盖（`network-proxy.test.ts`、`node-proxy.test.ts`、`settings-general.test.mjs`、host-core `network_proxy`）；畸形认证信息和不支持的 SOCKS4 协议由共享解析器测试覆盖；完整 UI 旅程仍为草稿
+- **状态**：单元已覆盖（`network-proxy.test.ts`、`node-proxy.test.ts`、`authenticated-proxy-relay.test.ts`、`settings-general.test.mjs`、host-core `network_proxy`）；畸形认证信息和不支持的 SOCKS4 协议由共享解析器测试覆盖；完整 UI 旅程仍为草稿
 
 #### E2E-210：文档截图在 GitHub 与 VitePress 中都能解析
 
@@ -7165,15 +7194,20 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 
 - **前提条件**：一个声明 `net.domains: ["allowed.test"]` 和 `net.fetch` 的开发插件。
   `allowed.test` 上的本地服务器对 `/hop` 返回 302 到 `http://undeclared.test/leak`，
-  对 `/ok` 返回 200。
+  对 `/ok` 返回 200，对 `/limited` 返回 429 且带 `Retry-After: 2`。
 - **步骤**：1）调用 `pi.net.fetch({ url: "https://allowed.test/ok" })`。2）调用
-  `pi.net.fetch({ url: "https://allowed.test/hop" })`。
+  `pi.net.fetch({ url: "https://allowed.test/hop" })`。3）调用
+  `pi.net.fetch({ url: "https://allowed.test/limited" })`。
 - **预期**：步骤 1 返回 200。步骤 2 以点名 `undeclared.test` 的 `PERMISSION_DENIED`
-  失败，未声明的服务器没有记录到任何请求。审计日志显示被拒绝的那一跳。
-- **链接规格**：`07-plugins/04-plugin-security.md` §8.0
+  失败，未声明的服务器没有记录到任何请求。审计日志显示被拒绝的那一跳。步骤 3
+  原样返回 429 及其 `Retry-After` 头，服务器只记录到一次请求，审计日志记为
+  `ok: false` 并带有它通告的 `retryAfter` —— 宿主不重试任何东西。
+- **链接规格**：`07-plugins/04-plugin-security.md` §8.0、
+  `07-plugins/03-plugin-api.md` §7
 - **验收**：D、安全
 - **里程碑**：M4+
 - **状态**：由 `apps/desktop/test/plugin-egress.test.mjs` 运行时覆盖
+  （逐跳出网与失败调用的审计）
 
 #### E2E-238：未知会话的工具请求不会回退
 
@@ -7480,13 +7514,13 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 
 #### E2E-SKILL-MARKET-NET-BOUNDARY：技能源公网 HTTPS 策略拒绝私网与回环
 
-- **前提条件**：共享 public-network helper，以及可注入 fetch/DNS 的主进程公网 HTTPS 客户端。
-- **步骤**：1）分类 trailing-dot localhost、IPv4 回环、IPv4-mapped IPv6、ULA、link-local、RFC1918 与 `http://`。2）将公网主机名解析到私网 A 记录。3）跟随 Location 为 `https://127.0.0.1/` 的 302。
-- **预期**：上述绕过形态全部拒绝；公共 CDN 放行。解析到私网地址或 redirect 到回环会抛出策略错误，且不会请求私网目标。策略失败不重试。每次拒绝都带上 `NETWORK_POLICY_BLOCKED`（spec 08 §3.1），使安装面板能给出原因并提供重试,而不是让安装按钮无解释地保持禁用；市场列表也能把被拒绝的源与单纯不可达的源区分开。
-- **链接规格**：`05-security/01-security.md`、ADR 0243、`03-runtime/01-ipc-protocol.md` §12b
+- **前提条件**：共享 public-network helper，以及可注入 fetch/DNS/线路 的主进程公网 HTTPS 客户端。
+- **步骤**：1）分类 trailing-dot localhost、IPv4 回环、IPv4-mapped IPv6、ULA、link-local、RFC1918 与 `http://`。2）将公网主机名解析到私网 A 记录。3）跟随 Location 为 `https://127.0.0.1/` 的 302。4）报告 `proxied` 线路与 TUN fake-IP 答案（`198.18.0.1`），同一答案在 `DIRECT` 线路、读不出线路、以及列表中含 `DIRECT` 的线路上的表现。5）让第一跳为 `proxied`，其重定向目标为 `direct`。
+- **预期**：上述绕过形态全部拒绝；公共 CDN 放行。解析到私网地址或 redirect 到回环会抛出策略错误，且不会请求私网目标。判定型拒绝不重试；本地解析没有返回答案时会重试,并且报为 `NETWORK_RESOLVE_FAILED`（`kind` 为 `unresolved`）,而不是报成地址校验拒绝——守卫并未得出判定,任何文案都不得声称它得出了。其余每次拒绝都带上 `NETWORK_POLICY_BLOCKED`（spec 08 §3.1）及其 `reason`、被拒地址的类别与判定该地址的线路,使安装面板能给出原因并提供重试,而不是让安装按钮无解释地保持禁用；市场列表也能把被拒绝的源与单纯不可达的源区分开。若 `proxied` 线路上的答案是 RFC 2544 的 fake-IP 类别，则在 `direct` 或读不出线路时拒绝、在 `proxied` 线路上放行；其他所有非公网类别在任何线路上都拒绝；每一个重定向跳都按自己的线路判定（ADR 0272）。
+- **链接规格**：`05-security/01-security.md`、ADR 0243、ADR 0272、`03-runtime/01-ipc-protocol.md` §12b
 - **验收**：Security、Quality
 - **里程碑**：M6+
-- **状态**：已自动化（`pnpm test:e2e:skill-market`、`apps/desktop/test/public-https-fetch.test.mjs`、`apps/desktop/test/skill-market-scan.test.mjs`、`apps/desktop/test/skill-market-failure.test.mjs`、`packages/shared/src/public-network.test.ts`）
+- **状态**：已自动化（`pnpm test:e2e:skill-market`、`apps/desktop/test/public-https-fetch.test.mjs`、`apps/desktop/test/public-https-fetch-route.test.mjs`、`apps/desktop/test/skill-market-scan.test.mjs`、`apps/desktop/test/skill-market-failure.test.mjs`、`apps/desktop/test/skill-market-policy-refusal.test.mjs`、`packages/shared/src/public-network.test.ts`）
 
 #### E2E-SKILL-MARKET-EXPANSION：相邻 markdown 资源在安装前内联
 
@@ -7575,3 +7609,32 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 - **验收**：G（插件）、安全性、品质
 - **里程碑**：M6+
 - **状态**：部分自动化（`apps/desktop/test/plugin-fs-session-root.test.mjs`）：工具调用在发起会话的项目下写入与读取，面板调用与宿主未跟踪的会话回退到可见工作区，`userSelected` 模式保留选定的目录，窗口不显示任何项目时会话根依然生效。双活会话的桌面旅程与面板步骤为草稿（仅在此表面变化时于具备条件的环境中运行）
+
+#### E2E-MODEL-catalog-window-correction-reaches-saved-bindings：目录修正回流已保存绑定，且不覆盖用户手改值
+
+- **目标**：models.dev 修正某模型上限后回流到已保存的绑定（不必删除重建），
+  而用户在设置里手改的数值永不被覆盖。
+- **步骤**：
+  1. 配置一个提供商，勾选 models.dev 已发布 `limit.context` 的模型并保存。展开该行的
+     高级区，读取上下文窗口字段与其提示。
+  2. 用修正后的目录记录（不同的发布上限）替换该模型记录，重新打开设置，读取该行、
+     上下文检查器，以及新会话启动时使用的窗口。
+  3. 在高级区输入窗口——先用预设档位，再手输 `128000`——保存，然后再喂一次目录修正，
+     重新打开设置与检查器。
+  4. 保存并重新打开一个绑定不带 `contextWindowSource` 的提供商行：一次使用通用
+     `128000` 种子，一次使用任意其它已存值。
+- **预期**：步骤 1 显示发布值并带「跟随 models.dev」提示。步骤 2 在所有使用 effective
+  window 的地方（设置行、上下文检查器、会话启动）都显示修正后的值，无需删除重建。
+  步骤 3 在设置行、检查器和实际请求中都保留用户输入的值，包括在目录窗口更大时手输的
+  `128000`，且提示消失。步骤 4 表现确定：`128000` 种子跟随目录，其它值保持原样。
+  每一步中标记都能在提供商行的保存/读取往返后保留，早于该标记写出的配置仍可读。
+- **关联规范**：`03-runtime/13-model-catalog-and-selection.md` §9.1、
+  `03-runtime/12-provider-config-schema.md` §2、
+  `03-runtime/11-provider-model-system.md` §2、`04-ux/06-settings-ia.md` §2
+- **验收**：B（模型配置）、F（持久化）、Quality
+- **里程碑**：M6+
+- **状态**：部分自动化：`apps/desktop/test/model-binding-catalog-source.test.mjs` 驱动
+  主进程解析（目录来源的修正会到达对外暴露的行、用户值不受修正影响、通用种子仍跟随
+  目录、继承值保持 `catalog` 标记）；`packages/shared/src/model-catalog.test.ts` 覆盖
+  四条来源规则；`crates/host-core/src/providers/catalog.rs` 覆盖配置往返、无标记记录与
+  被丢弃的未知标记。端到端的设置旅程与实际启动窗口断言为草稿。

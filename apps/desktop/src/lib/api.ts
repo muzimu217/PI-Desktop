@@ -734,7 +734,20 @@ export const api = {
        * Why each named source failed, so the market can explain a policy/DNS
        * refusal instead of reporting every source as merely unreachable.
        */
-      failureKinds?: Record<string, "policy" | "network">;
+      failureKinds?: Record<string, "policy" | "unresolved" | "network">;
+      /**
+      /**
+       * The host and the guard's own reason behind each failed source. Without
+       * it the panel can say a source was refused but not *what* was refused,
+       * and a policy refusal is a statement about one address. `route` adds
+       * which route the guard judged that address on, so a fake-IP refusal on a
+       * direct route reads apart from one on a proxied route (issue #419,
+       * ADR 0272).
+       */
+      failureDetails?: Record<
+        string,
+        { host?: string; reason?: string; addressKind?: string; route?: string }
+      >;
     }>(IPC.invoke.skillMarketSearch, { query, sources }),
   /** Fetch one catalog document (frontmatter split off) for preview/install. */
   fetchSkillMarketDocument: (entry: SkillCatalogEntry) =>

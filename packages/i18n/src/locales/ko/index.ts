@@ -549,6 +549,13 @@ sklm: {
       failureDetail: "세부 정보: ",
       retryPreview: "다시 시도",
       remoteErrorPolicy: "앱의 주소 검사가 카탈로그 소스를 차단했습니다. 내장 목록을 표시합니다",
+      remoteErrorUnresolved:
+        "로컬 리졸버가 카탈로그 소스를 확인하지 못했습니다. 내장 목록을 표시합니다",
+      previewResolveError:
+        "앱의 주소 검사가 이 호스트를 확인하지 못했습니다. 아무것도 설치되지 않았습니다.",
+      dnsHint:
+        "이 검사는 호스트를 로컬에서 확인하지만, 다운로드 자체는 프록시를 사용합니다. 프록시, VPN 또는 별도 DNS 설정을 사용한다면 설정 → 일반 → 네트워크를 확인하세요.",
+      failureSourceHost: "{{name}} ({{host}})",
       remoteErrorQuery: "스킬 마켓을 조회하지 못했습니다. 내장 목록을 표시합니다",
       remotePartial: "일부 카탈로그 소스를 사용할 수 없습니다 ({{names}})",
     },
@@ -1014,6 +1021,7 @@ sklm: {
     imageInput: "이미지",
     documentInput: "PDF",
     thinkingManualOverrideHint: "카탈로그에 없음. 지원되는 경우 활성화하세요.",
+    contextWindowCatalogHint: "models.dev를 따릅니다. 수정하면 내 값으로 고정됩니다.",
     availableForSubagents: "AI 위임에 사용 가능",
     availableForSubagentsHint: "서브에이전트에 작업을 위임할 때 AI가 이 모델을 사용하도록 허용",
     searchModelId: "모델 ID 검색…",

@@ -14,6 +14,7 @@ import type {
   UiMessage,
 } from "@pi-desktop/shared";
 import {
+  formatCompactTokenCount,
   THINKING_LEVELS,
   type ThinkingLevel,
 } from "@pi-desktop/shared";
@@ -88,16 +89,6 @@ export function CopyButton({
     </TooltipButton>
   );
 }
-
-
-export function formatTokenCount(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`;
-  if (value >= 10_000) return `${Math.round(value / 1000)}k`;
-  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
-  return String(value);
-}
-
-
 export function MessageMeta({
   modelId,
   usage,
@@ -128,7 +119,7 @@ export function MessageMeta({
       {showThroughput ? (
         <span className="message-meta-chip throughput">
           {t("chat.usageThroughputEstimated", {
-            count: formatTokenCount(throughput),
+            count: formatCompactTokenCount(throughput),
           })}
         </span>
       ) : null}

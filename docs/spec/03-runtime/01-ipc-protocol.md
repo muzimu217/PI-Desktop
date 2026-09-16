@@ -736,8 +736,9 @@ context. Manual compaction never silently falls back.
 Provider `error` events may include bounded diagnostic fields in
 `AppError.details`: `phase` (`request` or `stream`), `providerStatus`,
 `providerCode`, `providerWaitMs`, `streamMs`, `retryAttempt`, and, for a
-network failure, `networkCategory`, `networkCode`, `networkSyscall` and
-`networkHost` plus the request correlation fields `requestMessages`,
+network failure, `networkCategory`, `networkCode`, `networkSyscall`,
+`networkHost` and `networkRoute` plus the request correlation fields
+`requestMessages`,
 `requestBytes` and `compactionGeneration`. These fields are additive and
 redacted; they never carry credentials or an unrestricted provider response,
 and the request fields are counts and byte sizes only. A transient stream
@@ -1141,8 +1142,9 @@ Non-sensitive config that can be returned to the UI:
   tools disabled
 - optional `AppSettings.networkProxy` (`system` / `direct` / `custom` plus a
   proxy URL and bypass list). Absent means System. Custom accepts `http`,
-  `https`, `socks5`, and `socks5h` URLs. Main applies Chromium
-  `session.setProxy` and Node env immediately; the agent sidecar is
+  `https`, `socks5`, and `socks5h` URLs, including userinfo. Main applies
+  Chromium `session.setProxy` (credentialed URLs through a loopback SOCKS5
+  relay; issue #490) and Node env immediately; the agent sidecar is
   reconfigured without a process restart. `pi-desktop/network/testProxy`
   runs one bounded Chromium fetch through the supplied config and does not
   persist it.
@@ -1476,15 +1478,22 @@ state is pruned during the next scan.
 Desktop-only skill market channels (not host RPC) live on Electron IPC:
 
 - `pi-desktop/skill/market/search` — `{ query, sources[] }` →
-  `{ entries, failedSources, failureKinds }`. Main aggregates builtin-safe
-  catalog JSON and GitHub repo SKILL.md scans. Source URLs must pass the
-  public-HTTPS policy (ADR 0243). One failing source is dropped; the rest still
-  return. `failureKinds` maps each name in `failedSources` to `policy` (the
-  public-network guard refused it, so the request never left the process) or
-  `network`, which is what lets the panel explain a policy/DNS refusal — the
-  case a proxied user hits — instead of reporting every source as unreachable.
-  A guard refusal also surfaces as `NETWORK_POLICY_BLOCKED` (spec 08 §3.1), the
-  code the install sheet classifies a failed preview on.
+  `{ entries, failedSources, failureKinds, failureDetails }`. Main aggregates
+  builtin-safe catalog JSON and GitHub repo SKILL.md scans. Source URLs must pass
+  the public-HTTPS policy (ADR 0243). One failing source is dropped; the rest
+  still return. `failureKinds` maps each name in `failedSources` to `policy`
+  (the public-network guard judged the target and refused it, so the request
+  never left the process), `unresolved` (the local DNS lookup returned no answer,
+  so no address was judged — a resolver or proxy condition, not a verdict on the
+  source), or `network`. `failureDetails` carries the same keys with the host
+  that actually failed, the guard's own `reason`, the class of the refused
+  address, and the route that address was judged on (`proxied`, `direct`, or
+  `unknown` when the transport reported no readable route, ADR 0272), which is
+  what lets the panel name *what* was refused instead of only which source went
+  quiet.
+  `NETWORK_POLICY_BLOCKED` and an unanswered resolver as `NETWORK_RESOLVE_FAILED`
+  (spec 08 §3.1); the install sheet classifies a failed preview on those two
+  codes.
 - `pi-desktop/skill/market/fetch` — `{ entry }` → `{ name?, description?, body, resources? }`.
   Main fetches the document over the same policy, splits frontmatter, and may
   attach sibling `.md` files from a jsDelivr listing. The renderer installs

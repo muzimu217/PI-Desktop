@@ -519,6 +519,12 @@ pi.net.fetch(input: {
 }): Promise<{ status: number; headers: Record<string, string>; bodyText: string }>
 ```
 
+`fetch` 原样返回上游响应 —— `status`、`headers`、`bodyText` —— 所以 `429`
+是插件能读到的数据（`Retry-After` 也在里面），而不是被主机藏起来的错误。宿主
+不重试、不限流、也不重新发起请求：遇到 `429` 之后的重试与退避是插件自己的
+策略，响应头就是插件唯一能拿到的退避信号。失败的调用（`status >= 400`）在
+审计里记为 `ok: false`，并在响应声明了延迟时附带它通告的 `retryAfter`（§7）。
+
 ```ts
 pi.net.websocket.connect(input: {
   url: string
@@ -820,6 +826,8 @@ window.pluginBridge.on(event, handler)
 - TS
 - 会话 ID？
 - 好的/错误代码
+- status / retryAfter（仅 `net.fetch`：已完成调用的上游状态码，以及失败调用所
+  声明的 `Retry-After` —— 绝不记录整个头部集合或响应体）
 
 ## 8. 版本控制策略
 

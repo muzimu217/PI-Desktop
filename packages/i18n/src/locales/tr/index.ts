@@ -549,6 +549,13 @@ sklm: {
       failureDetail: "Ayrıntılar: ",
       retryPreview: "Yeniden dene",
       remoteErrorPolicy: "Uygulamanın adres denetimi katalog kaynaklarını engelledi – yerleşik seçkiler gösteriliyor",
+      remoteErrorUnresolved:
+        "Yerel çözümleyici katalog kaynaklarını çözemedi – yerleşik seçkiler gösteriliyor",
+      previewResolveError:
+        "Uygulamanın adres denetimi bu ana bilgisayarı çözemedi – hiçbir şey yüklenmedi.",
+      dnsHint:
+        "Bu denetim ana bilgisayarı yerel olarak çözer, indirmenin kendisi ise proxy'nizden geçer. Proxy, VPN veya özel bir DNS kurulumu kullanıyorsanız Ayarlar → Genel → Ağ bölümünü kontrol edin.",
+      failureSourceHost: "{{name}} ({{host}})",
       remoteErrorQuery: "Skill market sorgulanamadı – yerleşik seçkiler gösteriliyor",
       remotePartial: "Bazı katalog kaynakları kullanılamıyor ({{names}})",
     },
@@ -1014,6 +1021,7 @@ sklm: {
     imageInput: "Görüntüler",
     documentInput: "PDF",
     thinkingManualOverrideHint: "Katalogda yok; destekleniyorsa açın.",
+    contextWindowCatalogHint: "models.dev'i takip eder; düzenlerseniz değeriniz sabitlenir.",
     availableForSubagents: "AI devri için kullanılabilir",
     availableForSubagentsHint: "Görevler alt ajanlara devredilirken AI’nin bu modeli kullanmasına izin ver",
     searchModelId: "Model kimliği ara…",

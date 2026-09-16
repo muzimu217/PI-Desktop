@@ -441,8 +441,8 @@ identify the platform validation still needed.
 #### E2E-005: Add a provider and save API key
 
 - **Preconditions**: App running; no provider configured; the models.dev snapshot ships with the build.
-- **Steps**: 1) Open Settings → Model configuration and choose Add provider. 2) Confirm the dialog is ONE form with no stepper or Next/Back buttons. The first control is Service — a searchable menu (Choose a service, Custom endpoint, then a flat vendor list from models.dev including Xiaomi), not a native select, region grouping, or vendor-card grid. Open it, type to filter client-side, then choose **Custom endpoint**. Confirm Name and Base URL appear on one row with no helper paragraph under the URL (placeholder only), API Key and API format appear side by side on the next row (not behind Advanced), and that a focused field plus its 2px accent ring stays fully inside the dialog, including on a window narrower than 1040px. 3) Enter a name and a base URL for a service that publishes a `/models` route, then paste an API key. 4) Confirm the models section fills with the models THAT SERVICE returned, not with every model its vendor publishes; confirm a model the deployment does not host is absent. 5) Type in the filter box and confirm the list narrows client-side with no network request per keystroke. 6) Confirm each row shows the models.dev-derived context/output for models the catalog knows, and that a model with no catalog match still lists with generic defaults. 7) Select two models with the checkboxes. 8) Expand Advanced on one chosen row, override its limits and toggle thinking chips; confirm each numeric field has a five-chip preset ladder for common values, clicking a chip writes the value, hand editing remains possible, and a non-preset value leaves the ladder unselected. Confirm the label and optional hint sit above one compact grouped control and do not force the options onto a second row at normal dialog width; confirm all seven canonical levels are available, that published levels start selected for a known reasoning model, and that a non-reasoning or unknown row shows the same chips unselected with the manual-override hint; enable one level on that row and confirm the other row is unaffected. 9) Open the form-level Advanced and confirm the API format is present but pre-derived. 10) Add a free-form model ID the service did not return; confirm it is added with 128,000 / 8,192 / no-thinking defaults, then enable a thinking level if the endpoint supports it; confirm re-adding the same ID in different letter case is rejected as already added. 11) Save.
-- **Expected**: The service is asked first and models.dev only enriches the answer and seeds known-model defaults. The settings picker always offers the seven canonical thinking levels, and the Composer later renders the explicit levels saved in the same model binding; an empty or `off`-only binding resolves to `off`. Discovery is debounced ~600 ms, does not mark loading until that window elapses, and a slow reply from an earlier keystroke never replaces a newer list; named add-path discovery waits for an API key, while an unsaved custom provider is probed with the typed base URL (and key, if any) before it exists. Preset ladders cover common context/output limits while preserving hand-edited values. Custom endpoint keeps API format beside the key and omits Base URL helper copy; named endpoints do not show format. Point the same custom form at an unreachable or unauthorized URL and confirm the left pane shows a classified error (not a raw JSON/HTML dump and not a second “no models” empty state); with cached rows from a later edit, the same error is a one-line banner above the list. Point a second provider at a base URL with no `/models` route and confirm the list falls back to the catalog, is labelled as coming from models.dev rather than the service, and still saves. The provider appears as a row with its host, model count and secret badge; the key is stored securely (not in plaintext config); `models` contains both bindings and `models[0]` remains the provider default.
+- **Steps**: 1) Open Settings → Model configuration and choose Add provider. 2) Confirm the dialog is ONE form with no stepper or Next/Back buttons. The first control is Service — a searchable menu (Choose a service, Custom endpoint, then a flat vendor list from models.dev including Xiaomi), not a native select, region grouping, or vendor-card grid. Open it, type to filter client-side, then choose **Custom endpoint**. Confirm Name and Base URL appear on one row with no helper paragraph under the URL (placeholder only), API Key and API format appear side by side on the next row (not behind Advanced), and that a focused field plus its 2px accent ring stays fully inside the dialog, including on a window narrower than 1040px. 3) Enter a name and a base URL for a service that publishes a `/models` route, then paste an API key. 4) Confirm the models section fills with the models THAT SERVICE returned, not with every model its vendor publishes; confirm a model the deployment does not host is absent. 5) Type in the filter box and confirm the list narrows client-side with no network request per keystroke. 6) Confirm each row shows the models.dev-derived context/output for models the catalog knows, that its compact text tracks the published value instead of a coarser rounded one (a 1,050,000 window reads `1.05M`, never `1.1M`), and that a model with no catalog match still lists with generic defaults. 7) Select two models with the checkboxes. 8) Expand Advanced on one chosen row, override its limits and toggle thinking chips; confirm each numeric field has a five-chip preset ladder for common values, clicking a chip writes the value, hand editing remains possible, and a non-preset value leaves the ladder unselected. Confirm the label and optional hint sit above one compact grouped control and do not force the options onto a second row at normal dialog width; confirm all seven canonical levels are available, that published levels start selected for a known reasoning model, and that a non-reasoning or unknown row shows the same chips unselected with the manual-override hint; enable one level on that row and confirm the other row is unaffected. 9) Open the form-level Advanced and confirm the API format is present but pre-derived. 10) Add a free-form model ID the service did not return; confirm it is added with 128,000 / 8,192 / no-thinking defaults, then enable a thinking level if the endpoint supports it; confirm re-adding the same ID in different letter case is rejected as already added. 11) Save.
+- **Expected**: The service is asked first and models.dev only enriches the answer and seeds known-model defaults. The settings picker always offers the seven canonical thinking levels, and the Composer later renders the explicit levels saved in the same model binding; an empty or `off`-only binding resolves to `off`. Discovery is debounced ~600 ms, does not mark loading until that window elapses, and a slow reply from an earlier keystroke never replaces a newer list; named add-path discovery waits for an API key, while an unsaved custom provider is probed with the typed base URL (and key, if any) before it exists. Preset ladders cover common context/output limits while preserving hand-edited values. Limit text renders through one shared compact formatter, so neighbouring published windows stay distinguishable (`1M` / `1.05M` / `1.1M`) and a compact limit never reads above its published value. Custom endpoint keeps API format beside the key and omits Base URL helper copy; named endpoints do not show format. Point the same custom form at an unreachable or unauthorized URL and confirm the left pane shows a classified error (not a raw JSON/HTML dump and not a second “no models” empty state); with cached rows from a later edit, the same error is a one-line banner above the list. Point a second provider at a base URL with no `/models` route and confirm the list falls back to the catalog, is labelled as coming from models.dev rather than the service, and still saves. The provider appears as a row with its host, model count and secret badge; the key is stored securely (not in plaintext config); `models` contains both bindings and `models[0]` remains the provider default.
 - **Specs linked**: `03-runtime/11-provider-model-system.md`, `03-runtime/12-provider-config-schema.md`, `03-runtime/13-model-catalog-and-selection.md`, `03-runtime/14-secrets-storage.md`, `04-ux/06-settings-ia.md`
 - **Acceptance**: B (multi-model provider configuration, save key)
 - **Milestone**: M2
@@ -954,20 +954,22 @@ identify the platform validation still needed.
 
 - **Preconditions**: Session active; message sent.
 - **Steps**: 1) Request a long answer containing Markdown and inline/display
-  math. 2) Observe the assistant response as it streams. 3) Let the answer
-  complete and inspect the renderer console.
+  math using both dollar (`$…$` / `$$…$$`) and TeX bracket (`\(…\)` /
+  `\[…\]`) delimiters. 2) Observe the assistant response as it streams. 3) Let
+  the answer complete and inspect the renderer console.
 - **Expected**: Runtime chunks appear progressively through the incremental
-  Markdown renderer and the final response is complete. The renderer does not
-  start a second animation-frame typewriter loop, raise React error 185, or
+  Markdown renderer and the final response is complete. All four math delimiter
+  forms render with KaTeX, with `\[…\]` using display layout. The renderer does
+  not start a second animation-frame typewriter loop, raise React error 185, or
   reject Vite-inlined KaTeX fonts under CSP.
 - **Specs linked**: `03-runtime/02-agent-runtime.md`,
   `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`,
   `05-security/01-security.md`
 - **Acceptance**: C (streamed output), Quality
 - **Milestone**: M2
-- **Status**: Partially automated (protocol live-model stream plus renderer
-  source regression in `renderer-stream-safety.test.mjs`; full UI observation
-  remains Draft)
+- **Status**: Partially automated (protocol live-model stream, renderer source
+  regression in `renderer-stream-safety.test.mjs`, and math delimiter rendering
+  in `latex-math.test.mjs`; full UI observation remains Draft)
 
 #### E2E-010: Abort generation
 
@@ -4732,15 +4734,20 @@ identify the platform validation still needed.
   6. In both light and dark palettes, inspect the settings rail, search, selected
      item, on-state knob, composer shell, plugin/capability searches, the code
      card's head band, the Mermaid canvas, tool output, the composer placeholder
-     and disabled send chip, and the dialog scrim and permission backdrop. Apply
-     custom surface variables, keyboard-focus both searches, then remove the
-     custom theme.
+     and disabled send chip, the dialog scrim and permission backdrop, and the
+     dock question card with its option row. Apply custom surface variables,
+     keyboard-focus both searches, then remove the custom theme.
 - **Expected**:
   - Work panel body reads as quiet `#fafafa` inset paper with a white header band.
   - Settings fields, browser URL, segment tracks, and shortcut keycaps use light inset fills; focused fields lift with a neutral ring.
   - Toggle on-state keeps a white knob on the near-black track.
   - Hover fills on file-tree/diff/resize ease with shared motion tokens, and the divider's 2px line is a 50% accent tint while hovered or dragged, so it never paints a solid white hairline across the dark plate; keyboard focus keeps the full accent.
   - Light dialog scrim is softer than the dark 45% veil (~28% ink).
+  - The dock question card paints the composer plate in both palettes — light
+    `#ffffff` with the composer shadow, dark 96% `#212121` — and its option rows
+    are inlaid `--ds-tile-deep` fills with no raised shadow. A custom
+    `--ds-bg-composer` / `--ds-tile-deep` repaints both, and removing it
+    restores the built-in paint.
   - Tool output keeps its cascade: light paints the same lighter tile over error
     output and over plain tool blocks, while dark shows the error tint and leaves
     plain blocks transparent.
@@ -5499,6 +5506,24 @@ identify the platform validation still needed.
   and after approval. Main/Host/sidecar PIDs remained stable; credentials never
   entered CDP or output. The default no-key run remains 5/5 with the live case
   explicitly skipped.
+
+#### E2E-CHAT-opaque-floating-decision-and-retry-surfaces: Plan approval and retry hover stay opaque
+
+- **Status**: Automated (`apps/desktop/test/plan-mode-source-contract.test.mjs`, `apps/desktop/test/active-turn-surface.test.mjs`)
+- **Priority**: P2
+- **Covers**: C, Quality / floating composer and retry surfaces
+- **Preconditions**: Renderer CSS is the production source under `apps/desktop/src/styles`.
+- **Steps**:
+  1. Inspect `.plan-approval-bar` in the composer dock styles.
+  2. Inspect `.run-activity-error-popover.message-error` in the transcript styles.
+  3. Hover or focus a retrying active-turn row in a live session.
+- **Expected**:
+  - The Plan/Goal approval bar paints `--ds-bg-composer` with `--ds-shadow-composer` rather than the in-flow `--ds-tile` wash, so it remains a readable plate over the transparent composer dock.
+  - The retry hover tooltip mixes the error tint over `--ds-bg-elevated-opaque`, so transcript text does not show through.
+- **Specs linked**: `04-ux/03-permission-ux.md`, `04-ux/08-component-spec.md`
+- **Acceptance**: C, Quality
+- **Milestone**: M6
+- **Status detail**: Source contracts assert the CSS tokens. Live hover remains a visual check.
 
 #### E2E-107: Plan approval uses one absolute 30-minute expiry
 
@@ -7633,6 +7658,13 @@ identify the platform validation still needed.
 | M6+ (capability level move) | E2E-CAPABILITY-move-across-levels |
 | E — Tools & permissions (builtin subagent defaults) | E2E-SUBAGENT-settings-lists-builtin-defaults |
 | Quality (builtin subagent defaults) | E2E-SUBAGENT-settings-lists-builtin-defaults |
+| C — Conversation & stream (opaque floating surfaces) | E2E-CHAT-opaque-floating-decision-and-retry-surfaces |
+| Quality (opaque floating surfaces) | E2E-CHAT-opaque-floating-decision-and-retry-surfaces |
+| M6 (opaque floating surfaces) | E2E-CHAT-opaque-floating-decision-and-retry-surfaces |
+| B — Model config (catalog window provenance) | E2E-MODEL-catalog-window-correction-reaches-saved-bindings |
+| F — Persistence (catalog window provenance) | E2E-MODEL-catalog-window-correction-reaches-saved-bindings |
+| Quality (catalog window provenance) | E2E-MODEL-catalog-window-correction-reaches-saved-bindings |
+| M6+ (catalog window provenance) | E2E-MODEL-catalog-window-correction-reaches-saved-bindings |
 
 The `US-UI-*` visual scenarios (§UI shell visual scenarios) trace to the
 Codex parity decisions in [decisions-log §D](../08-meta/decisions-log.md)
@@ -10497,6 +10529,10 @@ are withdrawn with ADR 0165.
      a secret.
   4. Repeat `agent.complete` until the eighth call in 60s succeeds and the
      ninth returns `RATE_LIMITED`.
+  5. Make the completion fail at the provider (for example a model whose
+     credential the user has revoked). Confirm the plugin reads the classified
+     code — `PROVIDER_UNAUTHORIZED` — rather than a generic failure.
+  6. Stop host-core and call `pi.models.list()`. Confirm `[]` and no warn line.
   5. Stop host-core and call `pi.models.list()`. Confirm `[]` and no warn line.
 - **Expected**: Credentials never leave Electron main. Audit lines record
   plugin id, model key, sizes, and usage — not transcript or completion text.
@@ -10544,7 +10580,10 @@ are withdrawn with ADR 0165.
      `settings.get`.
   4. Click Test against a listening proxy. Confirm a Connected status. Click
      Test against a closed port. Confirm a failure status without changing
-     the saved URL.
+     the saved URL. Enter `http://user:pass@127.0.0.1:<auth-port>` and
+     `socks5://user:pass@127.0.0.1:<auth-port>` against proxies that require
+     those credentials. Confirm Test reports Connected rather than
+     `net::ERR_NO_SUPPORTED_PROXIES` (issue #490).
   5. With Custom saved, send a short prompt through the configured provider.
      Confirm the provider request and response pass through the proxy,
      including when a SOCKS5 proxy returns the complete bind response in one
@@ -10558,15 +10597,18 @@ are withdrawn with ADR 0165.
   `net.fetch`, and the in-app browser. Workspace Bash `env` does not show
   `HTTP_PROXY` / `ALL_PROXY` from the setting. OAuth still opens the system
   browser. Invalid schemes (`file:`, `ftp:`, and SOCKS4) and malformed
-  percent-encoded credentials are rejected. No protocol or schema version bump.
+  percent-encoded credentials are rejected. Authenticated HTTP and SOCKS5
+  URLs Test and apply without `net::ERR_NO_SUPPORTED_PROXIES` (issue #490).
+  No protocol or schema version bump.
 - **Specs linked**: `04-ux/06-settings-ia.md`,
   `03-runtime/07-process-model.md`, ADR 0177, D340
 - **Acceptance**: B (settings), F (providers), Security
 - **Milestone**: M5
 - **Status**: Unit-covered (`network-proxy.test.ts`, `node-proxy.test.ts`,
-  `settings-general.test.mjs`, host-core `network_proxy` tests); malformed
-  credentials and unsupported SOCKS4 schemes are covered by the shared parser
-  tests; full UI journey Draft (run only in a capable environment when this surface changes)
+  `authenticated-proxy-relay.test.ts`, `settings-general.test.mjs`,
+  host-core `network_proxy` tests); malformed credentials and unsupported
+  SOCKS4 schemes are covered by the shared parser tests; full UI journey
+  Draft (run only in a capable environment when this surface changes)
 
 #### E2E-191: Newly emitted AppError codes stay registered
 
@@ -11181,16 +11223,23 @@ are withdrawn with ADR 0165.
 
 - **Preconditions**: A dev plugin with `net.domains: ["allowed.test"]` and
   `net.fetch`. A local server on `allowed.test` answers `/hop` with a 302 to
-  `http://undeclared.test/leak` and `/ok` with 200.
+  `http://undeclared.test/leak`, `/ok` with 200, and `/limited` with 429 and
+  `Retry-After: 2`.
 - **Steps**: 1) Call `pi.net.fetch({ url: "https://allowed.test/ok" })`. 2)
-  Call `pi.net.fetch({ url: "https://allowed.test/hop" })`.
+  Call `pi.net.fetch({ url: "https://allowed.test/hop" })`. 3) Call
+  `pi.net.fetch({ url: "https://allowed.test/limited" })`.
 - **Expected**: Step 1 returns 200. Step 2 fails with `PERMISSION_DENIED`
   naming `undeclared.test`, and the undeclared server records no request. The
-  audit log shows the denied hop.
-- **Specs linked**: `07-plugins/04-plugin-security.md` §8.0
+  audit log shows the denied hop. Step 3 returns 429 with its `Retry-After`
+  header intact, the server records exactly one request for it, and the audit
+  log shows `ok: false` with the advertised `retryAfter` — the host retries
+  nothing.
+- **Specs linked**: `07-plugins/04-plugin-security.md` §8.0,
+  `07-plugins/03-plugin-api.md` §7
 - **Acceptance**: D, Security
 - **Milestone**: M4+
 - **Status**: runtime-covered by `apps/desktop/test/plugin-egress.test.mjs`
+  (per-hop egress and failed-call audit)
 
 #### E2E-238: Tool requests for an unknown session do not fall back
 
@@ -12324,26 +12373,39 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 #### E2E-SKILL-MARKET-NET-BOUNDARY: Public-HTTPS skill sources reject private and loopback URLs
 
 - **Preconditions**: Shared public-network helpers and the main-process
-  public-HTTPS client with injectable fetch/DNS.
+  public-HTTPS client with injectable fetch/DNS/route.
 - **Steps**: 1) Classify trailing-dot localhost, IPv4 loopback, IPv4-mapped
   IPv6, ULA, link-local, RFC1918, and `http://` URLs. 2) Resolve a public
   hostname to a private A record. 3) Follow a 302 whose Location is
-  `https://127.0.0.1/`.
+  `https://127.0.0.1/`. 4) Report a proxied route and a TUN fake-IP answer
+  (`198.18.0.1`), the same answer on a `DIRECT` route, on an unreadable route,
+  and on a route list that offers `DIRECT`. 5) Let a first hop be proxied and
+  its redirect target direct.
 - **Expected**: Every bypass form is rejected. A public CDN URL is accepted.
   DNS that yields a private address and a redirect onto loopback both throw a
-  policy error without fetching the private target. Policy failures are not
-  retried. Each refusal carries `NETWORK_POLICY_BLOCKED` (spec 08 §3.1) so the
-  install sheet can name the reason and offer a retry instead of leaving the
-  install button disabled with no explanation, and the market list can tell a
-  refused source apart from a merely unreachable one.
-- **Specs linked**: `05-security/01-security.md`, ADR 0243,
+  policy error without fetching the private target. A judged refusal is not
+  retried; a local resolver that answered nothing is, and is reported as
+  `NETWORK_RESOLVE_FAILED` (`kind` `unresolved`) rather than as an address-check
+  refusal — the guard reached no verdict, so nothing may claim it did. Every
+  other refusal carries `NETWORK_POLICY_BLOCKED` (spec 08 §3.1) with its
+  `reason`, the class of the refused address, and the route that address was
+  judged on, so the install sheet can name the reason and offer a retry instead
+  of leaving the install button disabled with no explanation, and the market
+  list can tell a refused source apart from a merely unreachable one. A proxied
+  hop whose answer is the RFC 2544 fake-IP class is refused on a direct or
+  unreadable route and accepted on the proxied one, every other non-public class
+  still refuses on all routes, and each redirect hop is judged on its own route
+  (ADR 0272).
+- **Specs linked**: `05-security/01-security.md`, ADR 0243, ADR 0272,
   `03-runtime/01-ipc-protocol.md` §12b
 - **Acceptance**: Security, Quality
 - **Milestone**: M6+
 - **Status**: Automated (`pnpm test:e2e:skill-market`,
   `apps/desktop/test/public-https-fetch.test.mjs`,
+  `apps/desktop/test/public-https-fetch-route.test.mjs`,
   `apps/desktop/test/skill-market-scan.test.mjs`,
   `apps/desktop/test/skill-market-failure.test.mjs`,
+  `apps/desktop/test/skill-market-policy-refusal.test.mjs`,
   `packages/shared/src/public-network.test.ts`)
 
 #### E2E-SKILL-MARKET-EXPANSION: Adjacent markdown resources inline before install
@@ -12630,3 +12692,43 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   picked directory, and a session root stands in when the window shows no
   project. The two-live-sessions desktop journey and the panel step are Draft
   (run only in a capable environment when this surface changes)
+
+#### E2E-MODEL-catalog-window-correction-reaches-saved-bindings
+
+- **Goal**: a models.dev limit correction reaches an already saved binding without
+  deleting and re-adding the model, while a number the user entered in Settings is
+  never overwritten.
+- **Steps**:
+  1. Configure a provider, select a model models.dev publishes a `limit.context`
+     for, and save. Open the row's Advanced body and read the context-window field
+     and its hint.
+  2. Serve a corrected catalog record for that model (a different published
+     window), reopen Settings, and read the row, the context inspector, and the
+     window a new session launches with.
+  3. Type a window in the Advanced field — the preset ladder once and a
+     hand-typed `128000` once — save, then serve another catalog correction and
+     reopen Settings and the inspector.
+  4. Save and reopen a provider row whose binding carries no
+     `contextWindowSource`: once with the generic `128000` seed, once with any
+     other stored value.
+- **Expected**: Step 1 shows the published number with the "follows models.dev"
+  hint. Step 2 shows the corrected number everywhere the effective window is used
+  (settings row, context inspector, session launch) with no delete and re-add.
+  Step 3 keeps the entered number in the settings row, in the inspector, and in
+  the launched request, including a hand-typed `128000` for a model whose
+  published window is larger, and the hint is gone. Step 4 resolves
+  deterministically: the `128000` seed follows the catalog, every other value
+  stays as stored. Every step keeps the marker across the save/read round trip of
+  the provider row, and a config written before the marker stays readable.
+- **Specs linked**: `03-runtime/13-model-catalog-and-selection.md` §9.1,
+  `03-runtime/12-provider-config-schema.md` §2,
+  `03-runtime/11-provider-model-system.md` §2, `04-ux/06-settings-ia.md` §2
+- **Acceptance**: B (model config), F (persistence), Quality
+- **Milestone**: M6+
+- **Status**: Partially automated:
+  `apps/desktop/test/model-binding-catalog-source.test.mjs` drives the main-process
+  resolver (catalog-sourced correction reaches the exposed row, a user value
+  survives it, the generic seed still follows the catalog, an inherited value stays
+  marked); `packages/shared/src/model-catalog.test.ts` covers the four source rules;
+  `crates/host-core/src/providers/catalog.rs` covers the config round trip, the
+  unmarked record, and the dropped unknown marker. The end-to-end settings journey

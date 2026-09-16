@@ -5629,3 +5629,57 @@ that was sitting at the bottom — including after the turn had finished.
   file, and an unavailable host contributes no exclusions. See ADR 0270,
   `04-ux/06-settings-ia.md` §2, `03-runtime/01-ipc-protocol.md` §12c, and
   E2E-SUBAGENT-settings-lists-builtin-defaults.
+
+## 2026-09-17 — Judge a public-network address on the route the request will dial (D436)
+
+- The skill market's main-process guard classified the target host with a
+  *local* resolver while `net.fetch` dials through Chromium's proxy stack
+  (ADR 0177). Under a TUN / fake-IP resolver that answer is a synthesized
+  `198.18.0.0/15` address for a connection the app never makes, so every
+  catalog source was refused as "blocked by the app's address check"
+  (issue #419).
+- Each hop now asks the session that carries `net.fetch`
+  (`Session.resolveProxy`) for its own decision, and the shared
+  `classifyProxyRoute` reduces that answer to `proxied` / `direct` / `unknown`.
+  On a `proxied` route `isAcceptableResolvedAddress` tolerates only the
+  resolver-artifact class (`benchmark`); every real internal class and an
+  unanswered resolver still refuse. A `direct` route keeps the pre-change
+  semantics byte for byte, a `DIRECT` entry anywhere in the list is read as
+  `unknown` because Chromium may fall back to it, and `unknown` stays strict.
+- Refusals and the market's `failureDetails` now carry `route`, so a fake-IP
+  refusal on a direct route reads apart from one on an unreadable route.
+- The MCP market keeps its pinned Node HTTPS guard (ADR 0245) and is unchanged;
+  a fake-IP environment still refuses its sources.
+- See ADR 0272, `05-security/01-security.md` §4.1,
+  `03-runtime/09-logging-and-observability.md`, and
+  `06-delivery/04-e2e-test-plan.md` E2E-SKILL-MARKET-NET-BOUNDARY.
+
+## 2026-09-17 — The dock question card is a composer plate (#360, D437)
+
+- The asktool question card is mounted in the transparent composer dock
+  (`Composer.tsx` renders it as a direct `.composer-stack` child, and the
+  transcript mount is gone), yet it still painted the in-flow `--ds-tile` wash:
+  a 3.5% ink mix with no shadow. On the light page that leaves a `#f7f7f7`
+  panel with white option rows next to the composer plate below it, which is
+  how #360 item 1 ("选择交互面板缺少背景色") reads. The dock rule's own comment
+  already claimed the card "uses the same decision surface as Plan and Goal
+  approval", while `.plan-approval-bar` in that exact slot paints
+  `--ds-bg-composer` with `--ds-shadow-composer` (`04-ux/03-permission-ux.md`
+  §9, `04-ux/08-component-spec.md` §11.5).
+- `.composer-stack > .asktool-card` now paints that plate: `--ds-bg-composer`
+  with `--ds-shadow-composer` (light `#ffffff`, dark
+  `color-mix(in oklab, #212121 96%, transparent)` with the composer shadow).
+- Its controls move to the plate's inlaid tier, the layer `.plan-approval-split`
+  already uses on that same plate: `.asktool-option` and
+  `.asktool-custom-input` drop `--ds-raised` and `--ds-raised-shadow` for
+  `--ds-tile-deep`, and the hover/selected mix is rebased on `--ds-tile-deep`.
+  Without that flip the rows would be white on white in the light palette,
+  where `--ds-raised` and `--ds-bg-composer` are both `#ffffff`. The 15 px
+  option mark keeps `--ds-tile-deep` — the sidebar checkbox's mark — which
+  still reads against the inlaid row exactly as it does against the sidebar.
+- Renderer only: no protocol, storage, host, permission, migration, or
+  preference change, and no new default. Both layers are existing tokens in
+  both palettes, so a contributed theme moves the plate and the rows with
+  `--ds-bg-composer` / `--ds-tile-deep`. See
+  `04-ux/11-asktool-question-card.md`, `04-ux/07-ui-design-system.md` §6.4, and
+  E2E-078.

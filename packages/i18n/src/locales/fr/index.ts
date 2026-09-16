@@ -540,6 +540,13 @@ sklm: {
       failureDetail: "Détails : ",
       retryPreview: "Réessayer",
       remoteErrorPolicy: "Les sources du catalogue ont été bloquées par le contrôle d'adresse de l'application – sélection intégrée affichée",
+      remoteErrorUnresolved:
+        "Le résolveur local n'a pas pu résoudre les sources du catalogue – sélection intégrée affichée",
+      previewResolveError:
+        "Le contrôle d'adresse de l'application n'a pas pu résoudre cet hôte – rien n'a été installé.",
+      dnsHint:
+        "Ce contrôle résout l'hôte localement, alors que le téléchargement passerait par votre proxy. Si vous utilisez un proxy, un VPN ou une configuration DNS personnalisée, vérifiez Paramètres → Général → Réseau.",
+      failureSourceHost: "{{name}} ({{host}})",
       remoteErrorQuery: "Impossible d'interroger le marché de skills – sélection intégrée affichée",
       remotePartial: "Certaines sources du catalogue sont indisponibles ({{names}})",
     },
@@ -997,6 +1004,7 @@ sklm: {
     "imageInput": "Images",
     "documentInput": "PDF",
     "thinkingManualOverrideHint": "Pas dans le catalogue ; activer si pris en charge.",
+    "contextWindowCatalogHint": "Suit models.dev ; une modification fixe votre valeur.",
     "availableForSubagents": "Disponible pour la délégation de l'IA",
     "availableForSubagentsHint": "Autoriser l'IA à utiliser ce modèle lors de la délégation de tâches à des sous-agents",
     "searchModelId": "ID de modèle de recherche…",

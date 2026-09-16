@@ -18,6 +18,8 @@ import {
   PROVIDER_RATE_LIMIT_MAX_RETRIES,
   PROVIDER_TRANSIENT_MAX_RETRIES,
 } from "./provider-retry.js";
+import { getGlobalDispatcher } from "undici";
+import { describeProviderFetchFailure } from "./provider-transport-recovery.js";
 /**
  * The delegate loop itself is covered in `subagent.test.ts`; here only the
  * `Task` wiring around it is under test, so `SubagentRun` is replaced by a
@@ -1430,6 +1432,71 @@ describe("DesktopAgentRuntime live activity", () => {
         },
       },
     });
+
+    await runtime.dispose();
+  });
+
+  it("reports the captured transport cause instead of the flattened message", async () => {
+    const runtime = createRuntime({ onEvent: vi.fn() });
+    // The reporter's log line (issue #234): a bare `fetch failed`, a stream
+    // phase, a two-millisecond "stream", and 112s of provider wait. pi-ai had
+    // already flattened the Error, so the text-only classifier can only say
+    // "unknown" — the fetch wrapper still held the cause chain.
+    const flattened = classifyAgentError("fetch failed");
+    expect(flattened).toMatchObject({
+      code: "NETWORK_ERROR",
+      details: { networkCategory: "unknown" },
+    });
+    (runtime as any).providerFetchFailure = describeProviderFetchFailure(
+      Object.assign(new TypeError("fetch failed"), {
+        cause: Object.assign(new Error("read ECONNRESET"), {
+          code: "ECONNRESET",
+          syscall: "read",
+        }),
+      }),
+      "https://chatgpt.com/backend-api/codex/responses",
+    );
+
+    expect(
+      (runtime as any).providerErrorWithDiagnostics(
+        flattened,
+        "stream",
+        112_442,
+        2,
+      ).details,
+    ).toMatchObject({
+      networkCategory: "reset",
+      networkCode: "ECONNRESET",
+      networkSyscall: "read",
+      // No response ever arrived, so this is not a started stream — the
+      // synthetic `message_start` pi-agent-core emits for a stream that ended
+      // without `start` must not read as one.
+      phase: "request",
+      providerWaitMs: 112_442,
+      streamMs: 2,
+    });
+
+    await runtime.dispose();
+  });
+
+  it("rebuilds the shared transport only once the same origin fails twice", async () => {
+    const runtime = createRuntime({ onEvent: vi.fn() });
+    const failure = describeProviderFetchFailure(
+      Object.assign(new TypeError("fetch failed"), {
+        cause: Object.assign(new Error("read ECONNRESET"), {
+          code: "ECONNRESET",
+        }),
+      }),
+      "https://chatgpt.com/backend-api/codex/responses",
+    );
+    const before = getGlobalDispatcher();
+
+    (runtime as any).recoverProviderTransport(failure);
+    // One unanswered attempt is what a retry is for; the pool stays.
+    expect(getGlobalDispatcher()).toBe(before);
+    (runtime as any).recoverProviderTransport(failure);
+    // The second one has spent its retry on the same dead pool.
+    expect(getGlobalDispatcher()).not.toBe(before);
 
     await runtime.dispose();
   });

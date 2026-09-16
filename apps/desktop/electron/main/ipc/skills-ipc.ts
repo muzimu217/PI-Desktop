@@ -9,7 +9,11 @@ import {
   type SkillMarketDocument,
   type SkillMarketSearchResult,
 } from "../skill-market-catalog";
-import { skillMarketFailureDetail, skillMarketHost } from "../skill-market-scan";
+import {
+  skillMarketFailureDetail,
+  type SkillMarketFailureDetail,
+  type SkillMarketFailureKind,
+} from "../skill-market-scan";
 import type { IpcRegistrar } from "./types";
 
 export type SkillsIpcDependencies = {
@@ -47,26 +51,49 @@ export function registerSkillsIpc({
     refuses a URL the browser reaches) was therefore impossible to diagnose
     from a user's logs. `diagnostics` is the category spec 09 gives to blocked
     requests; the payload is host + source + kind only, never the full URL.
+
+    `reason` and `addressKind` were added for the same issue: "the resolver
+    answered nothing" and "the resolved address is not public" need different
+    fixes, and a single `kind` could not tell them apart in a report.
   */
-  const logSourceFailure = (
-    source: { name?: unknown; url?: unknown },
-    kind: "policy" | "network",
-  ) => {
-    const host = skillMarketHost(source.url);
+  /**
+   * The code a refusal is logged under. Two codes, because the guard refuses
+   * for two different reasons: a judged address is a policy decision
+   * (`NETWORK_POLICY_BLOCKED`), while a resolver that answered nothing is an
+   * environment condition (`NETWORK_RESOLVE_FAILED`). A plain transport failure
+   * carries no code, as before.
+   */
+  const refusalCode = (kind: SkillMarketFailureKind): string | undefined => {
+    if (kind === "policy") return ErrorCodes.NETWORK_POLICY_BLOCKED;
+    if (kind === "unresolved") return ErrorCodes.NETWORK_RESOLVE_FAILED;
+    return undefined;
+  };
+  const logSourceFailure = (name: string, detail: SkillMarketFailureDetail) => {
+    const code = refusalCode(detail.kind);
     logger.app("diagnostics", "warn", "skill market source produced no entries", {
-      ...(kind === "policy" ? { code: ErrorCodes.NETWORK_POLICY_BLOCKED } : {}),
+      ...(code ? { code } : {}),
       event: "skillMarket.sourceFailed",
       data: {
-        ...(typeof source.name === "string" && source.name ? { source: source.name } : {}),
-        ...(host ? { host } : {}),
-        kind,
+        ...(name ? { source: name } : {}),
+        ...(detail.host ? { host: detail.host } : {}),
+        kind: detail.kind,
+        ...(detail.reason ? { reason: detail.reason } : {}),
+        ...(detail.addressKind ? { addressKind: detail.addressKind } : {}),
+        ...(detail.route ? { route: detail.route } : {}),
       },
     });
   };
-  const marketFailureKind = (
-    result: SkillMarketSearchResult,
-    name: string,
-  ): "policy" | "network" => (result.failureKinds?.[name] === "policy" ? "policy" : "network");
+  /**
+   * What one failed source reports. `failureDetails` carries the host and the
+   * guard's own reason; `failureKinds` is the earlier name-only view, kept so a
+   * result that predates the details still logs a kind rather than nothing.
+   */
+  const marketFailure = (result: SkillMarketSearchResult, name: string): SkillMarketFailureDetail => {
+    const detail = result.failureDetails?.[name];
+    if (detail) return detail;
+    const kind = result.failureKinds?.[name];
+    return { kind: kind === "policy" || kind === "unresolved" ? kind : "network" };
+  };
   let host: HostProcess | null = null;
   const handle = (channel: string, fn: (...args: any[]) => Promise<any>) => {
     registrar.handle(channel, async (...args) => {
@@ -86,10 +113,7 @@ export function registerSkillsIpc({
       // One record per source that produced nothing. The panel shows the names,
       // so without this the reason and the host exist nowhere a user can reach.
       for (const name of result.failedSources ?? []) {
-        logSourceFailure(
-          requested.find((source) => source?.name === name) ?? { name },
-          marketFailureKind(result, name),
-        );
+        logSourceFailure(name, marketFailure(result, name));
       }
       return result;
     },
@@ -103,8 +127,9 @@ export function registerSkillsIpc({
         // The install sheet shows this refusal; the log is what makes it
         // diagnosable after the fact, and it survives the sheet closing.
         const detail = skillMarketFailureDetail(entry, error);
+        const code = refusalCode(detail.kind);
         logger.app("diagnostics", "warn", "skill market document fetch failed", {
-          ...(detail.kind === "policy" ? { code: ErrorCodes.NETWORK_POLICY_BLOCKED } : {}),
+          ...(code ? { code } : {}),
           event: "skillMarket.documentFailed",
           data: detail,
         });

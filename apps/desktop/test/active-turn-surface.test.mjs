@@ -77,6 +77,10 @@ test("active turns show immediate and phase-specific feedback without a progress
   assert.match(messagesStyles, /\.run-activity-error-popover\.message-error/);
   assert.match(
     messagesStyles,
+    /\.run-activity-error-popover\.message-error \{[\s\S]*?background:\s*color-mix\(in oklab,\s*var\(--ds-error\)[^;]*var\(--ds-bg-elevated-opaque\)/,
+  );
+  assert.match(
+    messagesStyles,
     /\.run-activity-retry-reason:hover[\s\S]*\.run-activity-error-popover/,
   );
   assert.match(messagesStyles, /\.run-activity-indicator\[data-phase="waiting-subagents"\]/);

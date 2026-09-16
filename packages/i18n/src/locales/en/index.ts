@@ -547,6 +547,13 @@ sklm: {
       failureDetail: "Details: ",
       retryPreview: "Retry",
       remoteErrorPolicy: "Catalog sources were blocked by the app's address check — showing built-in picks",
+      remoteErrorUnresolved:
+        "The local resolver could not answer for the catalog sources — showing built-in picks",
+      previewResolveError:
+        "The app's address check could not resolve this host — nothing was installed.",
+      dnsHint:
+        "That check resolves the host locally, while the download itself would use your proxy. If you use a proxy, a VPN, or a custom DNS setup, check Settings → General → Network.",
+      failureSourceHost: "{{name}} ({{host}})",
       remoteErrorQuery: "Could not query the skill market — showing built-in picks",
       remotePartial: "Some catalog sources are unavailable ({{names}})",
     },
@@ -1013,6 +1020,7 @@ sklm: {
     imageInput: "Images",
     documentInput: "PDF",
     thinkingManualOverrideHint: "Not in catalog; enable if supported.",
+    contextWindowCatalogHint: "Follows models.dev; editing pins your value.",
     availableForSubagents: "Available for AI delegation",
     availableForSubagentsHint: "Allow AI to use this model when delegating tasks to subagents",
     searchModelId: "Search model ID…",

@@ -187,11 +187,17 @@ HTTP 429 处理是一个逻辑回合策略。此路径禁用了 pi-ai 的嵌套
 提供程序故障在可用时于 `AppError.details` 中携带有界诊断：
 `phase`（`request` 或 `stream`）、`providerStatus`、`providerCode`、
 `providerWaitMs`、`streamMs`、`retryAttempt`、网络诊断
-（`networkCategory`、`networkCode`、`networkSyscall`、`networkHost`）以及
-请求关联字段（`requestMessages`、`requestBytes`、`compactionGeneration`）。
+（`networkCategory`、`networkCode`、`networkSyscall`、`networkHost`、
+`networkRoute`）以及请求关联字段（`requestMessages`、`requestBytes`、
+`compactionGeneration`）。
 对于持续的 429，
 `retryAttempt` 为 `5`；对于持续的非 429 瞬时故障，它为 `4`。凭据与不受限制的
-响应正文永远不会进入事件或日志。
+响应正文永远不会进入事件或日志。每次重试都会新建请求、流和 `AbortController`；
+重试唯一共享的状态是进程级 undici dispatcher。当同一来源在一轮内连续两次没有
+任何响应、且新尝试仍无法到达它时，下一次尝试前会重建一次传输（每 30 秒最多一次，
+`dns` 除外），避免重试继续复用连接已死的连接池。重建先安装替换、再优雅关闭旧
+的 dispatcher，并复现已配置的链路，因此其他会话正在进行的请求仍会在原连接池上
+完成，代理也不会被悄悄丢弃。
 
 ### 5e。静默回合恢复
 

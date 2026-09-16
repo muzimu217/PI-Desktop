@@ -314,7 +314,13 @@ test("capability state stays outside capability files and active merge shadows d
   const skillRegistry = read("../../../crates/host-core/src/user_skills.rs");
   assert.match(capabilities, /agent-capabilities/);
   assert.match(mcpRegistry, /\.agents\/servers/);
-  assert.match(skillRegistry, /\.agents\/skills/);
+  // `.agents/skills` was only ever spelled in this file's own Rust test
+  // fixtures, which now live beside the module they cover
+  // (crates/host-core/src/user_skills/tests.rs). Pin the production pair
+  // instead: the skills leaf the registry resolves, and the `.agents` root
+  // capability_dir resolves it under.
+  assert.match(capabilities, /pub const AGENTS_DIR: &str = "\.agents";/);
+  assert.match(skillRegistry, /capability_dir\([^;]*"skills"/);
   assert.match(mcpRegistry, /existing\.id != record\.id/);
   assert.match(mcpRegistry, /if record\.enabled \{/);
   assert.match(skillRegistry, /existing\.id != record\.id/);

@@ -384,7 +384,14 @@ export function createPluginServices({
         runtimeProvider,
         context,
         launch.sidecarParams.thinkingLevel,
-        { signal: input.signal, sessionId: launchSessionId },
+        {
+          signal: input.signal,
+          sessionId: launchSessionId,
+          // Spec 07-plugins/03-plugin-api.md: empty model output answers the
+          // plugin with INVALID_ARGUMENT, not the runtime's internal code.
+          emptyErrorCode: "INVALID_ARGUMENT",
+          emptyErrorMessage: "The model returned no text.",
+        },
       );
       return {
         text: result.text,

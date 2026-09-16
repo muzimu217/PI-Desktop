@@ -229,12 +229,22 @@ When the retry budget is exhausted, the final assistant error and lifecycle
 `AppError.details` when available: `phase` (`request` or `stream`),
 `providerStatus`, `providerCode`, `providerWaitMs`, `streamMs`,
 `retryAttempt`, the network diagnosis (`networkCategory`, `networkCode`,
-`networkSyscall`, `networkHost`) and the request correlation fields
+`networkSyscall`, `networkHost`, `networkRoute`) and the request correlation
 (`requestMessages`, `requestBytes`, `compactionGeneration`). For a persistent
 429 or non-429 transient failure,
 `retryAttempt` is `10`. Credentials and unrestricted response bodies never
 enter the event or log. The active-turn status shows the remaining backoff and
 the retry budget as `Retrying in 0s · attempt 9/10` in English.
+
+Each retry builds a new request, stream, and `AbortController`; the one piece of
+state a retry shares is the process-wide undici dispatcher. When the same origin
+fails twice in a row without any response and no fresh attempt reaches it, the
+transport is rebuilt once (throttled to one rebuild every 30 seconds, never for
+`dns`) before the next attempt, so the retry does not replay into a pool whose
+connection is already dead. The rebuild installs the replacement before closing
+the previous dispatcher and closes it gracefully, and it reproduces the
+configured route, so another session's in-flight request finishes on the pool it
+started on and a proxy is never silently dropped.
 
 ### 5e. Silent-turn recovery
 

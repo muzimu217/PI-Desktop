@@ -540,6 +540,13 @@ sklm: {
       failureDetail: "Details: ",
       retryPreview: "Erneut versuchen",
       remoteErrorPolicy: "Katalogquellen wurden von der Adressprüfung der App blockiert – integrierte Auswahl wird angezeigt",
+      remoteErrorUnresolved:
+        "Der lokale Resolver konnte die Katalogquellen nicht auflösen – integrierte Auswahl wird angezeigt",
+      previewResolveError:
+        "Die Adressprüfung der App konnte diesen Host nicht auflösen – es wurde nichts installiert.",
+      dnsHint:
+        "Diese Prüfung löst den Host lokal auf, der Download selbst würde jedoch über deinen Proxy laufen. Wenn du einen Proxy, ein VPN oder ein eigenes DNS-Setup verwendest, prüfe Einstellungen → Allgemein → Netzwerk.",
+      failureSourceHost: "{{name}} ({{host}})",
       remoteErrorQuery: "Der Skill-Markt konnte nicht abgefragt werden – integrierte Auswahl wird angezeigt",
       remotePartial: "Einige Katalogquellen sind nicht verfügbar ({{names}})",
     },
@@ -997,6 +1004,7 @@ sklm: {
     "imageInput": "Bilder",
     "documentInput": "PDF",
     "thinkingManualOverrideHint": "Nicht im Katalog; aktivieren, wenn unterstützt.",
+    "contextWindowCatalogHint": "Folgt models.dev; eine Änderung fixiert deinen Wert.",
     "availableForSubagents": "Verfügbar für AI-Delegation",
     "availableForSubagentsHint": "Ermöglichen Sie AI, dieses Modell zu verwenden, wenn Aufgaben an Subagenten delegiert werden.",
     "searchModelId": "Modell-ID suchen…",

@@ -25,6 +25,10 @@
 // Requires a display + Electron. In a headless CI this is marked NOT RUN and the
 // host-only data assertions (cargo test -p host-core) remain the reproducible
 // floor for 准.
+//
+// The board is unrouted in Settings while D335 / ADR 0173 stands, so with the
+// current IA this script reports SKIPPED and exits 0: it deliberately refuses to
+// assert against whichever settings tab is active instead of the board.
 import { spawn, execFileSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -288,6 +292,7 @@ try {
     evaluate(
       `(() => { const it=[...document.querySelectorAll(".settings-nav-item")].find(e=>${re}.test(e.textContent||"")); if(it) it.click(); return !!it; })()`,
     );
+  const USAGE_LABEL = /使用统计|Usage statistics/;
   const openUsage = async () => {
     // The nav rail is not mounted once Settings is open, so this click only
     // applies on the first (from-chat) entry. Unconditional `click()` on the
@@ -299,12 +304,20 @@ try {
       if (await evaluate("document.querySelectorAll('.settings-nav-item').length > 0")) break;
       await sleep(400);
     }
-    if (/使用统计|Usage statistics/.test((await activeNav()) ?? "")) await clickNav("/索引|Index/");
+    // The usage board is retired from the rail (D335 / ADR 0173), so on this
+    // branch there is nothing to navigate to. Report that instead of asserting
+    // against whichever tab happens to be active — a green run that checked the
+    // wrong page is worse than no run.
+    const hasUsage = await evaluate(
+      `[...document.querySelectorAll(".settings-nav-item")].some(e => ${USAGE_LABEL}.test(e.textContent||""))`,
+    );
+    if (!hasUsage) return "absent";
+    if (USAGE_LABEL.test((await activeNav()) ?? "")) await clickNav("/索引|Index/");
     let on = false;
     for (let attempt = 0; attempt < 6 && !on; attempt++) {
-      await clickNav("/使用统计|Usage statistics/");
+      await clickNav(USAGE_LABEL);
       await sleep(600);
-      on = /使用统计|Usage statistics/.test((await activeNav()) ?? "");
+      on = USAGE_LABEL.test((await activeNav()) ?? "");
     }
     for (let i = 0; i < 40; i++) {
       if (
@@ -316,10 +329,16 @@ try {
       await sleep(400);
     }
     await sleep(900);
-    return on;
+    return on ? "on" : "off";
   };
 
-  if (scenario === "main" || scenario === "both") {
+  const skipReason =
+    (await openUsage()) === "absent"
+      ? "usage statistics is not a settings destination on this branch (D335 / ADR 0173): the board ships behind a plugin, so e2e-stats has no DOM subject"
+      : null;
+  if (skipReason) console.log(`\nSKIP: ${skipReason}\n`);
+
+  if (!skipReason && (scenario === "main" || scenario === "both")) {
     const now = Date.now();
     // Fixture: today has completed turns across projects; plus an aborted turn
     // (must be excluded), a soft-deleted session (R12), and >8 projects to force
@@ -433,7 +452,7 @@ try {
     console.log("saved:", outUsage);
   }
 
-  if (scenario === "empty" || scenario === "both") {
+  if (!skipReason && (scenario === "empty" || scenario === "both")) {
     // Zero completed turns -> whole-page empty state.
     //
     // The main scenario shares the data dir, so clear what it seeded: leaving
@@ -461,7 +480,11 @@ try {
   }
 
   const failed = results.filter((r) => !r.pass);
-  console.log(`\nE2E-STATS summary: ${results.length - failed.length}/${results.length} passed`);
+  console.log(
+    skipReason
+      ? `\nE2E-STATS summary: SKIPPED — ${skipReason}`
+      : `\nE2E-STATS summary: ${results.length - failed.length}/${results.length} passed`,
+  );
   process.exitCode = failed.length ? 1 : 0;
 } catch (e) {
   console.error("FAILED:", e.message);

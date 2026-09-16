@@ -5,6 +5,15 @@
  * like "主题" or "theme" can surface the tab that owns the row.
  */
 
+/**
+ * Settings destinations.
+ *
+ * Usage statistics is deliberately absent: the boundary that keeps the
+ * cross-session dashboard out of Settings (D335 / ADR 0173) stands. Core owns
+ * the turns / usage / stats RPCs, the dashboard belongs to a plugin — so
+ * `components/settings/StatsPage.tsx` is retained but nothing routes to it,
+ * and its copy stays in the locale bundles for that reuse.
+ */
 export type SettingsTabId =
   | "general"
   | "ai"
@@ -16,7 +25,6 @@ export type SettingsTabId =
   | "subagents"
   | "import"
   | "projects"
-  | "usage"
   | "index"
   | "about";
 
@@ -24,14 +32,12 @@ export type SettingsNavGroupId =
   | "preferences"
   | "agent"
   | "workspace"
-  | "data"
   | "system";
 
 export const SETTINGS_NAV_GROUP_LABELS: Record<SettingsNavGroupId, string> = {
   preferences: "settings.groupPreferences",
   agent: "settings.groupAgent",
   workspace: "settings.groupWorkspace",
-  data: "settings.groupData",
   system: "settings.groupSystem",
 };
 
@@ -220,23 +226,12 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     ],
   },
   {
-    id: "usage",
-    labelKey: "settings.nav.usage",
-    titleKey: "settings.usage",
-    group: "data",
-    keywordKeys: [
-      "stats.totalTokens",
-      "stats.activity",
-      "stats.modelUsage",
-      "stats.insights",
-      "stats.topSessions",
-    ],
-  },
-  {
     id: "index",
     labelKey: "settings.nav.index",
     titleKey: "settings.index",
-    group: "data",
+    // Host/workspace lifecycle — the switch, its status and the rebuild/clear
+    // actions — so it joins the Workspace group instead of a group of its own.
+    group: "workspace",
     keywordKeys: [
       "index.card.health",
       "index.card.files",

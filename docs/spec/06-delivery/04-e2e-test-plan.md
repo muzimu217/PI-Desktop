@@ -1654,6 +1654,12 @@ identify the platform validation still needed.
 
 #### E2E-STATS-summary-cards-range: usage summary renders host aggregation
 
+> **Suite note (2026-09-16)**: the Usage destination is not in Settings while
+> D335 / ADR 0173 stands, so `pnpm test:e2e:stats` reports SKIPPED and exits 0
+> instead of asserting against whichever tab happens to be active. The journeys
+> below stay the plan for when a plugin routes the board, and host-core
+> `stats::tests` is the reproducible floor meanwhile.
+
 - **Preconditions**: Completed turns exist in the host database (fixture);
   the Usage destination is available under Data & Statistics.
 - **Steps**: 1) Open Settings → Usage. 2) Switch the range between 7 and 30

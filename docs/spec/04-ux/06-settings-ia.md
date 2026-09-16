@@ -45,7 +45,7 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   scanability, the destinations are shown in four titled visual clusters:
   `Preferences` / `偏好` (General, AI, Shortcuts), `Agent` / `智能体`
   (Instructions, Models, Skills, MCP, Subagents), `Workspace` / `工作区`
-  (Import, Projects), `Data & Statistics` / `数据与统计` (Index), and
+  (Import, Projects, Index), and
   `System` / `系统` (Info). Headings are muted,
   non-interactive labels and use whitespace for separation; no divider lines are
   rendered. These are visual landmarks only, not a second navigation level.
@@ -155,17 +155,15 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   session; the transcript shows where each compaction happened and the context
   usage inspector shows whether a checkpoint is installed.
 
-### Usage statistics (`usage` tab, `Data & Statistics` group)
+### Usage statistics (no Settings destination)
 
-Amends D335 / ADR 0173 (ADR 0271): the Usage destination returns to Settings
-for the host-owned view. The page reads `stats.summary` /
-`stats.topSessions` — range switch (7/30 days), cards (total tokens,
-peak day, longest pure-chat time, current streak), 365-day heatmap, daily
-trend, model donut, insights (cache leverage, large-context share, top-5
-session share), top sessions, CSV/JSON export, and a provenance note stating
-the numbers are computed locally. The `pi.token-insights` plugin remains the
-cross-tool dashboard; completed-turn history stays host-owned
-(`session.endTurn.usage`, `stats.getTokenUsageHistory`).
+D335 / ADR 0173 stands, and ADR 0271 is superseded: no `usage` destination
+ships, and no group is reserved for one. The host-owned aggregation
+(`stats.summary` / `stats.topSessions`, over the durable completed-turn
+history) stays on the Core surface alongside
+`stats.getTokenUsageHistory`, and `components/settings/StatsPage.tsx` is
+retained as its reference consumer. The cross-tool dashboard remains the
+`pi.token-insights` plugin.
 
 ### Shortcuts (`shortcuts` tab)
 - **Keyboard shortcuts** card:
@@ -558,7 +556,7 @@ system while preserving their different data ownership:
 - Activating a project or project session returns to chat; archive and close
   actions keep Project archive open even when the active workspace changes
 
-### Index library (`index` tab, `Data & Statistics` group)
+### Index library (`index` tab, `Workspace` group)
 - One health card for the host-owned workspace index cache: an opt-in toggle,
   then status, indexed file count, indexed size, unreadable-file count, and
   last-update time
@@ -632,7 +630,8 @@ system while preserving their different data ownership:
 2. Rail shows the search pill at the top, the back-to-app action pinned at the
    foot on the main sidebar's footer icon line, and exactly General / 常规, AI,
    Shortcuts / 快捷键, Instructions / 指令, Models / 模型, Skills / 技能, MCP,
-   Subagents / 子智能体, Import / 导入, Projects / 项目, and Info / 信息 in
+   Subagents / 子智能体, Import / 导入, Projects / 项目, Index / 索引, and
+   Info / 信息 in
    that order. The rows are grouped under Preferences / 偏好, Agent / 智能体,
    Workspace / 工作区, and System / 系统. There is no Usage / 用量 destination.
 3. Appearance is part of General and has no standalone rail destination

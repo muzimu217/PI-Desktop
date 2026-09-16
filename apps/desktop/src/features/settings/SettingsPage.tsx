@@ -15,7 +15,6 @@ import {
 } from "../../lib/settings-search";
 import {
   IconArchive,
-  IconBarChart,
   IconDatabase,
   IconBookOpen,
   IconBot,
@@ -30,7 +29,6 @@ import {
   IconSparkles,
 } from "../../components/icons";
 import { Button, cx } from "../../components/ui";
-import { StatsPage } from "../../components/settings/StatsPage";
 import { IndexPage } from "../../components/settings/IndexPage";
 import { ModelConfigPage } from "../../components/settings/ModelConfigPage";
 import { KeyboardShortcutsSection } from "../../components/settings/KeyboardShortcutsSection";
@@ -186,7 +184,6 @@ export function SettingsPage() {
       subagents: <IconBot size={14} />,
       import: <IconDownload size={14} />,
       projects: <IconArchive size={14} />,
-      usage: <IconBarChart size={14} />,
       index: <IconDatabase size={14} />,
       about: <IconInfo size={14} />,
     };
@@ -453,8 +450,6 @@ export function SettingsPage() {
           {tab === "import" && <ImportSection />}
 
           {tab === "projects" && <ProjectsPage />}
-
-          {tab === "usage" && <StatsPage />}
 
           {tab === "index" && settings && (
             <IndexPage settings={settings} saveSettings={saveSettings} />

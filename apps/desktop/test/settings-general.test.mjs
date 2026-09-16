@@ -323,7 +323,6 @@ test("settings nav keeps a flat searchable index with titled visual groups", () 
     "settings.groupPreferences",
     "settings.groupAgent",
     "settings.groupWorkspace",
-    "settings.groupData",
     "settings.groupSystem",
   ]) {
     assert.match(settingsSearchSource, new RegExp(key.replace(".", "\\.")));
@@ -341,7 +340,6 @@ test("settings nav keeps a flat searchable index with titled visual groups", () 
     "agent",
     "import",
     "projects",
-    "usage",
     "index",
     "about",
   ].map((id) => settingsSearchSource.indexOf(`id: "${id}"`));

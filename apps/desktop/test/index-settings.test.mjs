@@ -20,13 +20,19 @@ const [search, settingsPage, api, protocol, main, page, enLocale, settingsTypes,
 test("workspace index is a workspace-group settings destination", () => {
   assert.match(search, /id: "index"/);
   assert.match(search, /labelKey: "settings\.nav\.index"/);
-  assert.match(search, /data: "settings\.groupData"/);
+  assert.match(search, /workspace: "settings\.groupWorkspace"/);
   assert.match(search, /titleKey: "settings\.index"/);
+  // The index sits in Workspace, not in a group of its own (D335 / ADR 0173):
+  // the switch, its status and the rebuild/clear actions are host/workspace
+  // lifecycle, which is what that group already collects. The retired Data &
+  // Statistics group must not reappear as a one-entry section.
+  assert.doesNotMatch(search, /settings\.groupData/);
+  assert.doesNotMatch(search, /group: "data"/);
   const entry = search.slice(
     search.indexOf('id: "index"'),
     search.indexOf('id: "about"'),
   );
-  assert.match(entry, /group: "data"/);
+  assert.match(entry, /group: "workspace"/);
   assert.match(entry, /"index\.card\.health"/);
   assert.match(settingsPage, /tab === "index" && settings && \(\n\s*<IndexPage settings=\{settings\} saveSettings=\{saveSettings\} \/>\n\s*\)/);
   assert.match(settingsPage, /import \{ IndexPage \}/);

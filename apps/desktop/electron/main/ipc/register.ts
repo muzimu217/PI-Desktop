@@ -361,6 +361,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     activeUserSubagentDocuments,
     stripWinLongPrefix,
     sendToRenderer,
+    logger,
   });
 
 

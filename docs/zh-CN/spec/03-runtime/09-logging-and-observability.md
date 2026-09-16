@@ -52,7 +52,7 @@ host 和 agent stderr 使用标记进行分类；无法分类的子进程输出�
 - `provider` — provider/model 发现、重试和缓存失败
 - `persistence` — 成绩单和发件箱持久化失败
 - `updater` — 更新器诊断和错误
-- `diagnostics` — 阻止导航、菜单和模板诊断
+- `diagnostics` — 阻止导航、菜单、模板以及对外请求的诊断。技能市场的两个通道会为每个没有产出结果的源或文档各记录一条 `skillMarket.sourceFailed` / `skillMarket.documentFailed`：`data` 里带 `source`、`host` 与 `kind`（被公共网络守卫拒绝为 `policy`，其余为 `network`），被拒绝时 `code` 为 `NETWORK_POLICY_BLOCKED`。记录中只保留主机名 —— 绝不包含 URL、其路径、查询串或凭据 —— 因为目录源 URL 由用户提供，而被拒绝的主机正是全部诊断价值所在（issue #419）。
 - `runtime` — host/sidecar 生命周期、未分类的子进程输出，以及主进程
   `uncaughtException` / `unhandledRejection` 记录
 

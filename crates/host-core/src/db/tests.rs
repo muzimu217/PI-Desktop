@@ -1397,3 +1397,52 @@ fn normalize_project_path_strips_extended_length_prefix() {
         Some("/home/user/project".to_string()),
     );
 }
+
+/// The v16 → v17 step runs after the v15 → v16 step in the same launch, so a
+/// file one version behind must land on the current version with both changes
+/// applied rather than stopping at the version the first step stamps.
+#[test]
+fn a_v16_file_gains_the_provider_owner_column() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("pi.sqlite");
+    let provider_id;
+    {
+        let db = Database::open(&path).unwrap();
+        provider_id = db
+            .conn()
+            .query_row(
+                "INSERT INTO providers (id, name, created_at, updated_at)
+                 VALUES ('p-user', 'Mine', 1, 1) RETURNING id",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap();
+        // Back to a file that predates the ownership column. SQLite will not
+        // drop a column an index still references, so the index goes first.
+        db.conn()
+            .execute_batch(
+                "DROP INDEX idx_providers_owner;
+                 ALTER TABLE providers DROP COLUMN owner_plugin_id;
+                 PRAGMA user_version=16;",
+            )
+            .unwrap();
+    }
+    let db = Database::open(&path).unwrap();
+    assert_eq!(
+        db.conn()
+            .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+            .unwrap(),
+        SCHEMA_VERSION
+    );
+    assert!(migration_backup_path(&path, 16).exists());
+    // The existing row survives and stays user-owned.
+    let owner: Option<String> = db
+        .conn()
+        .query_row(
+            "SELECT owner_plugin_id FROM providers WHERE id = ?1",
+            params![provider_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(owner.is_none());
+}

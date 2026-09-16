@@ -106,8 +106,8 @@ test("reject or interruption returns editable planning without changing durable 
     queueSource.slice(queueSource.indexOf("sendPrompt: async"));
   assert.match(sendPromptBlock, /get\(\)\.pendingPlans\[sessionId\]\?\.status === "pending"/);
   assert.match(sendPromptBlock, /await api\.prompt\(\{/);
-  // The send ships the composed prompt so annotations travel with it (D-LOCAL-response-annotations).
-  assert.match(sendPromptBlock, /sessionId,\s*content: outgoing,/);
+  // The send ships the submitted content through the prompt call.
+  assert.match(sendPromptBlock, /sessionId,\s*content,/);
   assert.match(
     sendPromptBlock,
     /attachments: draft[\s\S]*promptAttachmentsFromDraft\(draft\.fileReferences\)/,
@@ -222,10 +222,6 @@ test("Plan approval labels and remembered modes are locale-backed", () => {
   assert.match(chineseSource, /approvalRegion: "规划审批"/);
   assert.match(englishSource, /approvalRegion: "Goal approval"/);
   assert.match(chineseSource, /approvalRegion: "目标审批"/);
-  assert.match(englishSource, /statusQueued: "Plan queued"/);
-  assert.match(chineseSource, /statusQueued: "规划已排队"/);
-  assert.match(englishSource, /statusQueued: "Goal queued"/);
-  assert.match(chineseSource, /statusQueued: "目标已排队"/);
   assert.match(englishSource, /approveAuto: "Approve \(Auto\)"/);
   assert.match(chineseSource, /approveAuto: "批准（全自动）"/);
   assert.doesNotMatch(englishSource, /expiresAt:/);

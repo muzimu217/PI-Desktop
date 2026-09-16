@@ -66,6 +66,7 @@ registered; reserved codes in §3.7 remain intentionally absent from
 | `APPROVAL_STALE` | no | RACP: the approval was already settled or belongs to an older turn |
 | `PAYLOAD_TOO_LARGE` | no | RACP: a frame exceeded the negotiated size bound |
 | `TIMEOUT` | yes | generic timeout |
+| `NETWORK_POLICY_BLOCKED` | no | the main-process public-network guard refused a fetch: the URL failed the syntactic public-HTTPS check, or the local DNS lookup could not classify the host as public (ADR 0243). A desktop-only code; retrying cannot succeed until the address or the resolver changes. |
 | `HOST_SHUTTING_DOWN` | yes | the host received EOF and is draining; the call was refused rather than started |
 | `RATE_LIMITED` | yes | a per-caller host budget (plugin session import, batch operations) was exceeded inside its window |
 | `LIMIT_EXCEEDED` | no | a payload exceeded a fixed host bound (item count, byte size, or a 64 MiB NDJSON request line) and was refused |
@@ -299,6 +300,17 @@ request is replayed; the session and its tool state are untouched. A
 non-retryable `PROVIDER_ERROR` from a
 malformed 400/422 request never enters either budget.
 
+A `NETWORK_ERROR` carries the failing transport layer as bounded `details`:
+`networkCategory` (`dns`, `tls`, `timeout`, `refused`, `unreachable`, `reset`,
+`proxy`, or `unknown` when nothing survived), `networkCode` (the errno, e.g.
+`ENOTFOUND`, `ECONNRESET`, `EPROTO`, `UND_ERR_SOCKET`), and, when the transport
+reported them, `networkSyscall` and `networkHost`. Only the bare hostname is
+kept — never a URL, port, path, query, or credential — and `providerCode` is
+omitted when it would repeat `networkCode`. Per-layer codes (`DNS_ERROR`,
+`TLS_ERROR`, `SOCKET_RESET`, …) are deliberately not introduced: the category
+splits the layers without adding user-visible codes and locale strings for
+each of them.
+
 ### Permission timeout
 UI/host timeout emits `PERMISSION_TIMEOUT` internally, tool result presented as denied (`TOOL_DENIED`) to agent.
 
@@ -331,8 +343,16 @@ with an accessible details disclosure containing the redacted provider response,
 provider ID, and model ID. Provider detail is capped at 600 characters and
 common credential/header values are redacted before event emission or
 persistence. When available, the details disclosure may also show bounded
-`phase`, `providerStatus`, `providerCode`, `providerWaitMs`, `streamMs`, and
-`retryAttempt` fields. The assistant error card offers a localized
+`phase`, `providerStatus`, `providerCode`, `providerWaitMs`, `streamMs`,
+`retryAttempt`, `networkCategory`, `networkCode`, `networkSyscall`,
+`networkHost`, `requestMessages`, `requestBytes`, and `compactionGeneration`
+fields. The request fields are counts and byte sizes only and the compaction
+field is the checkpoint generation counter; none of them carries message
+content. While a transient provider failure retries, the activity indicator's
+reason popover shows the localized summary, the stable code, and — for a
+network failure — the transport errno (`NETWORK_ERROR · ENOTFOUND`), so the
+failing layer is visible during the retry loop as well as in the log record.
+The assistant error card offers a localized
 Continue action that resends the continuation prompt (`继续当前任务` /
 `Continue the current task`) in the same session without truncating the failed
 turn. The session-scoped failed-turn recovery card is used only when no

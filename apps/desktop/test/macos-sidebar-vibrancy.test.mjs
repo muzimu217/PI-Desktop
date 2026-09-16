@@ -30,7 +30,9 @@ function functionSource(source, name) {
 
 test("macOS main window enables native sidebar vibrancy only in its platform branch", () => {
   assert.match(macOptions, /titleBarStyle:\s*"hiddenInset"/);
-  assert.match(macOptions, /trafficLightPosition:\s*\{ x: 16, y: 16 \}/);
+  // The position itself lives in @pi-desktop/shared so the renderer's reserve
+  // for it (styles/tokens.css) is derived from the same numbers.
+  assert.match(macOptions, /trafficLightPosition:\s*MAC_TRAFFIC_LIGHT_POSITION/);
   assert.match(macOptions, /vibrancy:\s*"sidebar"/);
   assert.match(macOptions, /visualEffectState:\s*"followWindow"/);
   assert.match(macOptions, /transparent:\s*true/);
@@ -84,7 +86,7 @@ test("native theme source maps preferences and only resets vibrancy on change", 
 
   // The theme mapping lives in `applyAppThemePreference` so the narrow plugin
   // `setTheme` path can never re-derive locale, keybindings, or dev-mode menu
-  // state (ADR 0249). The full-settings path delegates to the same function.
+  // state (ADR 0260). The full-settings path delegates to the same function.
   const applyTheme = functionSource(lifecycleSource, "applyAppThemePreference");
   assert.match(applyTheme, /applyNativeThemeSource\(\{\s*theme: preference \}\)/);
   assert.match(applyMenu, /applyAppThemePreference\(settings\?\.theme\)/);

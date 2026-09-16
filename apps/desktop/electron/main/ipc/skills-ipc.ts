@@ -1,13 +1,15 @@
 import { dialog, shell } from "electron";
-import { IPC, type ActivationScope, type AgentCapabilityQuery, type UserSkillRecord, type UserSubagentRecord } from "@pi-desktop/shared";
+import { ErrorCodes, IPC, type ActivationScope, type AgentCapabilityMove, type AgentCapabilityQuery, type UserSkillRecord, type UserSubagentRecord } from "@pi-desktop/shared";
 import { loadSubagentDefinitions, type UserSubagentDocument } from "@pi-desktop/agent-runtime";
 import type { HostProcess } from "../host-process";
+import type { Logger } from "../logger";
 import {
   fetchSkillMarketDocument,
   searchSkillMarket,
   type SkillMarketDocument,
   type SkillMarketSearchResult,
 } from "../skill-market-catalog";
+import { skillMarketFailureDetail, skillMarketHost } from "../skill-market-scan";
 import type { IpcRegistrar } from "./types";
 
 export type SkillsIpcDependencies = {
@@ -19,6 +21,7 @@ export type SkillsIpcDependencies = {
   sendToRenderer: (channel: string, payload?: unknown) => void;
   searchSkillMarket: (query: string, sources: { id: string; name: string; url: string }[]) => Promise<SkillMarketSearchResult>;
   fetchSkillMarketDocument: (entry: { id: string; name: string; url: string }) => Promise<SkillMarketDocument>;
+  logger: Pick<Logger, "app">;
 };
 
 /** Register user-owned skill and subagent definition channels. */
@@ -31,7 +34,36 @@ export function registerSkillsIpc({
   sendToRenderer,
   searchSkillMarket,
   fetchSkillMarketDocument,
+  logger,
 }: SkillsIpcDependencies): void {
+  /*
+    The market's two channels are the only place that knows why a source went
+    quiet, and they previously reported nothing outside the panel. A refusal
+    from the public-network guard (issue #419: a proxy that answers DNS itself
+    resolves a public host to a non-public address, so the local pre-check
+    refuses a URL the browser reaches) was therefore impossible to diagnose
+    from a user's logs. `diagnostics` is the category spec 09 gives to blocked
+    requests; the payload is host + source + kind only, never the full URL.
+  */
+  const logSourceFailure = (
+    source: { name?: unknown; url?: unknown },
+    kind: "policy" | "network",
+  ) => {
+    const host = skillMarketHost(source.url);
+    logger.app("diagnostics", "warn", "skill market source produced no entries", {
+      ...(kind === "policy" ? { code: ErrorCodes.NETWORK_POLICY_BLOCKED } : {}),
+      event: "skillMarket.sourceFailed",
+      data: {
+        ...(typeof source.name === "string" && source.name ? { source: source.name } : {}),
+        ...(host ? { host } : {}),
+        kind,
+      },
+    });
+  };
+  const marketFailureKind = (
+    result: SkillMarketSearchResult,
+    name: string,
+  ): "policy" | "network" => (result.failureKinds?.[name] === "policy" ? "policy" : "network");
   let host: HostProcess | null = null;
   const handle = (channel: string, fn: (...args: any[]) => Promise<any>) => {
     registrar.handle(channel, async (...args) => {
@@ -45,13 +77,37 @@ export function registerSkillsIpc({
   // registers outside the host-bound wrapper.
   registrar.handle(
     IPC.invoke.skillMarketSearch,
-    async ({ query, sources }: { query?: string; sources?: { id: string; name: string; url: string }[] } = {}) =>
-      searchSkillMarket(query ?? "", Array.isArray(sources) ? sources : []),
+    async ({ query, sources }: { query?: string; sources?: { id: string; name: string; url: string }[] } = {}) => {
+      const requested = Array.isArray(sources) ? sources : [];
+      const result = await searchSkillMarket(query ?? "", requested);
+      // One record per source that produced nothing. The panel shows the names,
+      // so without this the reason and the host exist nowhere a user can reach.
+      for (const name of result.failedSources ?? []) {
+        logSourceFailure(
+          requested.find((source) => source?.name === name) ?? { name },
+          marketFailureKind(result, name),
+        );
+      }
+      return result;
+    },
   );
   registrar.handle(
     IPC.invoke.skillMarketFetch,
-    async ({ entry }: { entry: { id: string; name: string; url: string } }) =>
-      fetchSkillMarketDocument(entry),
+    async ({ entry }: { entry: { id: string; name: string; url: string } }) => {
+      try {
+        return await fetchSkillMarketDocument(entry);
+      } catch (error) {
+        // The install sheet shows this refusal; the log is what makes it
+        // diagnosable after the fact, and it survives the sheet closing.
+        const detail = skillMarketFailureDetail(entry, error);
+        logger.app("diagnostics", "warn", "skill market document fetch failed", {
+          ...(detail.kind === "policy" ? { code: ErrorCodes.NETWORK_POLICY_BLOCKED } : {}),
+          event: "skillMarket.documentFailed",
+          data: detail,
+        });
+        throw error;
+      }
+    },
   );
 
 // --- Skills the user owns -------------------------------------------------
@@ -135,6 +191,19 @@ export function registerSkillsIpc({
       return res;
     },
   );
+
+  /**
+   * Move a skill between the global and a project's `.agents/skills`.
+   *
+   * Ownership changes, so both levels change; the response carries the id the
+   * skill ended up under, because a move into an occupied destination renames it.
+   */
+  handle(IPC.invoke.skillTransfer, async (payload: AgentCapabilityMove) => {
+    if (!host) throw new Error("host unavailable");
+    const res = await host.call<{ skill: UserSkillRecord }>("skills.transfer", payload);
+    sendToRenderer(IPC.event.pluginChanged,{ reason: "skill" });
+    return res;
+  });
 
   /**
    * Show a skill document in the OS file manager. The level and project travel

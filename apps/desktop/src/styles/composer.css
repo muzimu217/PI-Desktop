@@ -125,6 +125,33 @@
   opacity: 0.65;
 }
 
+/* A promoted row ("Send now") starts next: it reads as the head of the queue
+   and locks its own actions until the Host delivers it. */
+.composer-queued-prompt[data-priority="true"] {
+  background: var(--ds-bg-elevated);
+  box-shadow:
+    var(--ds-shadow-composer),
+    inset 2px 0 0 0 var(--ds-accent);
+  color: var(--ds-text-primary);
+}
+
+.composer-queued-prompt[data-priority="true"] .composer-queued-prompt-send-now:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+/* A locked row action stays visible and explains the state instead of going
+   dim: the row is already queued as the next turn. */
+.composer-queued-prompt-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.composer-queued-prompt-action:disabled:hover {
+  background: transparent;
+  color: var(--ds-text-muted);
+}
+
 .composer-shell {
   /* Positioning context for the autocomplete panel (D123–D125, ADR 0024). */
   position: relative;
@@ -385,7 +412,11 @@
   min-width: 28px;
 }
 
-.composer-enhance-btn.is-loading {
+/* While enhancing, this control carries a label and leaves the square geometry
+   its idle state gets from `.icon-btn-square`. */
+.icon-btn.composer-enhance-btn.is-loading {
+  width: auto;
+  flex: 0 0 auto;
   cursor: wait;
   padding-inline: 8px;
 }
@@ -452,19 +483,20 @@
 
 .send-btn:disabled {
   opacity: 1;
-  background: color-mix(in oklab, var(--ds-text-primary) 18%, transparent);
-  color: color-mix(in oklab, var(--ds-bg-primary) 92%, transparent);
+  background: var(--ds-send-disabled-bg);
+  color: var(--ds-send-disabled-fg);
 }
 
+/*
+  `.send-btn:disabled` scores (0,2,0), but light paints the *enabled* chip from
+  a `:root[data-theme="light"] .send-btn` rule at (0,3,0), which would strand the
+  disabled state on the near-black enabled fill. The disabled state therefore
+  keeps a light-qualified companion — it reads the same tokens, so a contributed
+  theme can still move the chip, and the built-in paint is unchanged.
+*/
 :root[data-theme="light"] .send-btn:disabled {
-  /* Gold empty-home disabled send ~#8e8e90 solid chip + white arrow */
-  background: #8e8e90;
-  color: #ffffff;
-}
-
-:root[data-theme="dark"] .send-btn:disabled {
-  background: color-mix(in oklab, var(--gray-0) 18%, transparent);
-  color: color-mix(in oklab, var(--gray-900) 70%, transparent);
+  background: var(--ds-send-disabled-bg);
+  color: var(--ds-send-disabled-fg);
 }
 
 .stop-btn {

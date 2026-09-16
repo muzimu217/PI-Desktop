@@ -57,7 +57,7 @@ receive live updates on the `appearance:changed` event (below). On hosts older
 than the channel, the call rejects with `UNSUPPORTED`; panels should fall back
 to the OS preference and their own in-panel choice.
 
-`app.setTheme` (requires `ui.theme`, ADR 0249) applies the app theme
+`app.setTheme` (requires `ui.theme`, ADR 0260) applies the app theme
 preference the Settings picker writes. It accepts a built-in preference or a
 currently registered plugin theme id; unknown ids reject with
 `INVALID_ARGUMENT`. The host persists `AppSettings.theme`, refreshes native
@@ -66,7 +66,7 @@ chrome / panel appearance, and emits `settingsChanged` to the renderer.
 ### themes (requires `ui.theme`)
 
 Runtime registry for the calling plugin's own themes. Works in production
-without unload/reload (ADR 0249).
+without unload/reload (ADR 0260).
 
 ```ts
 pi.themes.upsert(input: {
@@ -204,7 +204,7 @@ pi.fs.requestDirectory(): Promise<{ path: string; name: string } | null>
 `workspace.get` answers with the primary root — `path` and its leaf `name`,
 both unchanged — plus, when that folder belongs to a project group (ADR 0249),
 `projectId` and `roots`: every registered folder of the group in its own order,
-primary first, each `{ path, name, primary }` (ADR 0252). `workspace:changed`
+primary first, each `{ path, name, primary }` (ADR 0263). `workspace:changed`
 carries the same object, and main answers both from the host-owned group
 records, so the event and the pull cannot disagree. A host that cannot resolve
 the group omits `projectId` and `roots` — the same `{ path, name }` a plugin
@@ -222,7 +222,7 @@ deny-list, and scope checks as `fs.readText`; directories are rejected. The host
 audits the operation. A path is root-relative by default, and an absolute path is
 accepted only by this action and `fs.reveal` (no other mode takes one) when it lies
 inside a registered folder root of the open project — which then becomes the
-containment base for the request (ADR 0249 §5, ADR 0253). That is the shape a view
+containment base for the request (ADR 0249 §5, ADR 0264). That is the shape a view
 uses to name a file in a project folder other than the primary one.
 
 `fs.reveal` reveals one existing readable file in the operating system's file
@@ -230,7 +230,7 @@ manager and selects it when the platform supports that behavior. It uses the
 same `fs.read` checks, rejects directories, and audits both success and failure.
 It takes a path exactly as `fs.openDefault` does: root-relative by default, and
 absolute when the file lies inside another registered folder root of the open
-project (ADR 0253).
+project (ADR 0264).
 
 `fs.stat` returns the size and modification time of one existing readable file
 without loading its contents. `fs.readRange` returns at most 8 MiB of bytes and
@@ -246,6 +246,9 @@ picked through `requestDirectory()` when the mode declares
 anything outside it prompts the user, and the credential deny-list overrides both
 (see [04-plugin-security.md](04-plugin-security.md) §6). `remove` is
 non-recursive and moves the path to the OS trash.
+Under the `workspace` root, paths are relative to the project of the tool session
+that invoked the call, falling back to the visible workspace for a panel call,
+which has no tool session (ADR 0266).
 
 `list` returns one directory's entries, name-sorted, so a plugin can walk a tree
 lazily instead of pulling a whole-repo `glob` and reassembling it. It applies the
@@ -464,6 +467,13 @@ and `result` are bounded projections and do not load a full transcript.
 `cancel` interrupts only the exact queued delivery or bound turn and retains
 the target session and history.
 
+A named `spawn` `modelKey` is an AI-driven delegation choice and needs that
+model's own `ModelBinding.availableForSubagents` opt-in; the host answers
+`PERMISSION_DENIED` for a model the user has not enabled, before creating a
+worker. Omitting `modelKey` still inherits — the first enabled model, else the
+default — and naming the default model's own key is that same inheritance
+rather than a selection (ADR subagent-model-opt-in).
+
 `list` returns at most 100 non-deleted Agent sessions that can receive a
 message, including sessions created independently of Session Orchestrator. Each
 entry contains only its Session ID, title, status, updated time, readable
@@ -618,6 +628,34 @@ pi.net.fetch(input: {
 }): Promise<{ status: number; headers: Record<string, string>; bodyText: string }>
 ```
 
+```ts
+pi.net.websocket.connect(input: {
+  url: string
+  headers?: Record<string, string>
+  protocols?: string[]
+  timeoutMs?: number
+}): Promise<{ socketId: string }>
+
+pi.net.websocket.send(input: { socketId: string; data: string | Uint8Array }): Promise<void>
+pi.net.websocket.close(input: { socketId: string; code?: number; reason?: string }): Promise<void>
+```
+
+Requires `net.websocket`. `connect` is confined to `manifest.net.domains`
+exactly like `fetch`, and `connect` / `close` are audited. Frames arrive as host
+events: `net:websocket:open`, `net:websocket:message`, `net:websocket:close`,
+`net:websocket:error`, each carrying the owning `socketId`, subscribed to with
+`pi.events.on`. Only the owning plugin receives them.
+
+The host owns the socket, so a plugin cannot exceed four sockets, send or
+receive a frame above 1 MiB, or queue more than 4 MiB of unsent data; each of
+those is refused (`LIMIT_EXCEEDED`) or closes the connection rather than growing
+the host's memory. A connect carries `headers` and `protocols`, so an endpoint
+that authenticates per connection works without exposing the credential to
+plugin code. Refusals name the reason: `INVALID_ARGUMENT` for a non-`ws(s)` URL
+or a malformed protocol token, `TIMEOUT` when the handshake does not finish,
+`CONNECT_FAILED` when it fails, `NOT_FOUND` for a socket this plugin does not
+hold, and `PERMISSION_DENIED` when the host is not in the allowlist.
+
 ### desktop control (requires `desktop.control`)
 
 ```ts
@@ -678,6 +716,94 @@ recognition and speech synthesis remain page-owned. A panel should provide a
 text fallback and announce permission or recognition failures through its
 accessible status.
 
+### audio (requires `audio.capture.background` / `audio.playback.background`)
+
+**Callable, but the device backend is not implemented in this branch.**
+`pi.audio` is present in the plugin host process and exposes exactly the ten
+methods below. Each one keeps its permission requirement: the six capture
+methods (`getInputDevices`, `openInput`, `closeInput`, `getCaptureState`,
+`onInputFrame`, `offInputFrame`) require `audio.capture.background` and the
+four playback methods (`openOutput`, `writeOutput`, `stopOutput`,
+`closeOutput`) require `audio.playback.background`. Without the grant the call
+is refused with `PERMISSION_DENIED` and audited under the permission name,
+exactly like every other gated API. With the grant the host still has no device
+backend, so every call is answered with a coded `UNSUPPORTED` refusal: the
+message is `host api not available: audio.<method>` and the audit entry is
+`{ api: "audio.<method>", ok: false, errorCode: "UNSUPPORTED" }`. The eight
+asynchronous methods reject with that error; `onInputFrame` / `offInputFrame`
+are synchronous registration helpers that cannot reject, so they throw an
+`Error` carrying the same `code: "UNSUPPORTED"` instead of registering a
+handler that could never fire. Nothing touches a device and no frame is ever
+produced. `onInputFrame` registers a callback — it is not an event name — and
+the frame shape is `PluginAudioInputFrame` in
+`packages/plugin-sdk/src/index.ts`. When the device service lands, the
+permission and this surface stay as they are and only the refusal is replaced
+by real behaviour: the host owns the device, a plugin exchanges PCM16 frames
+and never receives a device handle, `MediaStream`, OS device path, or Node
+stream, one input stream per plugin is allowed, and disable, unload, or crash
+stops capture and drops queued playback.
+
+```ts
+pi.audio.getInputDevices(): Promise<PluginAudioInputDevice[]>
+pi.audio.openInput(options?: PluginAudioOpenInputOptions): Promise<PluginAudioInputSession>
+pi.audio.closeInput(streamId: string): Promise<void>
+pi.audio.getCaptureState(): Promise<PluginAudioCaptureState>
+pi.audio.onInputFrame(handler: (frame: PluginAudioInputFrame) => void): void
+pi.audio.offInputFrame(handler: (frame: PluginAudioInputFrame) => void): void
+pi.audio.openOutput(options: PluginAudioOpenOutputOptions): Promise<PluginAudioOutputSession>
+pi.audio.writeOutput(input: { streamId: string; data: Uint8Array }): Promise<void>
+pi.audio.stopOutput(streamId: string): Promise<void>
+pi.audio.closeOutput(streamId: string): Promise<void>
+```
+
+### keyboard (requires `keyboard.globalShortcut`)
+
+```ts
+pi.keyboard.registerGlobalShortcut(input: {
+  id: string
+  accelerator: string
+  command: string
+}): Promise<PluginGlobalShortcut>
+
+pi.keyboard.unregisterGlobalShortcut(id: string): Promise<void>
+pi.keyboard.listGlobalShortcuts(): Promise<PluginGlobalShortcut[]>
+
+type PluginGlobalShortcut = {
+  id: string
+  accelerator: string
+  command: string
+  registered: boolean
+  error?: string
+}
+```
+
+The host, not the plugin, owns Electron's `globalShortcut`. A plugin maps an
+accelerator to one of its own commands, and the host registers, conflict-checks,
+triggers, and releases it; no keyboard hook, `before-input-event`, raw input
+device, or key event stream is ever exposed, and a trigger runs exactly one
+command belonging to that plugin.
+
+`command` must already be registered by the calling plugin; anything else fails
+`INVALID_ARGUMENT`. An accelerator reserved by the operating system, one
+PI-Desktop itself currently spends (by default `Alt+Space` opens the plugin
+launcher and `Mod+Shift+W` summons the window; once the user rebinds one of
+them, the freed accelerator is available again), or one held by another plugin
+is refused rather than taken over, and a refused re-registration leaves the
+previous binding in place.
+Refusals are returned, not thrown: `registerGlobalShortcut` resolves with
+`registered: false` and an `error` of `SHORTCUT_CONFLICT`, `SHORTCUT_UNAVAILABLE`
+(platform refusal), `INVALID_ACCELERATOR`, or `LIMIT_EXCEEDED` (at most 8
+entries per plugin). `UNSUPPORTED` and `INVALID_ARGUMENT` are thrown.
+Registering an `id` again replaces that entry's accelerator.
+
+Every `contributes.globalShortcuts` entry that declares a `default` is
+registered by the host after the plugin's load, but only when its command
+actually registered; an entry without a `default` waits for a
+`registerGlobalShortcut` call. `unregisterGlobalShortcut` drops one entry and
+does nothing for an unknown id; `listGlobalShortcuts` lists what the host
+currently holds for the calling plugin. Everything is released on disable,
+unload, and crash, and register / unregister are audited.
+
 ## 4. Error model
 
 ```ts
@@ -717,7 +843,7 @@ Delivered today:
 - `workspace:changed` — payload is the `workspace.get()` object or `null`,
   sent when the cached workspace path changes: the primary `path` and `name`,
   plus `projectId` and `roots` when the folder belongs to a project group
-  (ADR 0252). The first workspace of a run may arrive once without the folders
+  (ADR 0263). The first workspace of a run may arrive once without the folders
   and repeat once with them, because the group records are read after that
   first push.
 - `plugin:settingsChanged` is delivered after edits from the generated Plugins
@@ -818,7 +944,7 @@ Delivered today:
 - `workspace:changed` — payload is the `workspace.get()` object or `null`,
   sent when the open project changes: the primary `path` and `name`, plus
   `projectId` and `roots` when the folder belongs to a project group
-  (ADR 0252).
+  (ADR 0263).
 - `view:open` (docked work-panel views only; a detached `ui.panel` window never
   receives it) — payload is `{ path: string }`, the location the host asked this
   view to show. A view created with a location already carried it in its entry
@@ -876,6 +1002,17 @@ The desktop plugin runtime now implements the MVP host API surface used by local
 - `clipboard.*`, `shell.openExternal`, `net.fetch`
 - `browser.*` (guest CDP; `browser.cdp`)
 - `services.register` / `unregister`, `bus.publish` / `subscribe`, `events.on` / `off`
+- `keyboard.registerGlobalShortcut` / `unregisterGlobalShortcut` / `listGlobalShortcuts`
+  (`keyboard.globalShortcut`; the host owns Electron `globalShortcut`)
+- `net.websocket.connect` / `send` / `close` (`net.websocket`; host-owned
+  sockets, allowlist-confined, bounded, released with the plugin)
+
+`pi.audio.*` is present in the plugin host process and callable: all ten
+methods are gated by `audio.capture.background` / `audio.playback.background`,
+and this branch ships no device backend, so an authorized call is answered with
+a coded `UNSUPPORTED` refusal under the method's own audit entry
+(`audio.<method>`, `ok: false`); `onInputFrame` / `offInputFrame` throw the same
+code synchronously because they cannot reject. No device is opened.
 
 Native plugin notifications use the Electron main-process notification surface;
 they do not create durable rows in the task notification inbox and do not

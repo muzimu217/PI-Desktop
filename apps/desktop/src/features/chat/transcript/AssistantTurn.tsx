@@ -1,6 +1,5 @@
 import {
   memo,
-  useContext,
   useMemo,
   useRef,
 } from "react";
@@ -25,10 +24,6 @@ import {
   collectDelegationTimings,
 } from "../../../lib/subagent-topology";
 import { useAppStore } from "../../../stores/app-store";
-import { TranscriptReadOnlyContext } from "./context";
-import { selectionMarkdownWithinRow } from "../../../lib/selection-quote";
-import { selectionAnnotationAnchorWithinRow } from "../../../lib/response-annotation-anchor";
-import { IconQuote, IconChat } from "../../../components/icons";
 import { Markdown } from "../../../components/Markdown";
 import { IconBranch, IconReview } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
@@ -217,18 +212,6 @@ export const AssistantTurn = memo(function AssistantTurn({
   const { t } = useTranslation();
   const retryAssistantMessage = useAppStore((s) => s.retryAssistantMessage);
   const forkAssistantMessage = useAppStore((s) => s.forkAssistantMessage);
-  const annotateLabel = t("chat.annotate");
-  const sideChatLabel = t("chat.startSideChat");
-  const openSideChat = useAppStore((s) => s.openSideChat);
-  const openResponseAnnotationEditor = useAppStore(
-    (s) => s.openResponseAnnotationEditor,
-  );
-  const transcriptReadOnly = useContext(TranscriptReadOnlyContext);
-  // The host refuses a fork while the source turn is still running, so the
-  // affordance is disabled rather than silently doing nothing.
-  const sessionRunning = useAppStore((s) =>
-    s.activeSessionId ? s.runningSessions[s.activeSessionId] === true : false,
-  );
   const messages = assistantTurnMessages(entry);
   const content = assistantTurnContent(entry);
   const actionMessage = [...messages]
@@ -342,7 +325,7 @@ export const AssistantTurn = memo(function AssistantTurn({
             responseOutputTokens={responseOutputTokens}
           />
         ) : null}
-        {(content || hasError) && actionMessage && !transcriptReadOnly ? (
+        {(content || hasError) && actionMessage ? (
           <div className="message-actions">
             {complete ? (
               <CopyButton text={content} label={t("chat.copy")} />
@@ -365,40 +348,6 @@ export const AssistantTurn = memo(function AssistantTurn({
                 onClick={() => void retryAssistantMessage(actionMessage.id)}
               >
                 <IconReview size={13} />
-              </TooltipButton>
-            ) : null}
-            {complete ? (
-              <TooltipButton
-                className="copy-btn icon"
-                tooltip={annotateLabel}
-                ariaLabel={annotateLabel}
-                onPointerDown={(event) => event.preventDefault()}
-                onClick={() => {
-                  // An annotation is a response concept (D-LOCAL-response-annotations): the selection
-                  // when there is one, the whole answer otherwise. The excerpt
-                  // is read before the editor takes focus. A turn without an
-                  // anchor has no row to annotate.
-                  if (!entry.anchorId) return;
-                  const selection = selectionMarkdownWithinRow(entry.anchorId);
-                  openResponseAnnotationEditor({
-                    messageId: entry.anchorId,
-                    text: selection || content,
-                    anchor: selectionAnnotationAnchorWithinRow(entry.anchorId),
-                  });
-                }}
-              >
-                <IconQuote size={13} />
-              </TooltipButton>
-            ) : null}
-            {complete ? (
-              <TooltipButton
-                className="copy-btn icon"
-                tooltip={sideChatLabel}
-                ariaLabel={sideChatLabel}
-                disabled={sessionRunning}
-                onClick={() => void openSideChat(actionMessage.id)}
-              >
-                <IconChat size={13} />
               </TooltipButton>
             ) : null}
           </div>

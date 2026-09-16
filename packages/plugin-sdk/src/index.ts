@@ -27,14 +27,37 @@ export const PLUGIN_ID_PATTERN = /^[a-z0-9]+(\.[a-z0-9_-]+)+$/;
 /** `author` may be a display string or a contact object (manifest schema §2). */
 export type PluginManifestAuthor =
   | string
+  | string
   | { name: string; email?: string; url?: string };
 
+/**
+ * One locale's display strings (`manifest.i18n`).
+ *
+ * `en` and `zh-CN` are the contract locales: the shell reads `zh-CN` for every
+ * Chinese locale and English for everything else. Every field is optional, and
+ * a partially translated block falls back per field, so a missing one keeps the
+ * author's own `name` / `description` instead of blanking it out.
+ */
+export type PluginDisplayI18n = {
+  name?: string;
+  description?: string;
+  safetyNotes?: string;
+};
+
+/** Locale id → display strings, as a plugin declares them in `manifest.i18n`. */
+export type PluginI18nMap = Record<string, PluginDisplayI18n>;
 export type PluginManifest = {
   schemaVersion: number;
   id: string;
   name: string;
   version: string;
   description?: string;
+  /**
+   * Display strings per locale. The flat `name`/`description` above stay the
+   * author's own language and remain the fallback; the shell shows the entry
+   * matching the app language and only reads these two contract locales.
+   */
+  i18n?: PluginI18nMap;
   author?: PluginManifestAuthor;
   homepage?: string;
   repository?: string;
@@ -82,6 +105,12 @@ export type PluginManifest = {
      * the plugin directory (spec 07-plugins/16).
      */
     agentExtensions?: string[];
+    /**
+     * Providers this plugin adds to Settings' provider list. Requires the
+     * `provider.register` permission; each row is read-only for the user and
+     * refreshed from this manifest on every load.
+     */
+    providers?: PluginProviderContrib[];
     settings?: PluginSettingContrib[];
     themes?: PluginThemeContrib[];
     /** Sandboxed pages placed exclusively in Settings' host-owned Extensions group. */
@@ -95,6 +124,12 @@ export type PluginManifest = {
     views?: PluginViewContrib[];
     /** External session namespaces this plugin may import and own. */
     sessionSources?: PluginSessionSourceContrib[];
+    /**
+     * System-wide accelerators this plugin may own (`keyboard.globalShortcut`).
+     * Each entry maps one accelerator to one of the plugin's own commands; the
+     * host registers, conflict-checks, and releases it with the plugin.
+     */
+    globalShortcuts?: PluginGlobalShortcutContrib[];
   };
   permissions?: string[];
   /**
@@ -334,6 +369,70 @@ export type PluginSettingsDestinationContrib = {
   entry: string;
 };
 
+/** Wire format a contributed provider may declare. Absent means `chat_completions`. */
+export const PLUGIN_PROVIDER_API_STYLES = [
+  "chat_completions",
+  "opencode_go",
+  "responses",
+  "anthropic_messages",
+  "google_generative_ai",
+  "openai_codex_responses",
+  "pi_messages",
+] as const;
+
+export type PluginProviderApiStyle = (typeof PLUGIN_PROVIDER_API_STYLES)[number];
+
+/**
+ * Credential a contributed provider accepts. Absent means `api_key`. `oauth`
+ * is deliberately absent: a plugin OAuth provider needs a Host-owned login
+ * flow that does not exist yet, so a declaration asking for one is refused
+ * instead of materializing a row nobody can sign in to.
+ */
+export const PLUGIN_PROVIDER_AUTH_KINDS = ["api_key", "none"] as const;
+
+export type PluginProviderAuthKind = (typeof PLUGIN_PROVIDER_AUTH_KINDS)[number];
+
+/** Upper bound on `contributes.providers` entries one plugin may declare. */
+export const MAX_PLUGIN_PROVIDERS_PER_PLUGIN = 8;
+
+/** Upper bound on the model list of one contributed provider. */
+export const MAX_PLUGIN_PROVIDER_MODELS = 64;
+
+/** One model a contributed provider exposes to the model picker. */
+export type PluginProviderModelContrib = {
+  /** Model id sent on the wire, 1..256 characters. */
+  id: string;
+  /** Label shown in the picker; the id when omitted. */
+  name?: string;
+  /** Context window in tokens; the runtime default when omitted. */
+  contextWindow?: number;
+  /** Max output tokens; the runtime default when omitted. */
+  maxTokens?: number;
+  /** Whether the model accepts image input. */
+  supportsImages?: boolean;
+};
+
+/**
+ * One provider a plugin adds to Settings' provider list. The plugin supplies
+ * the endpoint and model catalog; the user's API key stays in the host and is
+ * never handed to the plugin. The row appears as `plugin:<pluginId>:<id>` and
+ * is read-only in Settings.
+ */
+export type PluginProviderContrib = {
+  /** Plugin-local id matching [a-zA-Z][a-zA-Z0-9_-]{0,63}, unique per plugin. */
+  id: string;
+  /** Display name for the provider row; required and non-empty. */
+  name: string;
+  /** Vendor the row is attributed to; `custom` when omitted. */
+  vendorKey?: string;
+  /** Endpoint the runtime reaches; must be an absolute http(s) URL. */
+  baseUrl?: string;
+  apiStyle?: PluginProviderApiStyle;
+  authKind?: PluginProviderAuthKind;
+  /** 1..64 models with unique ids. */
+  models: PluginProviderModelContrib[];
+};
+
 /**
  * Native window chrome a theme may ask for. Only honoured while one of this
  * plugin's themes is the selected theme, and only with the
@@ -377,6 +476,33 @@ export type PluginBusContrib = {
   publish?: string[];
   /** Topic patterns this plugin may subscribe to. */
   subscribe?: string[];
+};
+/** One system-wide accelerator a plugin declares (`keyboard.globalShortcut`). */
+export type PluginGlobalShortcutContrib = {
+  /** Local id, unique inside the plugin; also the handle later handed back. */
+  id: string;
+  /**
+   * Command to run, which must be declared in `contributes.commands`. A
+   * shortcut carries no payload and can only reach this plugin's own commands.
+   */
+  command: string;
+  /**
+   * Accelerator the host registers until the user overrides it. The host
+   * reports an OS-reserved or already-claimed accelerator as a registration
+   * error rather than silently replacing the other owner.
+   */
+  default?: string;
+};
+
+/** One accelerator the host currently holds for this plugin. */
+export type PluginGlobalShortcut = {
+  id: string;
+  accelerator: string;
+  command: string;
+  /** False when the OS or another owner holds the accelerator instead. */
+  registered: boolean;
+  /** Why registration failed, when it did. */
+  error?: string;
 };
 
 /**
@@ -609,6 +735,104 @@ export type PluginDesktopInvokeInput = {
   args?: unknown[];
   confirm?: boolean;
 };
+/** One capturable audio endpoint (`audio.capture.background`). */
+export type PluginAudioInputDevice = {
+  /** Opaque host id; `""` names the system default input. */
+  deviceId: string;
+  label: string;
+  /** The entry the host picks when `deviceId` is omitted. */
+  isDefault: boolean;
+};
+
+/** A capture the host is holding for this plugin. */
+export type PluginAudioCaptureState = {
+  active: boolean;
+  streamId?: string;
+  deviceId?: string;
+  label?: string;
+  sampleRate?: number;
+  channels?: number;
+  startedAtMs?: number;
+  /** Frames the host dropped because the plugin did not drain its queue in time. */
+  droppedFrames: number;
+};
+
+/** One PCM frame delivered through `pi.audio.onInputFrame`. */
+export type PluginAudioInputFrame = {
+  streamId: string;
+  /** Monotonic per stream; a gap means dropped frames, not reordered ones. */
+  sequence: number;
+  timestampMs: number;
+  sampleRate: number;
+  channels: number;
+  format: "pcm16";
+  /** Little-endian signed 16-bit samples, interleaved when `channels` is 2. */
+  data: Uint8Array;
+};
+
+export type PluginAudioOpenInputOptions = {
+  /** From `pi.audio.getInputDevices`; omitted means the system default. */
+  deviceId?: string;
+  sampleRate?: number;
+  channels?: number;
+  echoCancellation?: boolean;
+  noiseSuppression?: boolean;
+  autoGainControl?: boolean;
+};
+
+/** An open capture (`pi.audio.openInput`). */
+export type PluginAudioInputSession = {
+  streamId: string;
+  sampleRate: number;
+  channels: number;
+  deviceId?: string;
+  label?: string;
+};
+
+export type PluginAudioOpenOutputOptions = {
+  sampleRate: number;
+  channels?: number;
+  format?: "pcm16";
+};
+
+/** An open playback queue (`pi.audio.openOutput`). */
+export type PluginAudioOutputSession = {
+  streamId: string;
+  sampleRate: number;
+  channels: number;
+  format: "pcm16";
+};
+
+/** Input for `pi.net.websocket.connect` (`net.websocket`). */
+export type PluginWebSocketConnectInput = {
+  /** Absolute `ws://` / `wss://` URL; its host must be in `manifest.net.domains`. */
+  url: string;
+  headers?: Record<string, string>;
+  protocols?: string[];
+  timeoutMs?: number;
+};
+
+export type PluginWebSocketOpenEvent = { socketId: string; protocol: string };
+
+export type PluginWebSocketMessageEvent = {
+  socketId: string;
+  /** Text frames arrive as `string`; binary frames arrive as bytes. */
+  data: string | Uint8Array;
+};
+
+export type PluginWebSocketCloseEvent = {
+  socketId: string;
+  code: number;
+  reason: string;
+  /** False when the connection failed rather than closed cleanly. */
+  wasClean: boolean;
+};
+
+export type PluginWebSocketErrorEvent = {
+  socketId: string;
+  code: string;
+  message: string;
+};
 
 /** Classified preview returned by `fs.readPreview`. */
 export type PluginFsPreview = {
@@ -706,6 +930,37 @@ export type PluginHostApi = {
   desktop: {
     listOperations: () => Promise<PluginDesktopOperation[]>;
     invoke: (input: PluginDesktopInvokeInput) => Promise<unknown>;
+  };
+  /**
+   * Background microphone capture and streaming playback
+   * (`audio.capture.background`, `audio.playback.background`). The host owns
+   * the device: plugins exchange PCM frames and never see a device handle.
+   */
+  audio: {
+    getInputDevices: () => Promise<PluginAudioInputDevice[]>;
+    openInput: (options?: PluginAudioOpenInputOptions) => Promise<PluginAudioInputSession>;
+    closeInput: (streamId: string) => Promise<void>;
+    /** Which plugin currently holds an input, if any. */
+    getCaptureState: () => Promise<PluginAudioCaptureState>;
+    /** Frames arrive at capture pace; a handler that falls behind drops frames. */
+    onInputFrame: (handler: (frame: PluginAudioInputFrame) => void) => void;
+    offInputFrame: (handler: (frame: PluginAudioInputFrame) => void) => void;
+    openOutput: (options: PluginAudioOpenOutputOptions) => Promise<PluginAudioOutputSession>;
+    /** Queues PCM16 for playback; rejects when the queue is full. */
+    writeOutput: (input: { streamId: string; data: Uint8Array }) => Promise<void>;
+    /** Drops queued but unplayed audio — the barge-in primitive. */
+    stopOutput: (streamId: string) => Promise<void>;
+    closeOutput: (streamId: string) => Promise<void>;
+  };
+  /** System-wide accelerators, registered and released by the host (`keyboard.globalShortcut`). */
+  keyboard: {
+    registerGlobalShortcut: (input: {
+      id: string;
+      accelerator: string;
+      command: string;
+    }) => Promise<PluginGlobalShortcut>;
+    unregisterGlobalShortcut: (id: string) => Promise<void>;
+    listGlobalShortcuts: () => Promise<PluginGlobalShortcut[]>;
   };
   /**
    * Paths are relative to the rule's root: the workspace by default, or the
@@ -834,6 +1089,16 @@ export type PluginHostApi = {
       body?: string;
       timeoutMs?: number;
     }) => Promise<{ status: number; headers: Record<string, string>; bodyText: string }>;
+    /**
+     * Real-time bidirectional sockets (`net.websocket`). A connect is confined
+     * to `manifest.net.domains` exactly like `fetch`, and the host closes every
+     * socket the plugin still holds when it unloads.
+     */
+    websocket: {
+      connect: (input: PluginWebSocketConnectInput) => Promise<{ socketId: string }>;
+      send: (input: { socketId: string; data: string | Uint8Array }) => Promise<void>;
+      close: (input: { socketId: string; code?: number; reason?: string }) => Promise<void>;
+    };
   };
   events: {
     on: (event: string, handler: (...args: unknown[]) => void) => void;
@@ -850,6 +1115,8 @@ export type PluginModule = {
 
 /** Upper bound on ExtensionAPI modules one plugin may contribute. */
 export const MAX_AGENT_EXTENSIONS_PER_PLUGIN = 8;
+/** Upper bound on system-wide accelerators one plugin may declare. */
+export const MAX_GLOBAL_SHORTCUTS_PER_PLUGIN = 8;
 
 export const PLUGIN_PERMISSIONS = [
   "ui.panel",
@@ -868,6 +1135,7 @@ export const PLUGIN_PERMISSIONS = [
   "agent.prompt.inject",
   "agent.complete",
   "agent.extension",
+  "provider.register",
   "desktop.control",
   "models.list",
   "project.create",
@@ -884,6 +1152,12 @@ export const PLUGIN_PERMISSIONS = [
   "bus.publish",
   "bus.subscribe",
   "browser.cdp",
+  // Background device access. `ui.microphone` stays panel-scoped: these two are
+  // what a service may use with no page open.
+  "audio.capture.background",
+  "audio.playback.background",
+  "keyboard.globalShortcut",
+  "net.websocket",
 ] as const;
 
 export type PluginPermission = (typeof PLUGIN_PERMISSIONS)[number];
@@ -925,6 +1199,8 @@ export function validateManifest(raw: unknown): {
       return { ok: false, error: `manifest.${field} must be a non-empty string` };
     }
   }
+  const i18nError = manifestI18nError((m as Record<string, unknown>).i18n);
+  if (i18nError) return { ok: false, error: i18nError };
   const ui = m.ui as
     | { title?: unknown; panel?: unknown }
     | null
@@ -953,12 +1229,29 @@ export function validateManifest(raw: unknown): {
   }
   if (
     !contributesError &&
+    (m.contributes?.providers?.length ?? 0) > 0 &&
+    !(m.permissions ?? []).includes("provider.register")
+  ) {
+    return { ok: false, error: "contributes.providers requires the provider.register permission" };
+  }
+  if (
+    !contributesError &&
     m.contributes?.windowAppearance !== undefined &&
     !(m.permissions ?? []).includes("ui.window.appearance")
   ) {
     return {
       ok: false,
       error: "contributes.windowAppearance requires the ui.window.appearance permission",
+    };
+  }
+  if (
+    !contributesError &&
+    (m.contributes?.globalShortcuts?.length ?? 0) > 0 &&
+    !(m.permissions ?? []).includes("keyboard.globalShortcut")
+  ) {
+    return {
+      ok: false,
+      error: "contributes.globalShortcuts requires the keyboard.globalShortcut permission",
     };
   }
   if (contributesError) {
@@ -1021,6 +1314,38 @@ export function validateContributions(
     }
     if (commandIds.has(command.id)) return `duplicate command id "${command.id}"`;
     commandIds.add(command.id);
+  }
+  const shortcuts = contributes.globalShortcuts ?? [];
+  if (!Array.isArray(shortcuts)) return "contributes.globalShortcuts must be an array";
+  if (shortcuts.length > MAX_GLOBAL_SHORTCUTS_PER_PLUGIN) {
+    return `contributes.globalShortcuts is limited to ${MAX_GLOBAL_SHORTCUTS_PER_PLUGIN} entries`;
+  }
+  const shortcutIds = new Set<string>();
+  for (const shortcut of shortcuts) {
+    if (!shortcut || typeof shortcut !== "object") {
+      return "contributes.globalShortcuts entries must be objects";
+    }
+    if (
+      typeof shortcut.id !== "string" ||
+      !/^[a-zA-Z][a-zA-Z0-9._-]{0,63}$/.test(shortcut.id)
+    ) {
+      return "contributes.globalShortcuts entries need an id matching [a-zA-Z][a-zA-Z0-9._-]{0,63}";
+    }
+    if (shortcutIds.has(shortcut.id)) {
+      return `duplicate global shortcut id "${shortcut.id}"`;
+    }
+    shortcutIds.add(shortcut.id);
+    if (typeof shortcut.command !== "string" || !shortcut.command.trim()) {
+      return `global shortcut "${shortcut.id}" requires a command`;
+    }
+    // A shortcut may only reach its own plugin's commands, so the command has
+    // to exist here rather than be resolved later against the whole registry.
+    if (!commandIds.has(shortcut.command)) {
+      return `global shortcut "${shortcut.id}" references an undeclared command`;
+    }
+    if (shortcut.default !== undefined && !isValidShortcutShape(shortcut.default)) {
+      return `global shortcut "${shortcut.id}" has an invalid default`;
+    }
   }
   for (const setting of settings) {
     if (!setting || typeof setting !== "object") {
@@ -1105,6 +1430,98 @@ export function validateContributions(
     if (pathError) return pathError;
     if (!/\.(ts|mts|js|mjs)$/.test(entry)) {
       return "contributes.agentExtensions entries must be .ts or .js files";
+    }
+  }
+
+  const declaredProviders = contributes.providers ?? [];
+  if (!Array.isArray(declaredProviders)) return "contributes.providers must be an array";
+  if (declaredProviders.length > MAX_PLUGIN_PROVIDERS_PER_PLUGIN) {
+    return `contributes.providers allows at most ${MAX_PLUGIN_PROVIDERS_PER_PLUGIN} entries`;
+  }
+  const providerIds = new Set<string>();
+  for (const provider of declaredProviders) {
+    if (!provider || typeof provider !== "object" || Array.isArray(provider)) {
+      return "contributes.providers entries must be objects";
+    }
+    if (typeof provider.id !== "string" || !/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(provider.id)) {
+      return "provider declaration id is missing or invalid";
+    }
+    if (providerIds.has(provider.id)) {
+      return `duplicate provider declaration id "${provider.id}"`;
+    }
+    providerIds.add(provider.id);
+    if (typeof provider.name !== "string" || !provider.name.trim()) {
+      return `provider "${provider.id}" requires a name`;
+    }
+    if (
+      provider.vendorKey !== undefined &&
+      (typeof provider.vendorKey !== "string" || !provider.vendorKey.trim())
+    ) {
+      return `provider "${provider.id}" vendorKey must be a non-empty string`;
+    }
+    if (provider.baseUrl !== undefined) {
+      if (typeof provider.baseUrl !== "string") {
+        return `provider "${provider.id}" baseUrl must be a string`;
+      }
+      // The runtime reaches this endpoint, so only an absolute http(s) URL
+      // may be declared.
+      if (!(provider.baseUrl.startsWith("http://") || provider.baseUrl.startsWith("https://"))) {
+        return `provider "${provider.id}" baseUrl must be an http(s) URL`;
+      }
+    }
+    if (provider.apiStyle !== undefined) {
+      if (typeof provider.apiStyle !== "string") {
+        return `provider "${provider.id}" apiStyle must be a string`;
+      }
+      if (!(PLUGIN_PROVIDER_API_STYLES as readonly string[]).includes(provider.apiStyle)) {
+        return `provider "${provider.id}" has unsupported apiStyle ${provider.apiStyle}`;
+      }
+    }
+    if (provider.authKind !== undefined) {
+      if (typeof provider.authKind !== "string") {
+        return `provider "${provider.id}" authKind must be a string`;
+      }
+      if (!(PLUGIN_PROVIDER_AUTH_KINDS as readonly string[]).includes(provider.authKind)) {
+        return `provider "${provider.id}" has unsupported authKind ${provider.authKind}`;
+      }
+    }
+    // A Host-owned plugin login flow does not exist yet, so a declaration that
+    // asks for one is refused rather than turned into a row nobody can sign in
+    // to.
+    if ((provider as { oauth?: unknown }).oauth !== undefined) {
+      return `provider "${provider.id}" declares oauth; plugin OAuth providers are not supported in this release`;
+    }
+    if (!Array.isArray(provider.models)) {
+      return `provider "${provider.id}" requires models`;
+    }
+    if (provider.models.length === 0 || provider.models.length > MAX_PLUGIN_PROVIDER_MODELS) {
+      return `provider "${provider.id}" declares 1 to ${MAX_PLUGIN_PROVIDER_MODELS} models`;
+    }
+    const modelIds = new Set<string>();
+    for (const model of provider.models) {
+      if (!model || typeof model !== "object" || Array.isArray(model)) {
+        return `provider "${provider.id}" model entries must be objects`;
+      }
+      const modelId = typeof model.id === "string" ? model.id.trim() : "";
+      if (!modelId || modelId.length > 256) {
+        return `provider "${provider.id}" has a model without a valid id`;
+      }
+      if (modelIds.has(modelId)) {
+        return `provider "${provider.id}" declares model ${modelId} twice`;
+      }
+      modelIds.add(modelId);
+      if (model.name !== undefined && (typeof model.name !== "string" || !model.name.trim())) {
+        return `provider "${provider.id}" model ${modelId} name must be a non-empty string`;
+      }
+      for (const field of ["contextWindow", "maxTokens"] as const) {
+        const value = model[field];
+        if (value !== undefined && (!Number.isInteger(value) || value <= 0)) {
+          return `provider "${provider.id}" model ${modelId} ${field} must be a positive integer`;
+        }
+      }
+      if (model.supportsImages !== undefined && typeof model.supportsImages !== "boolean") {
+        return `provider "${provider.id}" model ${modelId} supportsImages must be a boolean`;
+      }
     }
   }
 
@@ -1337,6 +1754,30 @@ function manifestAuthorError(value: unknown): string | undefined {
   return undefined;
 }
 
+/**
+ * `manifest.i18n` is display metadata: locale id → the strings that locale
+ * shows. Shape errors are refused because a malformed block would silently
+ * leave the shell on the author's own language with no way to tell why; a
+ * locale or field a plugin does not translate is fine and falls back.
+ */
+function manifestI18nError(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return "manifest.i18n must be an object of locale → { name?, description?, safetyNotes? }";
+  }
+  for (const [locale, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      return `manifest.i18n.${locale} must be an object`;
+    }
+    for (const field of ["name", "description", "safetyNotes"] as const) {
+      const text = (entry as Record<string, unknown>)[field];
+      if (text !== undefined && typeof text !== "string") {
+        return `manifest.i18n.${locale}.${field} must be a string`;
+      }
+    }
+  }
+  return undefined;
+}
 function relativePathError(value: string, field: string): string | undefined {
   if (/^[a-zA-Z]:[\\/]/.test(value) || value.startsWith("/") || value.startsWith("\\")) {
     return `${field} must not be an absolute path`;
@@ -1434,6 +1875,7 @@ export {
   isLocalNetDomain,
   isNetHostAllowed,
   isNetUrlAllowed,
+  isNetSocketUrlAllowed,
   parseNetDomains,
   type PluginNetDomain,
 } from "./net-policy.js";

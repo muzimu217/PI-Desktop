@@ -784,7 +784,7 @@ function setCurrentWorkspacePath(path: string | null): void {
   // The group snapshot starts cold, so this first push can only carry the bare
   // workspace. Fetch the project's folders once and repeat it, so a plugin that
   // was already open sees them without waiting for the next switch; every later
-  // switch finds the snapshot warm and broadcasts exactly once (ADR 0252).
+  // switch finds the snapshot warm and broadcasts exactly once (ADR 0263).
   if (knownProjectGroups() === null) {
     void refreshProjectGroups(host).then((changed) => {
       if (!changed) return;
@@ -929,6 +929,7 @@ applicationLifecycle = createApplicationLifecycle({
   applyPluginLauncherShortcut: applyPluginLauncherShortcutForLifecycle,
   applySummonWindowShortcut: applySummonWindowShortcutForLifecycle,
   broadcastPluginPanelEvent,
+  getHost: () => host,
 });
 const {
   applyDevelopmentBranding,
@@ -1240,6 +1241,7 @@ runtimeLifecycle = createRuntimeLifecycle({
   rememberPluginScopes,
   refreshUserMcp,
   isQuitting: () => quitting,
+  getDisplayLocale: () => applicationAppearanceState.updaterLocale,
 });
 const { bootHostStatus, runtimeArch, bootBackends } = runtimeLifecycle;
 

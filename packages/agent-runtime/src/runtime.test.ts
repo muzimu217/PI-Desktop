@@ -1327,6 +1327,113 @@ describe("DesktopAgentRuntime live activity", () => {
     await runtime.dispose();
   });
 
+  it("surfaces the transport errno while a network failure retries", async () => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const classified = classifyAgentError(
+      Object.assign(new TypeError("fetch failed"), {
+        cause: Object.assign(
+          new Error("getaddrinfo ENOTFOUND api.example.com"),
+          {
+            code: "ENOTFOUND",
+            syscall: "getaddrinfo",
+            hostname: "api.example.com",
+          },
+        ),
+      }),
+    );
+    const activityError = (runtime as any).retryActivityError(classified);
+
+    // The retry popover renders exactly this object, so the user learns which
+    // transport layer is failing instead of only that the provider is
+    // unreachable.
+    expect(activityError).toEqual({
+      code: "NETWORK_ERROR",
+      message: "fetch failed",
+      networkCode: "ENOTFOUND",
+    });
+
+    (runtime as any).setAgentActivity({
+      phase: "retrying",
+      since: 100,
+      attempt: 2,
+      retryDelayMs: 2_000,
+      error: activityError,
+    });
+    const statusEvent = onEvent.mock.calls
+      .map(([envelope]) => (envelope as any).event)
+      .find((event) => event.type === "status");
+    expect(statusEvent?.status.activity).toMatchObject({
+      phase: "retrying",
+      error: { networkCode: "ENOTFOUND" },
+    });
+
+    await runtime.dispose();
+  });
+
+  it("stamps request size, message count and compaction generation on provider diagnostics", async () => {
+    const runtime = createRuntime({ onEvent: vi.fn() });
+    (runtime as any).providerRequestMessages = 42;
+    (runtime as any).providerRequestBytes = 180_000;
+    (runtime as any).activeCompaction = { details: { generation: 3 } };
+
+    expect(
+      (runtime as any).providerErrorWithDiagnostics(
+        {
+          code: "NETWORK_ERROR",
+          message: "fetch failed",
+          retriable: true,
+          details: { networkCategory: "dns", networkCode: "ENOTFOUND" },
+        },
+        "stream",
+        1_500,
+        2,
+      ).details,
+    ).toEqual({
+      networkCategory: "dns",
+      networkCode: "ENOTFOUND",
+      phase: "stream",
+      requestMessages: 42,
+      requestBytes: 180_000,
+      compactionGeneration: 3,
+      providerWaitMs: 1_500,
+      streamMs: 2,
+    });
+
+    await runtime.dispose();
+  });
+
+  it("keeps the network diagnosis on the emitted assistant error", async () => {
+    const onEvent = vi.fn();
+    const runtime = createRuntime({ onEvent });
+    const error = classifyAgentError(
+      Object.assign(new TypeError("fetch failed"), {
+        cause: Object.assign(new Error("connect ECONNRESET"), {
+          code: "ECONNRESET",
+        }),
+      }),
+    );
+
+    (runtime as any).finalizeCurrentAssistant("error", error);
+
+    // The event envelope is what the logger persists as `agent/session.log`
+    // and what the renderer shows, so this is the surface the diagnosis has to
+    // survive on (ADR 0212).
+    const events = onEvent.mock.calls.map(([envelope]) => envelope as any);
+    expect(events.at(-1)?.event).toMatchObject({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        error: {
+          code: "NETWORK_ERROR",
+          details: { networkCategory: "reset", networkCode: "ECONNRESET" },
+        },
+      },
+    });
+
+    await runtime.dispose();
+  });
+
   it("emits status phases for quiet provider and delegation intervals", async () => {
     const onEvent = vi.fn();
     const runtime = createRuntime({ onEvent });
@@ -6724,6 +6831,89 @@ describe("DesktopAgentRuntime deferred tool restore (#225)", () => {
     runtime.setMode("agent");
 
     expect(hasTool(runtime, "BrowserPreview")).toBe(true);
+    await runtime.dispose();
+  });
+});
+
+describe("DesktopAgentRuntime compaction request headers", () => {
+  const openCodeProvider: RuntimeProviderConfig = {
+    ...provider,
+    id: "row-uuid",
+    name: "OpenCode Go",
+    vendorKey: "opencode-go",
+    apiStyle: "opencode_go",
+    baseUrl: "https://opencode.ai/zen/go/v1",
+    headers: { "X-Team": "platform" },
+  };
+
+  /** The shape `prepareCompaction` returns for a single-turn history. */
+  function preparation() {
+    return {
+      messagesToSummarize: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "older task context" }],
+          timestamp: 1,
+        },
+      ],
+      turnPrefixMessages: [],
+      retainedTail: [],
+      isSplitTurn: false,
+      tokensBefore: 240_000,
+      fileOps: {
+        read: new Set<string>(),
+        edited: new Set<string>(),
+        written: new Set<string>(),
+      },
+      settings: { enabled: true, reserveTokens: 16_384, keepRecentTokens: 20_000 },
+    };
+  }
+
+  /** Replaces the collection with a recorder; only `completeSimple` is used. */
+  function captureSummaryRequest(runtime: DesktopAgentRuntime) {
+    const calls: any[] = [];
+    (runtime as any).models = {
+      completeSimple: async (_model: unknown, _context: unknown, options: unknown) => {
+        calls.push(options);
+        return assistantMessage({ content: [{ type: "text", text: "Older work." }] });
+      },
+    };
+    return calls;
+  }
+
+  it("sends the session's OpenCode header on the summary request", async () => {
+    const runtime = createRuntime({ provider: openCodeProvider });
+    const calls = captureSummaryRequest(runtime);
+
+    const result = await (runtime as any).generateCompaction(
+      preparation(),
+      new AbortController().signal,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.sessionId).toBe("session-1");
+    expect(calls[0]?.headers).toMatchObject({
+      "x-opencode-session": "session-1",
+      "x-opencode-client": "pi-desktop",
+      "X-Team": "platform",
+    });
+    await runtime.dispose();
+  });
+
+  it("sends a provider row's own headers without adding OpenCode's", async () => {
+    const runtime = createRuntime({
+      provider: { ...provider, headers: { "X-Team": "platform" } },
+    });
+    const calls = captureSummaryRequest(runtime);
+
+    await (runtime as any).generateCompaction(
+      preparation(),
+      new AbortController().signal,
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.headers).toEqual({ "X-Team": "platform" });
     await runtime.dispose();
   });
 });

@@ -1618,3 +1618,352 @@ fn verified_trust_is_honoured_only_from_the_official_source() {
         std::env::remove_var("PI_DESKTOP_PLUGIN_MARKET_URL");
     }
 }
+
+#[test]
+fn global_shortcuts_require_permission_and_a_declared_command() {
+    let dir = tempdir().unwrap();
+    let commands = || json!([{ "id": "voice.pushToTalk", "title": "Push to talk" }]);
+
+    // Accepted, and the contribution survives parsing.
+    let ok = dir.path().join("ok");
+    write_plugin(
+        &ok,
+        capability_manifest(
+            json!({
+                "commands": commands(),
+                "globalShortcuts": [{
+                    "id": "voice.pushToTalk",
+                    "command": "voice.pushToTalk",
+                    "default": "Alt+Space"
+                }]
+            }),
+            json!(["keyboard.globalShortcut"]),
+        ),
+        &[],
+    );
+    let manifest = PluginManager::read_manifest(&ok).unwrap();
+    let contributes = manifest.contributes.as_ref().expect("contributes parsed");
+    assert_eq!(
+        contributes["globalShortcuts"],
+        json!([{
+            "id": "voice.pushToTalk",
+            "command": "voice.pushToTalk",
+            "default": "Alt+Space"
+        }])
+    );
+
+    // A shortcut declared without the permission would register silently.
+    let no_perm = dir.path().join("no-perm");
+    write_plugin(
+        &no_perm,
+        capability_manifest(
+            json!({
+                "commands": commands(),
+                "globalShortcuts": [{ "id": "voice.pushToTalk", "command": "voice.pushToTalk" }]
+            }),
+            json!([]),
+        ),
+        &[],
+    );
+    assert!(read_manifest_err(&no_perm)
+        .contains("global shortcuts require the keyboard.globalShortcut permission"));
+
+    // A shortcut may only reach a command this plugin declares.
+    let undeclared = dir.path().join("undeclared");
+    write_plugin(
+        &undeclared,
+        capability_manifest(
+            json!({
+                "commands": commands(),
+                "globalShortcuts": [{ "id": "voice.pushToTalk", "command": "voice.other" }]
+            }),
+            json!(["keyboard.globalShortcut"]),
+        ),
+        &[],
+    );
+    assert!(read_manifest_err(&undeclared).contains("references an undeclared command"));
+}
+
+#[test]
+fn global_shortcut_entries_are_validated() {
+    let dir = tempdir().unwrap();
+    let commands = || json!([{ "id": "voice.pushToTalk", "title": "Push to talk" }]);
+    let grant = || json!(["keyboard.globalShortcut"]);
+
+    let duplicate = dir.path().join("duplicate");
+    write_plugin(
+        &duplicate,
+        capability_manifest(
+            json!({
+                "commands": commands(),
+                "globalShortcuts": [
+                    { "id": "voice.pushToTalk", "command": "voice.pushToTalk" },
+                    { "id": "voice.pushToTalk", "command": "voice.pushToTalk" }
+                ]
+            }),
+            grant(),
+        ),
+        &[],
+    );
+    assert!(read_manifest_err(&duplicate).contains("duplicate global shortcut id voice.pushToTalk"));
+
+    let bad_id = dir.path().join("bad-id");
+    write_plugin(
+        &bad_id,
+        capability_manifest(
+            json!({
+                "commands": commands(),
+                "globalShortcuts": [{ "id": "voice push", "command": "voice.pushToTalk" }]
+            }),
+            grant(),
+        ),
+        &[],
+    );
+    assert!(read_manifest_err(&bad_id).contains("global shortcut id is missing or invalid"));
+
+    let bad_default = dir.path().join("bad-default");
+    for (name, default) in [("text", json!("Ctrl+")), ("number", json!(42))] {
+        let root = bad_default.join(name);
+        write_plugin(
+            &root,
+            capability_manifest(
+                json!({
+                    "commands": commands(),
+                    "globalShortcuts": [{
+                        "id": "voice.pushToTalk",
+                        "command": "voice.pushToTalk",
+                        "default": default
+                    }]
+                }),
+                grant(),
+            ),
+            &[],
+        );
+        assert!(read_manifest_err(&root)
+            .contains("global shortcut voice.pushToTalk has an invalid default"));
+    }
+
+    let too_many = dir.path().join("too-many");
+    write_plugin(
+        &too_many,
+        capability_manifest(
+            json!({
+                "commands": commands(),
+                "globalShortcuts": (0..9)
+                    .map(|index| json!({ "id": format!("voice.slot{index}"), "command": "voice.pushToTalk" }))
+                    .collect::<Vec<_>>()
+            }),
+            grant(),
+        ),
+        &[],
+    );
+    assert!(read_manifest_err(&too_many)
+        .contains("contributes.globalShortcuts allows at most 8 entries"));
+
+    let not_an_object = dir.path().join("not-an-object");
+    write_plugin(
+        &not_an_object,
+        capability_manifest(json!({ "globalShortcuts": ["voice.pushToTalk"] }), grant()),
+        &[],
+    );
+    assert!(read_manifest_err(&not_an_object)
+        .contains("contributes.globalShortcuts entry must be an object"));
+}
+
+#[test]
+fn plugin_rows_read_the_i18n_block_for_the_active_locale() {
+    let _env = lock_market_env();
+    let dir = tempdir().unwrap();
+    let root = dir.path().join("plugin");
+    write_plugin(
+        &root,
+        json!({
+            "schemaVersion": 1,
+            "id": "acme.todo",
+            "name": "小清新待办",
+            "version": "0.1.0",
+            "description": "作者原话",
+            "main": "main.js",
+            "i18n": {
+                "en": { "name": "Todo List", "description": "A calm todo list" },
+                "zh-CN": { "name": "小清新待办", "description": "轻盈的待办清单" }
+            }
+        }),
+        &[],
+    );
+    let mut mgr = offline_manager(dir.path());
+    mgr.set_locale("en");
+    let row = mgr.load_dev(root.to_str().unwrap()).unwrap();
+    assert_eq!(row.name, "Todo List");
+    assert_eq!(row.description.as_deref(), Some("A calm todo list"));
+
+    // Every reader resolves the same way: `list()` and `get()` are what the
+    // Extensions page and the plugin launcher actually draw.
+    mgr.set_locale("zh-CN");
+    assert_eq!(mgr.get("acme.todo").unwrap().name, "小清新待办");
+    let listed = mgr
+        .list()
+        .into_iter()
+        .find(|candidate| candidate.id == "acme.todo")
+        .expect("row missing from the list");
+    assert_eq!(listed.description.as_deref(), Some("轻盈的待办清单"));
+
+    // `zh-Hans` is Simplified Chinese. `zh-TW` is not part of the plugin
+    // contract, so it reads English rather than half a translation (ADR 0182).
+    mgr.set_locale("zh-Hans");
+    assert_eq!(mgr.get("acme.todo").unwrap().name, "小清新待办");
+    mgr.set_locale("zh-TW");
+    assert_eq!(mgr.get("acme.todo").unwrap().name, "Todo List");
+    mgr.set_locale("de");
+    assert_eq!(mgr.get("acme.todo").unwrap().name, "Todo List");
+}
+
+#[test]
+fn a_partial_translation_falls_back_per_field() {
+    let _env = lock_market_env();
+    let dir = tempdir().unwrap();
+    let root = dir.path().join("plugin");
+    write_plugin(
+        &root,
+        json!({
+            "schemaVersion": 1,
+            "id": "acme.partial",
+            "name": "Author name",
+            "version": "0.1.0",
+            "description": "Author description",
+            "main": "main.js",
+            "i18n": { "en": { "name": "English name", "description": "   " } }
+        }),
+        &[],
+    );
+    let mut mgr = offline_manager(dir.path());
+    mgr.set_locale("en");
+    let row = mgr.load_dev(root.to_str().unwrap()).unwrap();
+    assert_eq!(row.name, "English name");
+    // A blank translation must not blank out a usable author description.
+    assert_eq!(row.description.as_deref(), Some("Author description"));
+
+    // A locale with no entry at all falls back to English, not to nothing.
+    mgr.set_locale("fr");
+    assert_eq!(mgr.get("acme.partial").unwrap().name, "English name");
+}
+
+#[test]
+fn a_plugin_without_an_i18n_block_keeps_the_authors_strings() {
+    let _env = lock_market_env();
+    let dir = tempdir().unwrap();
+    let root = dir.path().join("plugin");
+    write_plugin(
+        &root,
+        json!({
+            "schemaVersion": 1,
+            "id": "acme.plain",
+            "name": "Plain",
+            "version": "0.1.0",
+            "description": "Plain description",
+            "main": "main.js"
+        }),
+        &[],
+    );
+    let mut mgr = offline_manager(dir.path());
+    mgr.set_locale("zh-CN");
+    let row = mgr.load_dev(root.to_str().unwrap()).unwrap();
+    assert_eq!(row.name, "Plain");
+    assert_eq!(row.description.as_deref(), Some("Plain description"));
+}
+
+#[test]
+fn the_registry_never_persists_the_i18n_block() {
+    let _env = lock_market_env();
+    let dir = tempdir().unwrap();
+    let root = dir.path().join("plugin");
+    write_plugin(
+        &root,
+        json!({
+            "schemaVersion": 1,
+            "id": "acme.stored",
+            "name": "Stored",
+            "version": "0.1.0",
+            "main": "main.js",
+            "i18n": { "en": { "name": "Stored" }, "zh-CN": { "name": "已存" } }
+        }),
+        &[],
+    );
+    let mut mgr = offline_manager(dir.path());
+    mgr.set_locale("zh-CN");
+    mgr.load_dev(root.to_str().unwrap()).unwrap();
+
+    // The registry keeps the author's own language; only reads are localized,
+    // so switching language never rewrites persisted rows.
+    let raw = fs::read_to_string(mgr.registry_path()).unwrap();
+    assert!(!raw.contains("\"i18n\""), "registry persisted i18n: {raw}");
+    assert!(raw.contains("Stored"));
+
+    // A restart re-reads each manifest, so rows are localized again without
+    // the registry having carried anything.
+    let mut reloaded = PluginManager::new(dir.path(), None);
+    reloaded.set_locale("zh-CN");
+    assert_eq!(reloaded.get("acme.stored").unwrap().name, "已存");
+}
+
+#[test]
+fn market_cards_and_details_read_the_catalog_i18n_block() {
+    let _env = lock_market_env();
+    let dir = tempdir().unwrap();
+    let mut mgr = offline_manager(dir.path());
+    let mut entry = v2_entry();
+    entry.safety_notes = Some("Reads nothing else".into());
+    entry.i18n = Some(
+        [
+            (
+                "en".to_string(),
+                PluginDisplayI18n {
+                    name: Some("Todo".into()),
+                    description: Some("Publisher-owned plugin".into()),
+                    safety_notes: Some("Reads nothing else".into()),
+                },
+            ),
+            (
+                "zh-CN".to_string(),
+                PluginDisplayI18n {
+                    name: Some("待办".into()),
+                    description: Some("发布者自有的插件".into()),
+                    safety_notes: Some("不读取其他内容".into()),
+                },
+            ),
+        ]
+        .into_iter()
+        .collect(),
+    );
+    fs::write(
+        mgr.catalog_path(),
+        serde_json::to_string(&v2_catalog(entry)).unwrap(),
+    )
+    .unwrap();
+
+    mgr.set_locale("zh-CN");
+    let card = mgr.market_search(None, None).unwrap().remove(0);
+    assert_eq!(card.name, "待办");
+    assert_eq!(card.description, "发布者自有的插件");
+    assert_eq!(
+        mgr.market_get("acme.todo").unwrap().safety_notes.as_deref(),
+        Some("不读取其他内容")
+    );
+    // Search matches either language: the card is drawn in one of them, and a
+    // user typing the other must still find it.
+    assert_eq!(
+        mgr.market_search(Some("Publisher-owned"), None)
+            .unwrap()
+            .len(),
+        1
+    );
+
+    mgr.set_locale("en");
+    let card = mgr.market_search(None, None).unwrap().remove(0);
+    assert_eq!(card.name, "Todo");
+    assert_eq!(card.description, "Publisher-owned plugin");
+    assert_eq!(
+        mgr.market_get("acme.todo").unwrap().safety_notes.as_deref(),
+        Some("Reads nothing else")
+    );
+}

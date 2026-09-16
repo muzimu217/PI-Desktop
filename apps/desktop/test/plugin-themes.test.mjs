@@ -23,7 +23,7 @@ test("contributed css is sanitized in the main process, not the renderer", () =>
   assert.match(register, /sanitizeThemeCss\(raw,\s*THEME_CSS_MAX_BYTES,/);
   assert.match(register, /resolveInsidePlugin/);
   assert.match(register, /INVALID_CSS/);
-  // The hard per-plugin theme cap was removed (ADR 0249 / issue #352).
+  // The hard per-plugin theme cap was removed (ADR 0260 / issue #352).
   assert.doesNotMatch(runtimeSrc, /MAX_THEMES_PER_PLUGIN/);
   // The renderer injects the stored text verbatim, so it must not re-filter.
   assert.doesNotMatch(appSrc, /sanitizeThemeCss/);

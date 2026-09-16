@@ -103,11 +103,21 @@
         }
       }
     },
+    "ownerPluginId": { "type": ["string", "null"] },
     "createdAt": { "type": "string" },
     "updatedAt": { "type": "string" }
   }
 }
 ```
+
+插件通过 `contributes.providers` 声明的行带有 `ownerPluginId`（其行 id 为
+`plugin:<pluginId>:<declaredId>`），对模型解析、发现、连接测试和会话绑定而言
+它是一行普通 provider。用户路径对它只读：`providers.update` 与
+`providers.delete` 会以 `PROVIDER_OWNED_BY_PLUGIN` 错误拒绝。该声明在每次插件
+加载时从插件 manifest 重新读取，并对自己拥有的字段具有权威性，而已存储的
+`headers`、OAuth 账户标签以及用户填入的凭据都会保留。停用插件保留该行并将其
+关闭；卸载插件或移除该声明会删除该行及其两个凭据引用（ADR 0259，
+`07-plugins/02-plugin-manifest-schema.md` §5.4）。
 
 `models[].alias` 是可选展示标签（ADR 0192）。`models[].id` 仍是发给提供商的
 身份，别名从不用于提供商或模型解析。host-core 会修剪别名、丢弃空白值，

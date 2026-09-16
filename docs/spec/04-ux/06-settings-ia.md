@@ -63,18 +63,19 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
 ### General
 - **Appearance** card:
   - **Theme**: a searchable picker row (same anchored-menu pattern as
-    Language). The trigger fills the settings control column and shows the
-    current name. The menu pins System, Light, and Dark at the top, then lists
-    plugin themes after a divider with a "Provided by …" hint. Search matches
-    labels, descriptions, ids, and plugin ids. Selection updates
-    `settings.theme`.
-  - **Language**: a searchable picker row (not a card grid). The trigger fills
-    the settings control column and shows the current native name, or Match
-    system. The menu pins Auto at the top with the detected language inline
-    (e.g. "Currently 简体中文"), then lists every shipped locale with its
-    native name (endonym, never translated) and English name for search and
-    sort. Selection updates `settings.language`. Adding a locale is a catalog
-    plus a registry row; the picker does not hard-code the option list.
+    Language). The closed trigger sizes to the current label, capped by the
+    settings control column, and shows the current name. The menu pins System,
+    Light, and Dark at the top, then lists plugin themes after a divider with a
+    "Provided by …" hint. Search matches labels, descriptions, ids, and plugin
+    ids. Selection updates `settings.theme`.
+  - **Language**: a searchable picker row (not a card grid). The closed trigger
+    sizes to the current label, capped by the settings control column, and
+    shows the current native name, or Match system. The menu pins Auto at the
+    top with the detected language inline (e.g. "Currently 简体中文"), then
+    lists every shipped locale with its native name (endonym, never translated)
+    and English name for search and sort. Selection updates `settings.language`.
+    Adding a locale is a catalog plus a registry row; the picker does not
+    hard-code the option list.
   - **Font**: a searchable picker row (trigger shows the current family rendered
     in that face) offering the System default, bundled open-licensed families
     (Geist, Inter, Noto Sans SC, LXGW WenKai — SIL OFL 1.1, shipped locally),
@@ -120,6 +121,10 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
 ### 全局 AI (`ai` tab)
 - **Permissions** card: the global permission-mode control
   (ask / accept-edits / auto) that governs how autonomously the agent acts.
+  The control is a menu select on the shared anchored-menu surface rather than
+  a platform-drawn `<select>` popup, so every Settings picker opens the same
+  way. The closed trigger sizes to the current label, capped by the settings
+  control column.
 - **Defaults** card: the host-backed default operating mode (Agent / Plan / Goal),
   command shell selection, Link open destination, context usage display
   (remaining or used), Enter-to-send control, and the large text paste
@@ -139,7 +144,8 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   and the fallback state is shown. When the selected shell is available, the
   selector is the only configured-state indicator; status text is reserved for
   the default, fallback, and no-effective-shell cases. A Bash turn verifies its
-  pinned ID/dialect before execution.
+  pinned ID/dialect before execution. The row renders the same menu select as
+  the Permissions card and the Appearance pickers.
 - Context management has **no card and no controls** (D200 / ADR 0061, kept by
   D203 / ADR 0064). Automatic protection is always on and its budgets and
   retention limits are derived from the active model's window, so there is
@@ -151,7 +157,7 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
 
 ### Usage statistics (`usage` tab, `Data & Statistics` group)
 
-Amends D335 / ADR 0173 (ADR 0181): the Usage destination returns to Settings
+Amends D335 / ADR 0173 (ADR 0270): the Usage destination returns to Settings
 for the host-owned view. The page reads `stats.summary` /
 `stats.topSessions` — range switch (7/30 days), cards (total tokens,
 peak day, longest pure-chat time, current streak), 365-day heatmap, daily
@@ -375,10 +381,16 @@ system while preserving their different data ownership:
   the overflow menu stay quiet until the row is hovered, focused, or has its
   menu open; the switch is always visible because enablement is the state the
   list is read for. Without hover the quiet actions are always shown. The
-  overflow menu holds the level-aware destructive and out-of-app actions —
-  Reveal and Remove for skills and subagents, Test connection and Remove for
-  MCP — and Remove arms on first press, relabels to ask for confirmation, and
-  disarms on its own if the menu is dismissed or left alone.
+  overflow menu holds the level-aware destructive, move, and out-of-app
+  actions — Reveal and Remove for skills and subagents, Test connection and
+  Remove for MCP, and Move to Global / Move into <project> on MCP and Skill
+  rows — and Remove arms on first press, relabels to ask for confirmation,
+  and disarms on its own if the menu is dismissed or left alone. The move
+  direction follows the row's own level: a global row offers Move into the
+  project named by the page toolbar's project picker, and a project row offers
+  Move to Global. With no project selected the Move into <project> item is not
+  offered and the project group asks for a project selection instead, so a
+  capability is never sent to an unnamed project.
 - Skeleton rows appear on first paint only. A later refresh keeps the rows it
   already has and dims the list instead, announcing the refresh to assistive
   technology, so toggling a switch never replaces the list with skeletons.
@@ -399,7 +411,12 @@ system while preserving their different data ownership:
   English-titled offline fallback. Default GitHub sources are queried with
   user-added sources; a remote badge uses `sourceId`, not id collision with
   builtin rows. Documents that would exceed the 128 KiB host cap cannot be
-  installed. Back reloads the skill list.
+  installed. A preview that fails is reported in the sheet with its reason and
+  a Retry action — the install button may sit disabled, but never without an
+  explanation — and a market whose sources were refused by the public-network
+  guard says so instead of calling every source unreachable, because a proxied
+  user sees that refusal while the same URL opens in their browser (ADR 0177).
+  Back reloads the skill list.
 - The Subagents create/edit sheet pins a model with a searchable, provider-
   grouped anchored menu — the same option-menu control the service picker uses
   — over the configured, runnable models the Composer offers, plus an
@@ -468,7 +485,9 @@ system while preserving their different data ownership:
   automatically (D007 / D342).
 - Sessions: review candidates through `SessionImportPanel`. Source and
   project-path grouping behavior follows
-  [08-component-spec §18](08-component-spec.md#18-sessionimportpanel)
+  [08-component-spec §18](08-component-spec.md#18-sessionimportpanel).
+  The Group-by control is the same in-app menu select as the Appearance and
+  Permissions pickers, not a platform-drawn `<select>`.
 - Model configuration: review provider drafts through
   `ModelConfigImportPanel`
   ([08-component-spec §18.5](08-component-spec.md#185-modelconfigimportpanel)).

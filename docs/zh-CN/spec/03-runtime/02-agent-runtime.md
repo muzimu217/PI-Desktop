@@ -186,7 +186,10 @@ HTTP 429 处理是一个逻辑回合策略。此路径禁用了 pi-ai 的嵌套
 当 429 预算耗尽时，最终的助手错误和生命周期 `error` 只发出一次。
 提供程序故障在可用时于 `AppError.details` 中携带有界诊断：
 `phase`（`request` 或 `stream`）、`providerStatus`、`providerCode`、
-`providerWaitMs`、`streamMs` 和 `retryAttempt`。对于持续的 429，
+`providerWaitMs`、`streamMs`、`retryAttempt`、网络诊断
+（`networkCategory`、`networkCode`、`networkSyscall`、`networkHost`）以及
+请求关联字段（`requestMessages`、`requestBytes`、`compactionGeneration`）。
+对于持续的 429，
 `retryAttempt` 为 `5`；对于持续的非 429 瞬时故障，它为 `4`。凭据与不受限制的
 响应正文永远不会进入事件或日志。
 
@@ -687,9 +690,10 @@ Composer 增强使用与 agent 请求相同的已解析提供商绑定和重试�
 
 ### 6.2 OpenCode 会话路由标头
 
-对话、子代理、提示增强以及插件的一次性补全，只要其提供商满足下列任一条件——
-`apiStyle` 为 `opencode_go`、`vendorKey` 为 `opencode` 或 `opencode-go`、
-pi-ai 提供商 id 为上述值之一，或 base URL 的主机为 `opencode.ai`——都会发送：
+对话、子代理、上下文压缩摘要、提示增强以及插件的一次性补全，只要其提供商满足
+下列任一条件——`apiStyle` 为 `opencode_go`、`vendorKey` 为 `opencode` 或
+`opencode-go`、pi-ai 提供商 id 为上述值之一，或 base URL 的主机为
+`opencode.ai`——都会发送：
 
 - `x-opencode-session`：持久的对话 id；调用方没有会话时则为一个按次生成的 UUID
 - `x-opencode-client: pi-desktop`
@@ -701,6 +705,11 @@ pi-ai 提供商 id 为上述值之一，或 base URL 的主机为 `opencode.ai`�
 默认值，也优先于适配器的最后写入。保留键无法冲掉 `x-opencode-session`。这属于
 agent 运行时的职责，与官方 Pi 编码 agent 的归属层保持一致；pi-ai 的 `sessionId`
 流选项并不会发出 `x-opencode-session`。
+
+上下文压缩摘要同样是这一类提供商请求，但 harness 会自行组装其流选项，不会经过
+会话的 stream 函数，因此 agent 运行时把这次标头合并应用到交给压缩的模型集合
+上。该请求携带会话自己的对话 id，而不是 harness 否则会生成的按次 id，这样摘要
+就与它所压缩的对话落在同一个网关后端。
 
 
 ## 7. 系统提示组成

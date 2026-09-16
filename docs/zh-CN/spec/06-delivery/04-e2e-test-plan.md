@@ -600,8 +600,8 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
   侧边栏控件的重复）。在所有其他路线上均采用无框拖曳
   band 会改为渲染（没有顶栏控件）。该栏可拖动以移动
   窗户；交互式控件不会启动窗口拖动。
-  macOS 仅在侧边栏打开时为交通灯保留左侧约 76px 的空间
-  折叠（全屏 8 像素）； Windows/Linux 将右侧 112px 留空
+  macOS 仅在侧边栏折叠时为交通灯保留左侧 88px 的空间
+  （全屏 8 像素）； Windows/Linux 将右侧 112px 留空
   本机窗口控件。
 - **链接规格**：`04-ux/08-component-spec.md`（§2 顶栏）
 - **验收**：C (send/UI)，质量
@@ -1066,9 +1066,25 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
   4) 打开语言行的可搜索选择器。确认「跟随系统」钉在顶部并显示检测到的本地名称，且列表按本地名称列出 English、简体中文、繁體中文、Türkçe、Deutsch、Español、Français。操作系统为简体中文时选择「跟随系统」会应用简体中文；切换为繁体中文系统时会应用繁体中文。
   5) 依次选择 English、简体中文、繁體中文、Türkçe、Deutsch、Español 和 Français，确认外壳文案无需重新加载即可切换。确认 `zh-Hant` 和 `zh-HK` 解析为繁体中文，`de-DE` 解析为 Deutsch，`es-MX` 解析为 Español，`fr-CA` 解析为 Français。
   6) 在语言搜索中输入本地名称或英文名称，确认不匹配的语言消失。在主题搜索中输入主题名称，确认不匹配的选项消失。
-- **预期**：主题和语言都是可搜索的选择行（不是卡片网格，也不是原生 select）；关闭时的触发器填满设置控件列且不溢出该行。主题列出系统、浅色、深色，插件主题在分隔线之后。「跟随系统」通过主进程 (`app.getLocale()`) 解析操作系统区域设置，安全地通过沙盒 preload 桥传递，并在菜单内嵌显示检测到的本地名称；zh-TW、土耳其语、德语、西班牙语和法语都是包含发版日志文案在内的完整外壳目录；切换选项会立即更新 UI，无需重新加载。
+- **预期**：主题和语言都是可搜索的选择行（不是卡片网格，也不是原生 select）；关闭时的触发器按当前文案收缩、不超过设置控件列且不溢出该行。主题列出系统、浅色、深色，插件主题在分隔线之后。「跟随系统」通过主进程 (`app.getLocale()`) 解析操作系统区域设置，安全地通过沙盒 preload 桥传递，并在菜单内嵌显示检测到的本地名称；zh-TW、土耳其语、德语、西班牙语和法语都是包含发版日志文案在内的完整外壳目录；切换选项会立即更新 UI，无需重新加载。
 - **链接规格**：`04-ux/06-settings-ia.md`、`04-ux/02-i18n-english-first.md`
 - **验收**：A（核心壳）、H（本地化）
+- **里程碑**：M4
+- **状态**：已记录
+
+#### E2E-SETTINGS-ai-tab-pickers-use-in-app-menus：全局 AI 下拉使用应用内菜单
+
+- **先决条件**：应用正在运行，主机至少报告一个已配置的命令 Shell，以及至少一个在当前平台不可用的目录内 Shell。
+- **步骤**：
+  1) 打开设置 → 常规，展开主题和语言选择器，记下药丸触发器与展开后的表面。
+  2) 打开全局 AI。
+  3) 展开权限卡的权限模式控件，依次选择询问、接受编辑、自动。
+  4) 展开默认项卡的命令 Shell 控件；查看不可用条目并选择一个可用的 Shell。
+  5) 先用 Escape、再用外部点击分别关闭打开的菜单。
+  6) 关闭设置后重新打开，读取这两行。
+- **预期**：两行都展开与外观选择器相同的锚定菜单表面 —— 应用绘制的边框，使用共享的圆角、阴影、描边和主题 token，当前选项带勾选标记，并有悬浮/键盘高亮 —— 而不是平台绘制的 `<select>` 弹层。关闭时的触发器按当前文案收缩，不超过设置控件列。不可用的 Shell 仍会列出并带后缀，不可选择，也不会成为当前值。Escape 和外部点击都会关闭菜单并把焦点还给触发器；方向键在可选选项之间循环移动。所选权限模式和命令 Shell 在关闭并重新打开设置后保持，且选定的 Shell 仍是唯一的配置状态提示。
+- **链接规格**：`04-ux/06-settings-ia.md`、`04-ux/09-interaction-patterns.md`
+- **验收**：A（核心壳）
 - **里程碑**：M4
 - **状态**：已记录
 
@@ -2077,8 +2093,10 @@ MainChat 弥补了缺口。 Maximized/fullscreen 调用保留最新的
   被取代的成功不能带来陈旧的表现。没有过渡产生
   第二次调整大小或位置漂移。
   预览模式隐藏 MainChat，并将客户区宽度交给面板；本机窗口尺寸不变，分隔线不可操作。
-  预览外壳仍保留新建任务、侧边栏和系统窗口操作。macOS 非全屏且侧边栏折叠时，左侧第一个预览操作从
-  76px 交通灯安全内缩之后开始；全屏时恢复原始内边距。
+  预览外壳仍保留新建任务、侧边栏和系统窗口操作。macOS 非全屏且侧边栏折叠时，预览行把交通灯引导内缩
+  （`--ds-window-lead-inset`，即灯簇右缘 76px 加 12px 间隙，共 88px）作为自身的左内边距渲染出来，
+  左侧第一个预览操作从该渲染值起或之后开始；检查读取的是解析后的内边距，而不是重述这个数字。
+  打开真实工作面板标签后，其第一个标签从预览操作组右侧至少 8px 处开始；全屏时使用 8px 原生内缩但保留该操作带。
   以前的上下文面板覆盖不再存在。
 - **链接规格**：`03-runtime/01-ipc-protocol.md`、`04-ux/01-ui-ia.md`、
   `04-ux/07-ui-design-system.md`、`04-ux/08-component-spec.md`、
@@ -2940,15 +2958,8 @@ PI-Desktop 图标；两个表面都不会暴露库存 Electron 名称或图标�
 
 - **先决条件**：PI-Desktop 在 Windows 上运行，有光和暗
   可用的主题。
-- **步骤**：1）在浅色主题中，在“设置”→“基础”中打开本机选择，
-  设置 → 模型配置、设置 → 导入和一项计划任务
-  形式。 2）以深色主题重复每个表面。 3）之后打开每个列表
-  无需重新启动应用程序即可切换主题。
-- **预期**：每个关闭的触发器和打开的本机选项列表都使用
-  活动主题的可读 foreground/background 配对。没有黑暗主题列表
-  退回到带有浅色文本的浅色 Windows 表面，没有浅色主题列表
-  使用深色主题墨水，更改主题会更新后续空缺。的
-  同样的结果适用于本机选择外部设置。
+- **步骤**：1）在浅色主题中，打开仍存在的本机选择（计划任务表单），并确认设置里的常规、全局 AI、模型配置和导入选择器都是应用内菜单而不是平台 `<select>`。2）以深色主题重复剩余本机列表。3）切换主题后无需重启即可再次打开每个列表。
+- **预期**：设置里的紧凑选择器使用共享锚定菜单。每个仍存在的关闭本机触发器和打开的本机选项列表都使用活动主题的可读 foreground/background 配对。没有黑暗主题列表退回到带有浅色文本的浅色 Windows 表面，没有浅色主题列表使用深色主题墨水，更改主题会更新后续打开。同样的结果适用于设置之外的本机选择。
 - **链接规格**：`04-ux/06-settings-ia.md`，
 `04-ux/07-ui-design-system.md`
 - **接受**：质量（跨平台主题可读性）
@@ -3145,16 +3156,22 @@ IPC 请求无法关闭。
   3. 打开聊天会话旁边的工作面板（审阅/文件/浏览器）。
   4. 将鼠标悬停在文件树行或 diff 标头上；聚焦浏览器 URL 字段。
   5. 打开 confirmation/provider 对话框并检查稀松布。
-  6. 在明暗主题中分别检查设置导航轨、搜索、选中项、开启状态旋钮、输入框壳及
-     插件/能力搜索。应用自定义表面变量，使用键盘聚焦两类搜索，再移除自定义主题。
+  6. 在明暗主题中分别检查设置导航轨、搜索、选中项、开启状态旋钮、输入框壳、插件/
+     能力搜索、代码卡标题带、Mermaid 画布、工具输出、输入占位符与禁用发送芯片，
+     以及对话框遮罩和权限蒙层。应用自定义表面变量，使用键盘聚焦两类搜索，再移除
+     自定义主题。
 - **预期**：
   - 工作面板主体读取为安静的 `#fafafa` 插页纸，带有白色标题带。
   - 设置字段、浏览器 URL、分段轨道和快捷键键帽使用浅色嵌入填充；聚焦场通过中性环提升。
   - 切换开启状态使白色旋钮保持在近乎黑色的轨道上。
   - 悬停可通过共享运动令牌轻松填充 file-tree/diff/resize。
   - 浅色对话稀松布比深色 45% 面纱（约 28% 墨水）更柔软。
-  - 自定义变量改变对应表面及搜索焦点填充；移除后恢复内置 8-bit RGBA 配色与
-    原有阴影/焦点环。本批不迁移正文或遮罩，不改插件主题 API。
+  - 工具输出保持既有级联：浅色在错误输出与纯文本工具块上都绘制同一层较浅底纹，深色
+    显示错误色调并让纯文本块保持透明。
+  - 自定义变量改变对应表面、键帽墨色及搜索焦点填充；移除后恢复内置 8-bit RGBA
+    配色与原有阴影/焦点环。正文墨色混合跟随 `--ds-text-primary`，
+    `one-dark-pro` / `one-light` 的 Shiki 底板与其墨色按设计归 Shiki 主题所有。
+    本批不改插件主题 API。
 - **链接规格**：`04-ux/07-ui-design-system.md`、`04-ux/08-component-spec.md`
 - **接受**：D148
 - **里程碑**：M5
@@ -4802,8 +4819,8 @@ IPC 请求无法关闭。
   6. 点击对话中的项目文件路径，确认它在本视图中打开该文件——对话点击现在优先使用文件视图，而不是宿主的 `file:` 选项卡。
   7. 禁用文件管理器插件，确认视图从菜单和面板消失，且此时点击对话中的文件路径会退回宿主的 `file:<path>` 选项卡（位于「已打开项目」下）。
   8. 重新启用并重启应用，确认启用状态和文件树恢复，注册表没有重复行。
-- **预期**：这一面板完全通过公开插件贡献通道运行，可由用户禁用但不可卸载；由宿主代为执行的动作遵守声明的 `fs.read` 范围，插件自身的读写仍留在它当前浏览的那一个项目文件夹的牢笼内（ADR 0241、ADR 0252）。
-- **链接规格**：`07-plugins/03-plugin-api.md` §3、`07-plugins/13-plugin-permissions-matrix.md` §2、`04-ux/08-component-spec.md` §5、ADR 0104、ADR 0109、ADR 0111、ADR 0169、ADR 0241、ADR 0249、ADR 0252
+- **预期**：这一面板完全通过公开插件贡献通道运行，可由用户禁用但不可卸载；由宿主代为执行的动作遵守声明的 `fs.read` 范围，插件自身的读写仍留在它当前浏览的那一个项目文件夹的牢笼内（ADR 0241、ADR 0263）。
+- **链接规格**：`07-plugins/03-plugin-api.md` §3、`07-plugins/13-plugin-permissions-matrix.md` §2、`04-ux/08-component-spec.md` §5、ADR 0104、ADR 0109、ADR 0111、ADR 0169、ADR 0241、ADR 0249、ADR 0263
 - **接受**：G（插件）、D（工作区）、安全性、品质
 - **里程碑**：M6+
 - **状态**：`apps/desktop/test/bundled-plugins.test.mjs`（manifest 契约、页面只用公开桥接、vendored 校验和）、`apps/desktop/test/plugin-fs-scope.test.mjs`（`fs.openDefault`、`fs.reveal`）、`apps/desktop/test/plugin-work-panel-views.test.mjs`（停靠视图事件广播）已覆盖；完整打包旅程为草稿（适用变更合入前需在具备条件的环境中运行 E2E）
@@ -4818,7 +4835,7 @@ IPC 请求无法关闭。
   4. 收起文件列表，关闭并重新打开该视图，最后重启应用。
   5. 手动展开文件列表，再点击另一个对话文件引用。
 - **预期**：切换按钮收起视图自己的左侧文件列表，内容区占满整个宽度，且按钮始终可用键盘到达，无障碍名称在「隐藏文件列表」与「显示文件列表」之间切换。对话点击触发的宿主打开请求会显示请求的文件、展开其祖先目录并收起文件列表——无论视图本来已经打开，还是由这次点击打开。再次展开时恢复之前拖拽的分栏宽度、已展开的目录与被选中的文件，而不是默认分栏宽度或项目根。收起状态会被持久化：关闭并重新打开视图乃至重启应用后仍然保持；手动展开会一直保持到下一次宿主打开请求再次收起它。
-- **链接规格**：`07-plugins/02-plugin-manifest-schema.md` §4/§5、`04-ux/08-component-spec.md` §5.2.2、ADR 0104、ADR 0241、ADR 0251
+- **链接规格**：`07-plugins/02-plugin-manifest-schema.md` §4/§5、`04-ux/08-component-spec.md` §5.2.2、ADR 0104、ADR 0241、ADR 0262
 - **接受**：G（插件）、品质
 - **里程碑**：M6+
 - **状态**：随包副本的 manifest、入口页面与上游校验和已由 `apps/desktop/test/bundled-plugins.test.mjs` 覆盖；插件侧旅程仍为草稿（除非用户明确要求，否则不要在本地跑 E2E）
@@ -4835,12 +4852,12 @@ IPC 请求无法关闭。
   6. 在选中第二个文件夹的情况下，用文件树搜索主文件夹里那个文件的名字，并试着打开 `.env`，以及第二个文件夹里指向外部的符号链接或 junction。7）在选中第二个文件夹的情况下，右键只有它才有的那个文本文件，依次用「用默认应用打开」与「在文件夹中显示」；再切到主文件夹，对只有**主文件夹**才有的文件做同样两步。8）切回第二个文件夹，对两个文件夹里都有同名的那份文件重复这两个动作。
 - **预期**：
   - 文件夹控件按项目组顺序列出项目的文件夹，主文件夹在前，并标出正在浏览的是哪一个；文件树、搜索与编辑都只在这一个文件夹内工作，单文件夹项目只提供它自己那一个文件夹。
-  - 切换文件夹只改变这个视图浏览的内容：应用显示的可见工作区、智能体的工具根、会话的主路径、项目指令与项目记忆都不变（ADR 0252）。
+  - 切换文件夹只改变这个视图浏览的内容：应用显示的可见工作区、智能体的工具根、会话的主路径、项目指令与项目记忆都不变（ADR 0263）。
   - 选择按项目记忆：关闭并重新打开视图乃至完整重启应用后仍然保持，另一个项目也保持它自己的文件夹。
   - 两个对话引用都在这个视图里打开所引用的文件——包括来自第二个文件夹的那个（在该文件夹里打开）——不会新增宿主 `file:` 选项卡。
   - 牢笼是所选文件夹，而不是整个项目组：按文件名搜索到不了只有别的项目文件夹才持有的文件，凭据类路径与符号链接/junction 逃逸依旧被拒绝（ADR 0241）。
-  - 这两个交给系统的动作落在被点击的那个文件、以及正在浏览的那个文件夹上：只有第二个文件夹才有的文件打开/显示的是它自己，而不是报「没找到」；两个文件夹同名的文件打开的是第二个文件夹里的那份，而不是主文件夹里的那份（ADR 0253）。
-- **链接规格**：`07-plugins/03-plugin-api.md` §3、`04-ux/08-component-spec.md` §5.2.2、ADR 0241、ADR 0249、ADR 0252、ADR 0253
+  - 这两个交给系统的动作落在被点击的那个文件、以及正在浏览的那个文件夹上：只有第二个文件夹才有的文件打开/显示的是它自己，而不是报「没找到」；两个文件夹同名的文件打开的是第二个文件夹里的那份，而不是主文件夹里的那份（ADR 0264）。
+- **链接规格**：`07-plugins/03-plugin-api.md` §3、`04-ux/08-component-spec.md` §5.2.2、ADR 0241、ADR 0249、ADR 0263、ADR 0264
 - **接受**：G（插件）、安全性、品质
 - **里程碑**：M6+
 - **状态**：宿主侧的补全与地址规则已由 `apps/desktop/test/chat-ref-resolve.test.mjs`、`apps/desktop/test/transcript-file-chips.test.mjs` 覆盖；插件侧旅程仍为草稿（除非用户明确要求，否则不要在本地跑 E2E）
@@ -4944,26 +4961,20 @@ IPC 请求无法关闭。
 
 | 验收 | 应用场景 |
 |---|---|
-| A — 应用程序启动 | E2E-001、E2E-002、E2E-003、E2E-004、E2E-067、E2E-076、E2E-079、E2E-092、E2E-097、E2E-143、E2E-150、E2E-168 |
-| B——模型配置 | E2E-005、E2E-005G、E2E-006、E2E-007、E2E-038、E2E-050、E2E-052、E2E-055、E2E-066、E2E-080、E2E-082、E2E-151、E2E-005J |
-| C — 对话和直播 | E2E-008、E2E-008a、E2E-009、E2E-010、E2E-011、E2E-011a、E2E-011b、E2E-031、E2E-040、E2E-047、E2E-048、E2E-048A、E2E-049、E2E-052、 E2E-053、E2E-054、E2E-055、E2E-059、E2E-059a、E2E-060c、E2E-060d、E2E-061、E2E-061a、E2E-062、E2E-064、E2E-065、E2E-068、E2E-071、 E2E-073、E2E-074、E2E-075、E2E-081、E2E-083、E2E-084、E2E-086、E2E-087、E2E-088、E2E-088b、E2E-089、E2E-090、E2E-094、E2E-095、E2E-096、 E2E-097、E2E-098、E2E-099、E2E-102、E2E-102a、E2E-102b、E2E-106、E2E-109、E2E-111、E2E-114、E2E-116、E2E-117、E2E-118、E2E-119、 E2E-120、E2E-121、E2E-代理-001、E2E-142、E2E-144、E2E-145、E2E-146、E2E-147、E2E-151 |
-| D——工作区 | E2E-INDEX-status-rebuild-clear、E2E-INDEX-settings-health-card、E2E-012、E2E-013、E2E-022B、E2E-024I、E2E-047、E2E-049、E2E-057、E2E-058、E2E-060、E2E-068、E2E-075、E2E-078、E2E-153 |
-| E——工具和权限 | E2E-008a、E2E-014、E2E-015、E2E-016、E2E-017、E2E-018、E2E-019、E2E-024I、E2E-024K、E2E-040、E2E-049、E2E-074、E2E-093、E2E-097、 E2E-099、E2E-100、E2E-101、E2E-102、E2E-103、E2E-105、E2E-106、E2E-107、E2E-111、E2E-112、E2E-113、E2E-114、E2E-115、E2E-116、 E2E-119、E2E-121、E2E-122、E2E-123、E2E-142、E2E-145、E2E-147 |
 | C / G / Quality — Plugins navigation | E2E-NAV-plugins-button-goes-back |
 | B / F / Security — 提供商复制 | E2E-PROVIDER-copy-config-without-credentials |
 | A — 应用程序启动 | E2E-001、E2E-002、E2E-003、E2E-004、E2E-067、E2E-076、E2E-079、E2E-092、E2E-097、E2E-143、E2E-150、E2E-168、E2E-204、E2E-217 |
 | B——模型配置 | E2E-005、E2E-005G、E2E-006、E2E-007、E2E-038、E2E-050、E2E-052、E2E-055、E2E-066、E2E-080、E2E-082、E2E-151、E2E-005J、E2E-199、E2E-201、E2E-202、E2E-203、E2E-209、E2E-166 |
 | C — 对话和直播 | E2E-008、E2E-008d、E2E-008a、E2E-009、E2E-010、E2E-011、E2E-011a、E2E-011b、E2E-031、E2E-040、E2E-047、E2E-048、E2E-048A、E2E-049、E2E-052、 E2E-053、E2E-054、E2E-055、E2E-059、E2E-059a、E2E-060c、E2E-060d、E2E-061、E2E-061a、E2E-062、E2E-064、E2E-065、E2E-068、E2E-071、 E2E-073、E2E-074、E2E-075、E2E-081、E2E-083、E2E-084、E2E-086、E2E-087、E2E-088、E2E-088b、E2E-089、E2E-090、E2E-094、E2E-095、E2E-096、 E2E-097、E2E-098、E2E-099、E2E-102、E2E-102a、E2E-102b、E2E-106、E2E-109、E2E-111、E2E-114、E2E-116、E2E-117、E2E-118、E2E-119、 E2E-120、E2E-121、E2E-代理-001、E2E-142、E2E-144、E2E-145、E2E-146、E2E-147、E2E-151、E2E-199、E2E-250、E2E-166 |
-| D——工作区 | E2E-012、E2E-013、E2E-022B、E2E-024I、E2E-047、E2E-049、E2E-057、E2E-058、E2E-060、E2E-068、E2E-075、E2E-078、E2E-153 |
+| D——工作区 | E2E-INDEX-status-rebuild-clear、E2E-INDEX-settings-health-card、E2E-012、E2E-013、E2E-022B、E2E-024I、E2E-047、E2E-049、E2E-057、E2E-058、E2E-060、E2E-068、E2E-075、E2E-078、E2E-153 |
 | D——工作区（项目排序） | E2E-253 |
 | E——工具和权限 | E2E-008a、E2E-014、E2E-015、E2E-016、E2E-017、E2E-018、E2E-019、E2E-024I、E2E-024K、E2E-040、E2E-049、E2E-074、E2E-093、E2E-097、 E2E-099、E2E-100、E2E-101、E2E-102、E2E-103、E2E-105、E2E-106、E2E-107、E2E-111、E2E-112、E2E-113、E2E-114、E2E-115、E2E-116、 E2E-119、E2E-121、E2E-122、E2E-123、E2E-142、E2E-145、E2E-147、E2E-PLUGIN-imported-pi-package-skills、E2E-166 |
->| F——坚持 | E2E-020、E2E-021、E2E-036、E2E-037、E2E-038、E2E-040、E2E-042、E2E-047、E2E-048、E2E-051、E2E-054、E2E-056、E2E-061、E2E-062、 E2E-064、E2E-066、E2E-068、E2E-071、E2E-072、E2E-073、E2E-082、E2E-084、E2E-096、E2E-098、E2E-102、E2E-102b、E2E-103、E2E-代理-001、 E2E-061a、E2E-073a、E2E-104、E2E-106、E2E-107、E2E-108、E2E-109、E2E-110、E2E-112、E2E-118、E2E-119、E2E-120、E2E-121、E2E-123、E2E-142、E2E-146、E2E-148、E2E-151、E2E-171、E2E-005J |
+| F——坚持 | E2E-020、E2E-021、E2E-036、E2E-037、E2E-038、E2E-040、E2E-042、E2E-047、E2E-048、E2E-051、E2E-054、E2E-056、E2E-061、E2E-062、 E2E-064、E2E-066、E2E-068、E2E-071、E2E-072、E2E-073、E2E-082、E2E-084、E2E-096、E2E-098、E2E-102、E2E-102b、E2E-103、E2E-代理-001、 E2E-061a、E2E-073a、E2E-104、E2E-106、E2E-107、E2E-108、E2E-109、E2E-110、E2E-112、E2E-118、E2E-119、E2E-120、E2E-121、E2E-123、E2E-142、E2E-146、E2E-148、E2E-151、E2E-171、E2E-005J |
 | F——持久化（项目排序） | E2E-253 |
-| G——插件 | E2E-022、E2E-022A、E2E-022B、E2E-022C、E2E-023、E2E-024、E2E-024B、E2E-024C、E2E-024D、E2E-024E、E2E-024W、E2E-024F、E2E-024G、E2E-024H、 E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M、E2E-024N、E2E-024O、E2E-024P、E2E-025、E2E-026、E2E-105、E2E-117、E2E-120、E2E-122、E2E-123、E2E-148、E2E-153、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency |
+| G——插件 | E2E-022、E2E-022A、E2E-022B、E2E-022C、E2E-023、E2E-024、E2E-024B、E2E-024C、E2E-024D、E2E-024E、E2E-024W、E2E-024F、E2E-024G、E2E-024H、 E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M、E2E-024N、E2E-024O、E2E-024P、E2E-025、E2E-026、E2E-105、E2E-117、E2E-120、E2E-122、E2E-123、E2E-148、E2E-153、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency、E2E-PLUGIN-global-shortcut-owns-only-its-own-command、E2E-PLUGIN-permission-gate-for-real-time-capabilities、E2E-PLUGIN-background-audio-and-realtime-connection |
 | H——诊断 | E2E-027、E2E-031、E2E-034、E2E-042、E2E-096、E2E-098、E2E-104、E2E-107、E2E-108、E2E-109、E2E-110、E2E-113、E2E-115、E2E-116、 E2E-118、E2E-121、E2E-146、E2E-194、E2E-195 |
 | 安全性 | E2E-028、E2E-029、E2E-030、E2E-024J、E2E-024K、E2E-024M、E2E-049、E2E-068、E2E-086、E2E-105、E2E-106、E2E-107、E2E-108、E2E-109、 E2E-110、E2E-112、E2E-113、E2E-115、E2E-116、E2E-117、E2E-119、E2E-121、E2E-122、E2E-123、E2E-142、E2E-148、E2E-151、E2E-153 |
-| 品质 | E2E-INDEX-status-rebuild-clear、E2E-INDEX-settings-health-card、E2E-032、E2E-033、E2E-039、E2E-043、E2E-044、E2E-045、E2E-046、E2E-047、E2E-048、E2E-048A、E2E-049、E2E-050、E2E-053、E2E-055、 E2E-056、E2E-057、E2E-058、E2E-059、E2E-060、E2E-061、E2E-062、E2E-063、E2E-064、E2E-065、E2E-066、E2E-067、E2E-068、E2E-069、 E2E-070、E2E-071、E2E-072、E2E-073、E2E-074、E2E-075、E2E-076、E2E-077、E2E-078、E2E-079、E2E-080、E2E-081、E2E-082、E2E-083、 E2E-084、E2E-085、E2E-086、E2E-092、E2E-093、E2E-094、E2E-095、E2E-096、E2E-097、E2E-098、E2E-099、E2E-100、E2E-101、E2E-102、 E2E-102a、E2E-102b、E2E-103、E2E-AGENTS-001、E2E-024N、E2E-024O、E2E-059a、E2E-060b、E2E-060c、E2E-060d、E2E-061a、E2E-073a、E2E-111、 E2E-114、E2E-117、E2E-118、E2E-119、E2E-120、E2E-122、E2E-123、E2E-142、E2E-143、E2E-144、E2E-145、E2E-146、E2E-147、E2E-148、E2E-150、E2E-151、E2E-153、E2E-194、E2E-195 |
-| 品质 | E2E-032、E2E-033、E2E-039、E2E-043、E2E-044、E2E-045、E2E-046、E2E-047、E2E-048、E2E-048A、E2E-049、E2E-050、E2E-053、E2E-055、 E2E-056、E2E-057、E2E-058、E2E-059、E2E-060、E2E-061、E2E-062、E2E-063、E2E-064、E2E-065、E2E-066、E2E-067、E2E-068、E2E-069、 E2E-070、E2E-071、E2E-072、E2E-073、E2E-074、E2E-075、E2E-076、E2E-077、E2E-078、E2E-079、E2E-080、E2E-081、E2E-082、E2E-083、 E2E-084、E2E-085、E2E-086、E2E-092、E2E-093、E2E-094、E2E-095、E2E-096、E2E-097、E2E-098、E2E-099、E2E-100、E2E-101、E2E-102、 E2E-102a、E2E-102b、E2E-103、E2E-AGENTS-001、E2E-024N、E2E-024O、E2E-059a、E2E-060b、E2E-060c、E2E-060d、E2E-061a、E2E-073a、E2E-111、 E2E-114、E2E-117、E2E-118、E2E-119、E2E-120、E2E-122、E2E-123、E2E-142、E2E-143、E2E-144、E2E-145、E2E-146、E2E-147、E2E-148、E2E-150、E2E-151、E2E-153、E2E-194、E2E-195、E2E-199、E2E-200、E2E-201、E2E-202、E2E-203、E2E-204、E2E-209、E2E-210、E2E-250、E2E-PLUGIN-imported-pi-package-skills |
+| 品质 | E2E-INDEX-status-rebuild-clear、E2E-INDEX-settings-health-card、E2E-032、E2E-033、E2E-039、E2E-043、E2E-044、E2E-045、E2E-046、E2E-047、E2E-048、E2E-048A、E2E-049、E2E-050、E2E-053、E2E-055、 E2E-056、E2E-057、E2E-058、E2E-059、E2E-060、E2E-061、E2E-062、E2E-063、E2E-064、E2E-065、E2E-066、E2E-067、E2E-068、E2E-069、 E2E-070、E2E-071、E2E-072、E2E-073、E2E-074、E2E-075、E2E-076、E2E-077、E2E-078、E2E-079、E2E-080、E2E-081、E2E-082、E2E-083、 E2E-084、E2E-085、E2E-086、E2E-092、E2E-093、E2E-094、E2E-095、E2E-096、E2E-097、E2E-098、E2E-099、E2E-100、E2E-101、E2E-102、 E2E-102a、E2E-102b、E2E-103、E2E-AGENTS-001、E2E-024N、E2E-024O、E2E-059a、E2E-060b、E2E-060c、E2E-060d、E2E-061a、E2E-073a、E2E-111、 E2E-114、E2E-117、E2E-118、E2E-119、E2E-120、E2E-122、E2E-123、E2E-142、E2E-143、E2E-144、E2E-145、E2E-146、E2E-147、E2E-148、E2E-150、E2E-151、E2E-153、E2E-194、E2E-195、E2E-199、E2E-200、E2E-201、E2E-202、E2E-203、E2E-204、E2E-209、E2E-210、E2E-250、E2E-PLUGIN-imported-pi-package-skills |
 | 品质（项目排序） | E2E-253 |
 | C — 对话和直播（输入法斜杠别名） | E2E-255 |
 | E——工具和权限（Skill 常驻） | E2E-254 |
@@ -4993,7 +5004,13 @@ IPC 请求无法关闭。
 | D — 工作区（删除项目） | E2E-PROJECT-delete-removes-project-and-owned-sessions |
 | F — 持久化（删除项目） | E2E-PROJECT-delete-removes-project-and-owned-sessions |
 | 品质（删除项目） | E2E-PROJECT-delete-removes-project-and-owned-sessions |
->
+| Security (plugin real-time capabilities) | E2E-PLUGIN-global-shortcut-owns-only-its-own-command、E2E-PLUGIN-permission-gate-for-real-time-capabilities、E2E-PLUGIN-background-audio-and-realtime-connection |
+| C — 对话与流式（展开详情保持阅读位置） | E2E-CHAT-disclosure-toggle-keeps-reading-position |
+| E — 工具与权限（展开详情保持阅读位置） | E2E-CHAT-disclosure-toggle-keeps-reading-position |
+| E — 工具与权限（能力跨级别迁移） | E2E-CAPABILITY-move-across-levels |
+| F — 持久化（能力跨级别迁移） | E2E-CAPABILITY-move-across-levels |
+| 品质（能力跨级别迁移） | E2E-CAPABILITY-move-across-levels |
+
 | 里程碑 | 应用场景 |
 |---|---|
 | M1 | E2E-001、E2E-002、E2E-003、E2E-028、E2E-029 |
@@ -5005,21 +5022,24 @@ IPC 请求无法关闭。
 | M2（输入法斜杠别名） | E2E-255 |
 | M5（Skill 常驻） | E2E-254 |
 | M6 | E2E-104、E2E-105、E2E-106、E2E-107、E2E-108、E2E-109、E2E-110、E2E-111、E2E-112、E2E-113、E2E-114、E2E-115、E2E-116、E2E-117、 E2E-118、E2E-119、E2E-120、E2E-103 |
-| M6+ | E2E-INDEX-status-rebuild-clear、E2E-121、E2E-122、E2E-123、E2E-142、E2E-148、E2E-150、E2E-151、E2E-168 |
-| M6+ | E2E-121、E2E-122、E2E-123、E2E-142、E2E-148、E2E-150、E2E-151、E2E-168、E2E-199、E2E-200、E2E-202、E2E-203、E2E-209、E2E-211、E2E-212、E2E-213、E2E-214、E2E-215、E2E-216、E2E-217、E2E-257、E2E-166 |
+| M6+ | E2E-INDEX-status-rebuild-clear、E2E-121、E2E-122、E2E-123、E2E-142、E2E-148、E2E-150、E2E-151、E2E-168、E2E-199、E2E-200、E2E-202、E2E-203、E2E-209、E2E-211、E2E-212、E2E-213、E2E-214、E2E-215、E2E-216、E2E-217、E2E-257、E2E-166 |
 | M6+（Session Orchestrator） | E2E-PLUGIN-session-orchestrator-real-workers |
 | M6+（会话列表响应性） | E2E-SESSION-list-refresh-keeps-desktop-responsive |
 | M6+（独立会话通信） | E2E-SESSION-independent-top-level-communication、E2E-SESSION-hover-card-model-and-links |
 | M5（聊天文件引用） | E2E-CHAT-shorthand-file-ref-opens-the-matching-file、E2E-CHAT-file-ref-opens-the-surface-that-owns-it |
 | M6+（聊天文件引用） | E2E-PLUGIN-file-view-collapse-persists |
 | M6+（项目文件夹根） | E2E-PLUGIN-file-view-switches-folder-per-project |
->| 后MVP | E2E-022A、E2E-022B、E2E-022C、E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M（插件路线图 R2/R3/R6） |
+| 后MVP | E2E-022A、E2E-022B、E2E-022C、E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M（插件路线图 R2/R3/R6） |
 | 基线后本地自动化 | E2E-220 |
 | MVP 后远程控制 | E2E-221、E2E-222、E2E-223、E2E-224、E2E-225、E2E-226、E2E-227、E2E-228、E2E-229、E2E-230、E2E-231、E2E-232 |
-| 受信任扩展（R7 v1） | E2E-241、E2E-242、E2E-243、E2E-244、E2E-245、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency |
+| 受信任扩展（R7 v1） | E2E-241、E2E-242、E2E-243、E2E-244、E2E-245、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency、E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
 | M6+（删除项目） | E2E-PROJECT-delete-removes-project-and-owned-sessions |
+| C — 对话和直播（模型回退） | E2E-SUBAGENT-ordered-model-fallback-preserves-work |
+| 品质（模型回退隔离） | E2E-SUBAGENT-ordered-model-fallback-preserves-work |
 | C — 对话和直播（旧版子代理回合上限） | E2E-SUBAGENT-legacy-turn-limit-frontmatter-is-ignored |
 | 品质（旧版子代理回合上限） | E2E-SUBAGENT-legacy-turn-limit-frontmatter-is-ignored |
+| M6+（展开详情保持阅读位置） | E2E-CHAT-disclosure-toggle-keeps-reading-position |
+| M6+（能力跨级别迁移） | E2E-CAPABILITY-move-across-levels |
 
 `US-UI-*` 视觉场景（§UI shell 视觉场景）追踪到
 [决策日志 §D](/zh-CN/spec/08-meta/decisions-log) 中的法典平价决策
@@ -5541,9 +5561,10 @@ IPC 请求无法关闭。
   的会话与转录本不受影响。当被删除的项目曾是活动工作区时，工作区回退到另一个已打开的项目
   或 Temporary，且下次启动不会重新打开已删除的路径。磁盘上文件夹已被移动或删除的项目仍可
   移除。删除 C 会被拒绝并给出提示消息，该组保持不变；宿主已无持久行的路径仍会从项目存档与
-  侧边栏中移除，不会报出缺少项目的错误。当 D 的任务仍在运行时删除 D 会被拒绝并给出提示消息，
-  且不会移除任何内容——项目行、其会话以及正在运行的轮次都会保留——待该任务停止后同一次删除
-  即可成功。
+  侧边栏中移除，不会报出缺少项目的错误。当 D 的任务仍在运行时删除 D 会打开确认对话框，而不是给出
+  一条随 toast 消失的警告；对话框会指明正在运行的会话，其确认按钮表述为停止这些任务，取消不会移除
+  任何内容，确认则先停止这些轮次，然后再删除 D（见
+  E2E-PROJECT-delete-running-sessions-are-named-and-stopped）。
 - **链接规格**：`03-runtime/06-host-rpc-protocol.md` §项目、
   `03-runtime/04-data-storage.md`、`04-ux/08-component-spec.md` §3.9、ADR 0251
 - **验收**：D（工作区）、F（持久化）、品质
@@ -5552,6 +5573,28 @@ IPC 请求无法关闭。
   与 scratch、项目记忆、对其他项目的隔离、运行中任务的拒绝、项目组根的拒绝，以及未知路径的
   幂等），`pnpm test:e2e:boot` 通过沙箱 preload 往返 `pi-desktop/project/remove`；设置 →
   项目存档 → 对话框 → 侧边栏这条完整旅程仍为草稿
+
+### E2E-PROJECT-delete-running-sessions-are-named-and-stopped
+
+- **前提条件**：一个持久项目 D，其中一个会话的轮次仍在流式输出，并且该项目同时可从侧边栏项目
+  菜单与设置 → 项目存档中访问。
+- **步骤**：从这两个界面分别打开 D 的行菜单，在不停止该轮次的情况下选择删除项目。预期出现带
+  运行中会话行与“停止任务并删除”确认按钮的确认对话框；按取消，预期不发生任何变化。再次打开
+  对话框并确认。
+- **预期**：菜单不会用一条纯警告替代对话框，因此在任务运行时该操作始终可达。对话框仍会指明项目
+  名称、会话数量与不会被删除的文件夹；当有轮次在运行时，它还会指明还有多少个会话正在运行，其确认
+  按钮表述为停止这些任务，且该行仅在渲染时才加入对话框的 `aria-describedby`。取消不会删除任何
+  内容，轮次继续流式输出。确认会且仅会停止列出的这些会话，之后才移除项目、其会话、其转录本及其
+  持久记忆，磁盘上的文件夹保持原样。若在对话框打开与确认之间启动了新的轮次，宿主仍会拒绝，对话框
+  会用 `project.deleteRunningBlocked` 报告该拒绝且不移除任何内容。
+- **链接规格**：`03-runtime/06-host-rpc-protocol.md` §项目、
+  `04-ux/08-component-spec.md` §3.9、ADR 0251、D421、D431
+- **验收**：D（工作区）、品质
+- **里程碑**：M6+
+- **状态**：部分自动化 —— `apps/desktop/test/project-delete.test.mjs` 固定了两个菜单在传入项目
+  当前运行会话 id 的情况下都能到达对话框、对话框的运行中会话行与“停止任务并删除”标签、abort 循环
+  先于 `deleteProject` 执行、`CONFLICT` 兜底路径，以及所有已发布语言包中的新文案；端到端旅程仍为
+  草稿
 
 ### US-UI-59 基于会话的后台工具
 - 在项目 A 中启动可见轮次，在项目 B 运行时切换到项目 B，并且
@@ -6461,11 +6504,11 @@ IPC 请求无法关闭。
   - 点击 HTML 芯片在工作面板浏览器打开该文件。
   - 点击工作区源文件芯片后，该文件在文件管理器工作面板视图中打开；芯片点击不再打开宿主的 `file:` 选项卡，也不再交给系统默认应用。
   - 点击临时目录芯片时，文件在宿主的 `file:` 选项卡中按其绝对路径打开——它位于文件管理器项目根之外。
-  - 点击项目第二个文件夹里那个文件的芯片时，该文件在文件管理器视图中打开：补全会搜索整个项目组、主文件夹优先，同级文件夹里的文件用绝对路径寻址，因为相对路径永远指主文件夹（ADR 0252）。
+  - 点击项目第二个文件夹里那个文件的芯片时，该文件在文件管理器视图中打开：补全会搜索整个项目组、主文件夹优先，同级文件夹里的文件用绝对路径寻址，因为相对路径永远指主文件夹（ADR 0263）。
   - 持久化用户消息仍包含给模型用的规范 `@path` 文本。
 - **链接规格**：`04-ux/08-component-spec.md` §8.3 / §11.8、
   `04-ux/09-interaction-patterns.md` §8a.2、`03-runtime/01-ipc-protocol.md`、
-  ADR 0163、ADR 0241、ADR 0251、ADR 0252、`08-meta/decisions-log.md`（D320）
+  ADR 0163、ADR 0241、ADR 0262、ADR 0263、`08-meta/decisions-log.md`（D320）
 - **验收**：C（对话和直播）、质量
 - **里程碑**：M5
 - **状态**：单元已覆盖（`chat-links.test.mjs`、`transcript-file-chips.test.mjs`、
@@ -6480,10 +6523,10 @@ IPC 请求无法关闭。
   - `dir/a.ts` 打开 `src/dir/a.ts`：精确路径优先于简写，更长的匹配尾优先于裸叶子名，尾长相同则更浅的路径胜出，因此更深的 `packages/app/dir/a.ts` 永远不会被选中。
   - 项目里找不到的引用回落到会话临时目录；两边都没有的再回落到附件目录，`attachments/<sha256>` 引用打开对应的已存 blob。
   - 指向已知根内真实文件的绝对引用直接命中，无论哪条简写规则本来会匹配。
-  - `only-here.ts` 打开第二个文件夹里的 `lib/only-here.ts`：先搜主文件夹并搜到底，再按项目组自身顺序搜索其余文件夹，命中结果也指出是哪个文件夹应答的（ADR 0252）。
-  - 由同级文件夹应答的文件交给工作面板时用绝对路径，主文件夹里的文件则保持项目内相对路径（ADR 0252）。
+  - `only-here.ts` 打开第二个文件夹里的 `lib/only-here.ts`：先搜主文件夹并搜到底，再按项目组自身顺序搜索其余文件夹，命中结果也指出是哪个文件夹应答的（ADR 0263）。
+  - 由同级文件夹应答的文件交给工作面板时用绝对路径，主文件夹里的文件则保持项目内相对路径（ADR 0263）。
   - 什么都匹配不上时弹出错误提示「没有匹配 missing-helper.js 的文件」，并且什么都不打开：不新增工作面板选项卡、不出现空面板、不出现空白旁浏览器页面，工作面板与对话保持原有内容。
-- **链接规格**：`03-runtime/01-ipc-protocol.md` § fs、`04-ux/09-interaction-patterns.md` §8a.2、ADR 0124、ADR 0163、ADR 0249、ADR 0251、ADR 0252
+- **链接规格**：`03-runtime/01-ipc-protocol.md` § fs、`04-ux/09-interaction-patterns.md` §8a.2、ADR 0124、ADR 0163、ADR 0249、ADR 0262、ADR 0263
 - **验收**：C（对话和直播）、D（工作区）、质量
 - **里程碑**：M5
 - **状态**：单元已覆盖（`apps/desktop/test/chat-ref-resolve.test.mjs`）；完整 UI 旅程仍为草稿（除非用户明确要求，否则不要在本地跑 E2E）
@@ -6496,10 +6539,10 @@ IPC 请求无法关闭。
   - 项目文件在文件管理器工作面板视图中打开：该文件被选中、祖先目录已展开，不会为它新增宿主 `file:` 选项卡。
   - 再次点击同一引用不会重新加载视图：未保存的改动仍在编辑器里，也不会出现第二个选项卡。
   - 临时目录或附件里的文件在宿主的 `file:` 选项卡（位于「已打开项目」下）中按绝对路径打开，而不是在文件管理器视图中打开。
-  - 项目主文件夹里的 `.html` / `.htm` 页面在旁浏览器中打开，助手回复和用户芯片两条路径一致；同级文件夹里的页面和别的项目文件一样在文件管理器视图中打开，因为旁浏览器以主文件夹为根（ADR 0252）。
-  - 解析到项目第二个文件夹的引用在文件管理器视图中打开该文件，用绝对路径寻址，不会新增宿主 `file:` 选项卡；解析到主文件夹的引用也在同一视图中打开，按项目内相对路径寻址（ADR 0252）。
+  - 项目主文件夹里的 `.html` / `.htm` 页面在旁浏览器中打开，助手回复和用户芯片两条路径一致；同级文件夹里的页面和别的项目文件一样在文件管理器视图中打开，因为旁浏览器以主文件夹为根（ADR 0263）。
+  - 解析到项目第二个文件夹的引用在文件管理器视图中打开该文件，用绝对路径寻址，不会新增宿主 `file:` 选项卡；解析到主文件夹的引用也在同一视图中打开，按项目内相对路径寻址（ADR 0263）。
   - 插件被禁用时，项目文件引用退回到宿主的 `file:` 选项卡（也就是改动前点击所用的界面，现在也能覆盖项目里的其他文件夹），而不是什么都不打开；重新启用后恢复为文件管理器视图。
-- **链接规格**：`04-ux/08-component-spec.md` §8.3、`04-ux/09-interaction-patterns.md` §8a.2、ADR 0104、ADR 0163、ADR 0241、ADR 0249、ADR 0251、ADR 0252
+- **链接规格**：`04-ux/08-component-spec.md` §8.3、`04-ux/09-interaction-patterns.md` §8a.2、ADR 0104、ADR 0163、ADR 0241、ADR 0249、ADR 0262、ADR 0263
 - **验收**：C（对话和直播）、G（插件）、质量
 - **里程碑**：M5
 - **状态**：单元已覆盖（`apps/desktop/test/transcript-file-chips.test.mjs`）；完整 UI 旅程仍为草稿（除非用户明确要求，否则不要在本地跑 E2E）
@@ -7030,12 +7073,15 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
   上下文，不创建替代会话。状态和面板刷新使用有界的轻量轮询；`wait` 在其等待上限内返回
   `timedOut`，不占满宿主工具超时时间。`cancel` 中止但不删除，无关会话和现有 Task 系列
   保持不变，且不发生 localhost MCP 调用或 token 访问。Worker 不能再创建 Worker，
-  不属于调用方的 Session ID 必须被拒绝，并发上限超出时必须安全失败。Worker 创建和
+  不属于调用方的 Session ID 必须被拒绝，并发上限超出时必须安全失败。`spawn` 指定用户
+  未勾选「可供 AI 自动调度」的模型时，在创建 Worker 之前以 `PERMISSION_DENIED` 拒绝；
+  省略 `modelKey`，或写出默认模型自己的键，仍按继承处理。Worker 创建和
   prompt 通知突发时，会话列表刷新串行执行并合并，同时保留最终 Worker 列表和前台会话。
   后到达的通知等待后续读取，不会因复用 Worker 创建之前已开始的读取而丢失。
 - **链接规格**：`07-plugins/03-plugin-api.md`、`07-plugins/04-plugin-security.md`、
   `07-plugins/11-plugin-storage-isolation.md`、`03-runtime/01-ipc-protocol.md`、
-  `03-runtime/06-host-rpc-protocol.md`、ADR 0237
+  `03-runtime/06-host-rpc-protocol.md`、`03-runtime/11-provider-model-system.md`、
+  ADR 0237、ADR subagent-model-opt-in
 - **接受**：C（并行持久化会话）、D（插件安全性）、品质
 - **里程碑**：M6+
 - **状态**：host ledger 覆盖由 `pnpm test:e2e:collaboration` 自动化；marketplace 插件测试覆盖插件运行时，host-core 和 desktop 单元测试覆盖新增的宿主原子能力。完整真实 provider/Electron 旅程仍需在具备条件的 runner 中验证，遵循无本地 E2E 策略
@@ -7243,11 +7289,54 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
   3. 在布局收起左栏后手动重开左栏。
   4. 关闭工作面板并确认左栏恢复；再在手动收起左栏后重复一次。
   5. 用 `ArrowLeft`、`ArrowRight`、`Home`、`End` 重复调整分隔线。
+  6. Navigate to the real Plugins, Pull requests, and Scheduled routes with the
+     work panel closed, then collapse the sidebar. In light and dark themes,
+     measure both titlebar actions and compare their rest/hover styling with the
+     shared work-panel toggle. Reopen the sidebar, collapse it again, and use
+     New Task to return to an editable chat composer on each route.
+- **Route chrome expected**: The ordinary `.main-titlebar` actions (without a
+  preview chrome ancestor) render as centered 28px square targets with the shared
+  transparent rest surface, secondary ink, radius, and semantic hover wash/primary
+  ink. Hover does not change geometry; sidebar and New Task remain usable.
+  Automated by `pnpm test:e2e:layout` using real route components and DOM/CDP
+  interaction. This is renderer evidence, not native Windows/Linux hit-test proof.
 - **预期**：原生窗口宽度全程不变。MainChat 永不低于 360px —— 包含拖动过程中以及 `sidebar-out` 仍占位弹性空间期间。工作面板有效上限为客户端宽度减去 360px 下限与展开的左栏宽度，且无固定像素上限。预算耗尽时展开的左栏立即收起，面板之后仍可继续增长。手动重开优先占用右栏宽度；能保住当前 MainChat 则保持，否则落在 370px 的重开目标。关闭面板只恢复由布局机制收起的左栏。分隔线的 ARIA 最小/最大值遵循同一动态预算。
 - **链接规格**：`04-ux/01-ui-ia.md`、`04-ux/07-ui-design-system.md` §10、`04-ux/08-component-spec.md` §1 与 §5、`04-ux/09-interaction-patterns.md` §8、ADR 0238
 - **验收**：F（持久化）、品质
 - **里程碑**：M6 之后的桌面外壳维护
 - **状态**：已自动化（`scripts/e2e-three-column-layout.mjs`，经 `pnpm test:e2e:layout` —— 固定窗口宽度不变、指针拖动全程 360px 下限、左栏让位/恢复、370px 重开目标）；单元覆盖见 `work-panel-resize.test.mjs`
+
+#### E2E-LAYOUT-work-panel-maximize
+
+- **Preconditions**: A desktop session has an open work panel with a real tab.
+- **Steps**:
+  1. Record the panel width and enter preview mode.
+  2. Inspect the header border box with the sidebar collapsed and expanded on
+     macOS windowed/fullscreen and Windows/Linux. Check row/spacer drag ownership.
+  3. With native pointer input, click centers and edges of sidebar and New Task
+     controls. Reenter preview and operate tabs, close, add, restore, panel toggle
+     and native controls. Drag empty header space. Repeat in light/dark themes.
+- **Expected**: MainChat is absent while preview fills the client area beside
+  the sidebar; native bounds and persisted preferred width are unchanged, the
+  divider is inert, and restore retains the last chosen sidebar state. The row
+  and spacer declare neither drag nor no-drag and pass pointer events through
+  outside controls. The panel header is the sole drag owner in the preview pane;
+  its border box and first tab start at least 8px after shell actions, including
+  expanded-sidebar New Task. Left inset is 8px except collapsed-sidebar windowed
+  macOS (88px through the shared lead-inset token); checks read resolved row
+  padding rather than duplicating native geometry. Right exclusion is unchanged. Controls receive
+  native clicks without window movement; empty-header drags move the window.
+  New Task exits preview to an editable composer. Header-height paint fills the
+  excluded lane without hiding panel controls.
+- **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/07-ui-design-system.md` §10,
+  `04-ux/08-component-spec.md` §5, `04-ux/09-interaction-patterns.md` §8, ADR 0238
+- **Acceptance**: F (persistence), Quality
+- **Milestone**: Post-M6 desktop shell maintenance
+- **Status**: Partially automated by `scripts/e2e-three-column-layout.mjs`
+  (preview entry/exit, DOM action behavior, header border-box exclusion,
+  row/spacer ownership, all-platform/fullscreen CSS fixtures in both sidebar
+  states). DOM/CDP clicks are not native hit-test proof. Native pointer, drag
+  and visual checks remain required; branch runs are exploratory only.
 
 #### E2E-AGENT-alt-enter-steers-active-turn：Enter 排队跟进，Alt+Enter 向当前回合补充指令
 
@@ -7275,6 +7364,56 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 - **状态**：草稿。现有回归套件覆盖周边行为，尚未运行渲染界面的 steering 完整流程
   （除非明确要求，不本地运行 E2E）。
 
+#### E2E-QUEUE-promote-orders-delivery-by-click：两次“立即发送”按点击顺序投递
+
+- **前提条件**：会话正在运行且至少完成一个工具批次，队列中已排队三条提示。
+- **步骤**：
+  1. 对第三条排队行点击“立即发送”。
+  2. 再对第一条排队行点击“立即发送”。
+  3. 确认优先区块顺序为“第三条 → 第一条”，两行的上移/下移/编辑/删除都被锁定，
+     而剩余那条仍可编辑。
+  4. 让当前边界通过，观察转录中的用户行。
+- **预期**：先点击的先投递、后点击的后投递——点击顺序即投递顺序，既不是“最后一次
+  点击顶掉前一次”，也不是原始队列顺序。两行作为同一回合里相邻的用户消息出现，模型只
+  回复一次；队列中不再列出这两条优先行。两条优先行显示为已决定，不能被编辑、删除或
+  重新排序；等待中的那一行保持可用，且不会先于任何优先行被投递。
+- **链接规格**：`03-runtime/01-ipc-protocol.md`（§5.6）、`04-ux/08-component-spec.md`（§11）、ADR 0265
+- **验收**：C（对话与流）
+- **里程碑**：M6+
+- **状态**：草稿；顺序与相邻投递已由 `turn_queue`、`turn-queue`、`agent-host` 单元测试覆盖
+
+#### E2E-QUEUE-reorder-moves-plain-neighbours：上移/下移重排等待队列
+
+- **前提条件**：会话正在运行，队列中至少三条等待行且没有优先行。
+- **步骤**：
+  1. 把第三条上移两次，确认它变成第一条。
+  2. 对第一条再上移一次，确认没有任何移动。
+  3. 先提升某一行，再尝试把相邻的等待行跨过它移动。
+  4. 重新加载渲染器并检查队列顺序。
+- **预期**：每次移动只与其相邻的等待行互换，Host 持久化新的顺序，因此重新加载后顺序
+  一致。等待区块边界与优先区块都不可跨越：边界处的移动是空操作，绝不会到达 Host；任何
+  移动都不会改变优先行的位置。
+- **链接规格**：`03-runtime/01-ipc-protocol.md`（§5.6）、ADR 0265
+- **验收**：C（对话）、F（持久化）
+- **里程碑**：M6+
+- **状态**：草稿；Host 侧重排已由 `turn_queue` 单元测试覆盖
+
+#### E2E-QUEUE-edit-restores-draft-only-when-input-empty：编辑仅在输入框为空时回填草稿
+
+- **前提条件**：会话正在运行，队列中有一条带文本与文件引用芯片的提示，输入框为空。
+- **步骤**：
+  1. 先在输入框输入草稿，再点击该排队行的编辑。
+  2. 清空输入框，再次点击编辑。
+  3. 确认队列中不再有该行，且输入框持有该行的文本与其文件引用芯片。
+  4. 发送它，并与原本排队时的提示对比转录。
+- **预期**：输入框非空（或带有附件芯片）时编辑被拒绝并给出可见提示，该行仍留在队列中。
+  输入框为空时该行离开队列、Host 也不再列出它，输入框得到完全相同的文本与原始文件引用
+  芯片——而不是被剥离标注的内联内容。重新发送产生的提示与排队时一致。
+- **链接规格**：`04-ux/08-component-spec.md`（§11）、ADR 0265
+- **验收**：C（对话与流）
+- **里程碑**：M6+
+- **状态**：草稿；渲染器侧契约已由 `composer-send-state.test.mjs` 覆盖
+
 ### MCP 市场场景(`pnpm test:e2e:mcp-market`,协议级无头)
 
 | ID | 场景 | 验证 |
@@ -7288,11 +7427,11 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 
 - **前提条件**：共享 public-network helper，以及可注入 fetch/DNS 的主进程公网 HTTPS 客户端。
 - **步骤**：1）分类 trailing-dot localhost、IPv4 回环、IPv4-mapped IPv6、ULA、link-local、RFC1918 与 `http://`。2）将公网主机名解析到私网 A 记录。3）跟随 Location 为 `https://127.0.0.1/` 的 302。
-- **预期**：上述绕过形态全部拒绝；公共 CDN 放行。解析到私网地址或 redirect 到回环会抛出策略错误，且不会请求私网目标。策略失败不重试。
+- **预期**：上述绕过形态全部拒绝；公共 CDN 放行。解析到私网地址或 redirect 到回环会抛出策略错误，且不会请求私网目标。策略失败不重试。每次拒绝都带上 `NETWORK_POLICY_BLOCKED`（spec 08 §3.1），使安装面板能给出原因并提供重试,而不是让安装按钮无解释地保持禁用；市场列表也能把被拒绝的源与单纯不可达的源区分开。
 - **链接规格**：`05-security/01-security.md`、ADR 0243、`03-runtime/01-ipc-protocol.md` §12b
 - **验收**：Security、Quality
 - **里程碑**：M6+
-- **状态**：已自动化（`pnpm test:e2e:skill-market`、`apps/desktop/test/public-https-fetch.test.mjs`、`packages/shared/src/public-network.test.ts`）
+- **状态**：已自动化（`pnpm test:e2e:skill-market`、`apps/desktop/test/public-https-fetch.test.mjs`、`apps/desktop/test/skill-market-scan.test.mjs`、`apps/desktop/test/skill-market-failure.test.mjs`、`packages/shared/src/public-network.test.ts`）
 
 #### E2E-SKILL-MARKET-EXPANSION：相邻 markdown 资源在安装前内联
 
@@ -7337,3 +7476,47 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 - **验收**：品质（协议与插件契约）
 - **里程碑**：M6+
 - **状态**：由模块测试覆盖（`apps/desktop/test/session-turn-ended.test.mjs`、`apps/desktop/test/queued-turn-finalization.test.mjs`）；桌面旅程为草稿（该表面变更时需在具备条件的环境中运行）
+
+#### E2E-CHAT-disclosure-toggle-keeps-reading-position
+
+- **范围**：滚动器已固定在底部时，手动展开转录或委派运行停靠区里的工具、思考或活动组标题（issue #324）。
+- **先决条件**：一个超过一屏的会话，停在底部并开启跟随模式；其中包含一行工具、一行思考和一个活动组，它们的展开详情都高于自身的标题栏；另有一个已展开、拥有嵌套滚动器的委派运行。分别在一轮已结束（`isRunning` 为 false）和一轮正在流式输出时各做一遍。
+- **步骤**：在固定于底部时，依次点击工具行、思考行和活动组的标题，并在该轮结束后再点一次。把视口停在转录中部再重复一次；用键盘激活一次（先 Enter，再在获得焦点的标题上按 Space），以及从收起栏操作一次。在已展开的委派停靠区内展开一行工具。然后用滚轮滚动、在标题获得焦点时按 ArrowUp、点击“跳到最新”控件，并发送一条新提示。
+- **预期**：详情动画展开与收起期间，被点击的标题保持它在屏幕上的位置，转录不会在它下方重新触底；跟随模式被退出，并出现“回到最新消息”控件。保持的位置在活动组动画的每一帧都成立，也覆盖标题上方同时发生的高度变化。嵌套停靠区保持自己的位置，其背后的转录同样不会重新触底。真实的滚动输入、跳转控件、新一轮以及任何导航都会释放保持并重新跟随实时尾部，而已经向上滚动的阅读者保持原来的位置。Space 仍能激活获得焦点的标题，方向键仍能滚动。
+- **链接规格**：`04-ux/09-interaction-patterns.md` §9.1；ADR transcript-reading-ownership；D287、D302、D430
+- **验收**：C（对话与流式）、E（工具与权限）、品质
+- **里程碑**：M6+
+- **状态**：部分自动化。`pnpm test:e2e:transcript-disclosure` 在真实的 600 CSS px Electron 视口中挂载真实的转录滚动 hook 与真实的工具行，用真实 DOM 点击标题，并对转录以及嵌套跟随滚动器断言标题相对滚动器顶边的偏移与滚动偏移；没有该修复时，同一个夹具会报告标题移动了整个展开详情的高度。夹具未链接应用样式表，因此高度来自内联填充与组件自身的固有尺寸。`disclosure-anchor.test.mjs` 覆盖纯锚点与输入归属数学，`transcript-disclosure-reading.test.mjs` 覆盖接线。键盘、滚轮与活动组动画路径仍属补充验证。
+#### E2E-CHAT-runtime-status-keeps-row-position
+
+- **先决条件**：一个活动会话，其转录高于对话视口，且尾部由一行已完成的工具占用；窗格已构建（`pnpm build:js`）并已安装 Electron。
+- **步骤**：
+  1. 用固定消息挂载生产环境的 `ChatTranscript`，尾部由已完成的活动组占用，并让会话处于运行中。
+  2. 在没有任何运行时活动上报的情况下，记录内容高度、滚动器的滚动高度/偏移，以及首行与末行的渲染位置。
+  3. 只把该会话的运行时活动切换到等待模型阶段，让布局稳定下来。
+  4. 再次清空运行时活动，让布局稳定下来。
+  5. 结束该轮（`isRunning` 为 false），检查尾部。
+- **预期**：
+  - 等待行占用预留的状态通道：在状态出现期间以及清空之后，内容高度、滚动高度、滚动偏移，以及每一个已渲染行的位置都保持不变（误差在 0.01px 以内）。
+  - 空通道在深色与浅色两种主题下都保持已预留且不可见 —— 没有背景、边框或阴影。
+  - 状态行保持其活动区域语义（`role="status"`、`aria-live="polite"`），而空通道不携带任何可供播报的文本。
+  - 已结束的空闲转录完全不渲染状态通道，因此其布局不变。
+- **链接规格**：`04-ux/08-component-spec.md`
+- **验收**：C（对话与流式）、品质
+- **里程碑**：M5
+- **状态**：由单测覆盖（`active-turn-surface.test.mjs`），并有通过 `pnpm test:e2e:transcript`（`scripts/e2e/transcript-render.tsx`，无需供应商凭据，需要已安装的 Electron 与图形会话，Linux 上可用 Xvfb）自动化的 React/Chromium 几何回归。当预留通道被移除时，该场景会以 40.125px 的内容高度误差与 40px 的行位移失败（issue #323）。
+
+#### E2E-PLUGIN-fs-root-follows-the-calling-session：插件工具的 fs 根跟随自己的会话，而不是可见工作区
+
+- **先决条件**：两个项目 A 与 B，各自持有一个对方没有的文本文件，以及一个已启用的插件；该插件注册的智能体工具会在 execute 里对根相对路径调用 `pi.fs.readText` 与 `pi.fs.glob`，并声明带 `workspace` 根的 `fs.read`。两个项目都有该插件工具可用的活会话，且窗口显示项目 A。
+- **步骤**：
+  1. 从会话 A 调用该工具读取只属于项目 A 的文件，再从会话 B（项目 B）调用它读取只属于项目 B 的文件，期间不切换窗口的可见工作区。
+  2. 把可见工作区切到项目 B，重复上面两次调用。
+  3. 在可见工作区为项目 B 时，让会话 A 的工具请求只存在于项目 A 下的路径，再让会话 B 的工具请求同一路径。
+  4. 打开该插件的面板，在项目 A 可见时通过面板桥做同样的读取，然后在项目 B 可见时再做一次。
+  5. 把其中一个会话移到临时对话，使没有可见工作区，从该会话调用该工具，再在同一状态下调用面板桥。
+- **预期**：步骤 1 与 2 每次都以调用会话自己的项目作答：会话 A 读取并 glob 项目 A 的文件，会话 B 对应项目 B 的文件，可见工作区在这两个项目之间移动时答案都不变。步骤 3 对会话 A 返回项目 A 的文件，对会话 B 返回 `NOT_FOUND`，因此会话永远无法触达另一个项目的根。步骤 4 与之前完全一致：每次面板调用解析可见工作区，所以它的答案跟随屏幕上的项目，而不是任一会话。步骤 5 按会话继续工作 —— 会话的插件工具解析自己的项目 —— 而面板调用仍以 `NOT_FOUND`（「没有打开任何工作区」）失败。任何闸门都没有放宽：被拒的名称、`..` 或绝对路径、指向根外的符号链接，以及超出声明范围的路径，其行为与只有一个可见工作区时相同。
+- **链接规格**：`07-plugins/03-plugin-api.md` §3、`07-plugins/13-plugin-permissions-matrix.md` §6、ADR 0016、ADR 0249、ADR 0266、D093
+- **验收**：G（插件）、安全性、品质
+- **里程碑**：M6+
+- **状态**：部分自动化（`apps/desktop/test/plugin-fs-session-root.test.mjs`）：工具调用在发起会话的项目下写入与读取，面板调用与宿主未跟踪的会话回退到可见工作区，`userSelected` 模式保留选定的目录，窗口不显示任何项目时会话根依然生效。双活会话的桌面旅程与面板步骤为草稿（仅在此表面变化时于具备条件的环境中运行）

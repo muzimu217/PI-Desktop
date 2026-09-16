@@ -227,8 +227,11 @@ codes, budget size, and precedence.
 When the retry budget is exhausted, the final assistant error and lifecycle
 `error` are emitted once. Provider failures carry bounded diagnostics in
 `AppError.details` when available: `phase` (`request` or `stream`),
-`providerStatus`, `providerCode`, `providerWaitMs`, `streamMs`, and
-`retryAttempt`. For a persistent 429 or non-429 transient failure,
+`providerStatus`, `providerCode`, `providerWaitMs`, `streamMs`,
+`retryAttempt`, the network diagnosis (`networkCategory`, `networkCode`,
+`networkSyscall`, `networkHost`) and the request correlation fields
+(`requestMessages`, `requestBytes`, `compactionGeneration`). For a persistent
+429 or non-429 transient failure,
 `retryAttempt` is `10`. Credentials and unrestricted response bodies never
 enter the event or log. The active-turn status shows the remaining backoff and
 the retry budget as `Retrying in 0s · attempt 9/10` in English.
@@ -917,10 +920,10 @@ accepts the request.
 
 ### 6.2 OpenCode session routing headers
 
-Chat, subagent, prompt-enhancement, and plugin one-shot completions whose
-provider is `apiStyle: opencode_go`, whose `vendorKey` is `opencode` or
-`opencode-go`, whose pi-ai provider id is one of those values, or whose base
-URL host is `opencode.ai` send:
+Chat, subagent, context-compaction summary, prompt-enhancement, and plugin
+one-shot completions whose provider is `apiStyle: opencode_go`, whose
+`vendorKey` is `opencode` or `opencode-go`, whose pi-ai provider id is one of
+those values, or whose base URL host is `opencode.ai` send:
 
 - `x-opencode-session`: the durable conversation id, or a per-call UUID when
   the caller has no session
@@ -935,6 +938,13 @@ default and over adapter last-writes. Reserved keys cannot smash
 `x-opencode-session`. This is an agent-runtime concern, matching the
 official Pi coding-agent attribution layer; pi-ai's `sessionId` stream option
 does not emit `x-opencode-session`.
+
+The context-compaction summary is a provider request of the same kind, but the
+harness assembles its own stream options and never passes the session's stream
+function, so agent-runtime applies the header merge to the model collection it
+hands to compaction. That request carries the session's conversation id rather
+than the per-call id the harness would otherwise mint, so a summary reaches the
+same gateway backend as the conversation it summarizes.
 
 
 ## 7. System prompt composition
@@ -1231,9 +1241,6 @@ device/inode/size/hash before it is projected or registered; an altered file
 fails closed without returning a child. A fork is a data-only copy: it executes
 no model and loads no project resources, so it stays available while the parent
 is provider-unavailable or project-untrusted, without granting prompt
-readiness. The side-chat panel streams the child's provisional assistant row
-and re-keys exactly that row when persistence reports the durable SDK entry id
-through the additive `replacesMessageId` field.
 
 ModelRuntime performs its public offline initialization to restore the local
 catalog and auth snapshot. Native Composer readiness uses native `canPrompt`,

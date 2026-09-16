@@ -746,8 +746,15 @@ Undeclared or ungranted API calls fail with `PERMISSION_DENIED`.
 | Risk | Permissions |
 |---|---|
 | Low | `ui.panel`, `ui.view`, `ui.theme`, `notify` |
-| Medium | `clipboard.read`, `clipboard.write`, `fs.read`, `shell.openExternal`, `background.service`, `bus.publish`, `bus.subscribe` |
-| High | `fs.write`, `fs.delete`, `agent.tool.register`, `agent.prompt.inject`, `net.fetch`, `mcp.server.local`, `mcp.server.remote` |
+| Medium | `clipboard.read`, `clipboard.write`, `fs.read`, `shell.openExternal`, `background.service`, `bus.publish`, `bus.subscribe`, `audio.playback.background`, `keyboard.globalShortcut` |
+| High | `fs.write`, `fs.delete`, `agent.tool.register`, `agent.prompt.inject`, `net.fetch`, `mcp.server.local`, `mcp.server.remote`, `audio.capture.background`, `net.websocket` |
+
+`keyboard.globalShortcut` and `net.websocket` are implemented. `pi.audio.*`
+exists and is callable, and its methods keep their permission gate, but this
+host has no device backend yet: an authorized call is answered with a coded
+`UNSUPPORTED` refusal that is audited, and `onInputFrame` / `offInputFrame`
+throw the same code synchronously, until the device service lands and replaces
+the refusal with real capture and playback.
 
 Two permissions carry a declared range as well as a name, and the user is shown
 both: `manifest.fs` for the file modes (§6.5) and `manifest.net.domains` for

@@ -20,6 +20,7 @@ import {
   isValidBusTopic,
   isValidBusTopicPattern,
   isNetUrlAllowed,
+  isNetSocketUrlAllowed,
   matchesBusTopic,
   matchFsGlob,
   normalizeFsPath,
@@ -82,6 +83,16 @@ import { DevPluginWatcher, type DevPluginWatcherDeps } from "./plugin-watcher";
 import { parseAllowedExternalUrl } from "./safe-open-external";
 import type { PluginAppearance } from "../shared/plugin-panel-chrome";
 import type { McpControlController, McpControlInvokeInput } from "./mcp-control";
+import {
+  PluginSocketError,
+  type PluginSocketEvent,
+  type PluginWebSocketRegistry,
+} from "./plugin-websocket";
+import {
+  PluginShortcutError,
+  type PluginShortcutEntry,
+  type PluginShortcutRegistry,
+} from "./plugin-shortcut-registry";
 
 export type RegisteredCommand = {
   id: string;
@@ -250,6 +261,12 @@ export type PluginHostServices = {
    * it. Additive: `workspace.get` falls back to `getWorkspacePath` alone.
    */
   getWorkspaceInfo?: () => PluginWorkspaceInfo | null;
+  /**
+   * The project the tool session behind this call belongs to, when the host
+   * tracks one. Additive: an fs call falls back to `getWorkspacePath` -- the
+   * visible workspace -- for a panel call or an unknown session.
+   */
+  getWorkspacePathForSession?: (sessionId: string) => string | null;
   /** The set of `contributes.agentExtensions` modules changed (load/unload). */
   agentExtensionsChanged?: () => void;
   getLocale?: () => string;
@@ -335,11 +352,23 @@ export type PluginHostServices = {
   hostEntry?: string;
   /** Overrides how a plugin host process is created; defaults to Electron utilityProcess. */
   spawnProcess?: PluginProcessSpawner;
+  /**
+   * Real-time sockets. Like the shortcut registry this is host-owned, so the
+   * egress allowlist, the bounds and the release path are all decided in the
+   * runtime rather than by plugin code.
+   */
+  pluginSockets?: PluginWebSocketRegistry;
   /** Transport overrides for plugin-declared MCP servers; tests inject stubs. */
   mcp?: Pick<
     McpServerClientOptions,
     "spawnImpl" | "fetchImpl" | "connectTimeoutMs" | "callTimeoutMs"
   >;
+  /**
+   * System-wide accelerators for plugins. The registry owns the platform's
+   * `globalShortcut`; the runtime only routes plugin calls into it, so plugin
+   * code can never register or fire another plugin's shortcut.
+   */
+  pluginShortcuts?: PluginShortcutRegistry;
   /** Fired when a plugin host process dies on its own (crash, OOM, hard exit). */
   onPluginCrash?: (info: { pluginId: string; name: string; exitCode: number }) => void;
   /** Fired when a resident service changes supervision state. */
@@ -449,6 +478,19 @@ const HOST_API_ALLOWLIST = new Set([
   "browser.fill",
   "browser.evaluate",
   "browser.console",
+  "net.websocket.connect",
+  "net.websocket.send",
+  "net.websocket.close",
+  "audio.getInputDevices",
+  "audio.openInput",
+  "audio.closeInput",
+  "audio.getCaptureState",
+  "audio.onInputFrame",
+  "audio.offInputFrame",
+  "audio.openOutput",
+  "audio.writeOutput",
+  "audio.stopOutput",
+  "audio.closeOutput",
   "browser.cdp",
   "models.list",
   "session.getLlmContext",
@@ -460,6 +502,9 @@ const HOST_API_ALLOWLIST = new Set([
   "session.rename",
   "session.delete",
   "agent.complete",
+  "keyboard.registerGlobalShortcut",
+  "keyboard.unregisterGlobalShortcut",
+  "keyboard.listGlobalShortcuts",
 ]);
 
 /** Load must finish (module eval + onLoad) inside this budget. */
@@ -1421,6 +1466,10 @@ export class PluginRuntime {
     this.registerThemes(loaded);
     await this.registerMcpServers(loaded);
     await this.startServices(loaded);
+    // After the child's `onLoad`, so the plugin's commands already exist: a
+    // declared shortcut whose command was never registered is reported and
+    // skipped rather than held against a command that cannot run.
+    this.registerDeclaredShortcuts(loaded);
     this.services.audit?.({
       pluginId: manifest.id,
       api: "plugin.load.success",
@@ -1939,6 +1988,167 @@ export class PluginRuntime {
         this.commands.delete(String(args[0] ?? ""));
         return { ok: true };
       }
+      case "keyboard.registerGlobalShortcut": {
+        this.assertPermission(loaded, "keyboard.globalShortcut");
+        const descriptor = (args[0] ?? {}) as {
+          id?: string;
+          accelerator?: string;
+          command?: string;
+        };
+        return this.registerShortcut(loaded, {
+          id: String(descriptor.id ?? ""),
+          accelerator: String(descriptor.accelerator ?? ""),
+          command: String(descriptor.command ?? ""),
+        });
+      }
+      case "keyboard.unregisterGlobalShortcut": {
+        this.assertPermission(loaded, "keyboard.globalShortcut");
+        const registry = this.services.pluginShortcuts;
+        if (!registry) {
+          throw apiError("UNSUPPORTED", "global shortcuts are unavailable in this host");
+        }
+        const id = String(args[0] ?? "");
+        if (!id) throw apiError("INVALID_ARGUMENT", "shortcut.id is required");
+        const removed = registry.unregister(pluginId, id);
+        this.services.audit?.({
+          pluginId,
+          api: "keyboard.globalShortcut.unregister",
+          ok: removed,
+          ...(removed ? {} : { errorCode: "NOT_FOUND" }),
+          ts: Date.now(),
+        });
+        return { ok: removed };
+      }
+      case "keyboard.listGlobalShortcuts": {
+        this.assertPermission(loaded, "keyboard.globalShortcut");
+        const registry = this.services.pluginShortcuts;
+        if (!registry) return [];
+        return registry.list(pluginId).map((entry) => ({
+          id: entry.id,
+          accelerator: entry.accelerator,
+          command: entry.command,
+          registered: true,
+        }));
+      }
+      case "net.websocket.connect": {
+        this.assertPermission(loaded, "net.websocket");
+        const descriptor = (args[0] ?? {}) as {
+          url?: string;
+          headers?: Record<string, string>;
+          protocols?: string[];
+          timeoutMs?: number;
+        };
+        const url = String(descriptor.url ?? "");
+        const registry = this.services.pluginSockets;
+        if (!registry) {
+          throw apiError("UNSUPPORTED", "real-time connections are unavailable in this host");
+        }
+        // Same allowlist, same chokepoint: a socket to an undeclared host is
+        // refused before the transport is asked to open anything.
+        this.assertSocketEgress(loaded, url);
+        try {
+          const result = await registry.connect({
+            pluginId,
+            url,
+            headers: descriptor.headers,
+            protocols: descriptor.protocols,
+            timeoutMs:
+              typeof descriptor.timeoutMs === "number" ? descriptor.timeoutMs : undefined,
+          });
+          this.services.audit?.({
+            pluginId,
+            api: "net.websocket.connect",
+            ok: true,
+            ts: Date.now(),
+            url,
+            socketId: result.socketId,
+          });
+          return result;
+        } catch (error) {
+          const code =
+            error instanceof PluginSocketError ? error.code : "CONNECT_FAILED";
+          this.services.audit?.({
+            pluginId,
+            api: "net.websocket.connect",
+            ok: false,
+            errorCode: code,
+            ts: Date.now(),
+            url,
+          });
+          throw apiError(code, (error as Error).message);
+        }
+      }
+      case "net.websocket.send": {
+        this.assertPermission(loaded, "net.websocket");
+        const registry = this.services.pluginSockets;
+        if (!registry) {
+          throw apiError("UNSUPPORTED", "real-time connections are unavailable in this host");
+        }
+        const descriptor = (args[0] ?? {}) as {
+          socketId?: string;
+          data?: string | Uint8Array;
+        };
+        try {
+          registry.send({
+            pluginId,
+            socketId: String(descriptor.socketId ?? ""),
+            data: descriptor.data ?? "",
+          });
+          return { ok: true };
+        } catch (error) {
+          // Sends are frequent enough that auditing every one would drown the
+          // log; only refusals are recorded, and they name no payload.
+          if (error instanceof PluginSocketError) {
+            this.services.audit?.({
+              pluginId,
+              api: "net.websocket.send",
+              ok: false,
+              errorCode: error.code,
+              ts: Date.now(),
+            });
+            throw apiError(error.code, error.message);
+          }
+          throw error;
+        }
+      }
+      case "net.websocket.close": {
+        this.assertPermission(loaded, "net.websocket");
+        const registry = this.services.pluginSockets;
+        if (!registry) {
+          throw apiError("UNSUPPORTED", "real-time connections are unavailable in this host");
+        }
+        const descriptor = (args[0] ?? {}) as {
+          socketId?: string;
+          code?: number;
+          reason?: string;
+        };
+        try {
+          registry.close({
+            pluginId,
+            socketId: String(descriptor.socketId ?? ""),
+            code: typeof descriptor.code === "number" ? descriptor.code : undefined,
+            reason: typeof descriptor.reason === "string" ? descriptor.reason : undefined,
+          });
+          this.services.audit?.({
+            pluginId,
+            api: "net.websocket.close",
+            ok: true,
+            ts: Date.now(),
+            socketId: descriptor.socketId,
+          });
+          return { ok: true };
+        } catch (error) {
+          const code = error instanceof PluginSocketError ? error.code : "NOT_FOUND";
+          this.services.audit?.({
+            pluginId,
+            api: "net.websocket.close",
+            ok: false,
+            errorCode: code,
+            ts: Date.now(),
+          });
+          throw apiError(code, (error as Error).message);
+        }
+      }
       case "agent.registerTool": {
         this.assertPermission(loaded, "agent.tool.register");
         const descriptor = (args[0] ?? {}) as {
@@ -2268,6 +2478,161 @@ export class PluginRuntime {
     loaded.pending.clear();
   }
 
+  /**
+   * Index `contributes.globalShortcuts` after load. The declarative path only
+   * takes accelerators whose command the plugin has actually registered in
+   * this session: a shortcut that cannot reach its own command would be dead
+   * weight in the registry, and refusing it keeps `listGlobalShortcuts` from
+   * reporting a binding that does nothing. A refusal never fails the load.
+   */
+  private registerDeclaredShortcuts(loaded: LoadedPlugin): void {
+    const registry = this.services.pluginShortcuts;
+    const declared = loaded.manifest.contributes?.globalShortcuts ?? [];
+    if (!registry || declared.length === 0) return;
+    const pluginId = loaded.manifest.id;
+    if (!loaded.permissions.has("keyboard.globalShortcut")) {
+      this.services.audit?.({
+        pluginId,
+        api: "keyboard.globalShortcut.register",
+        ok: false,
+        errorCode: "PERMISSION_DENIED",
+        ts: Date.now(),
+      });
+      return;
+    }
+    for (const entry of declared) {
+      if (!entry.default) continue;
+      if (this.commands.get(entry.command)?.pluginId !== pluginId) {
+        this.services.audit?.({
+          pluginId,
+          api: "keyboard.globalShortcut.register",
+          ok: false,
+          errorCode: "NOT_FOUND",
+          ts: Date.now(),
+          command: entry.command,
+        });
+        continue;
+      }
+      this.registerShortcut(loaded, {
+        id: entry.id,
+        accelerator: entry.default,
+        command: entry.command,
+      });
+    }
+  }
+
+  /**
+   * The one registration path for both the declarative contribution and
+   * `pi.keyboard.registerGlobalShortcut`. The registry decides conflicts; this
+   * method adds the ownership check, the audit entry, and the result shape.
+   */
+  private registerShortcut(
+    loaded: LoadedPlugin,
+    request: { id: string; accelerator: string; command: string },
+  ): {
+    id: string;
+    accelerator: string;
+    command: string;
+    registered: boolean;
+    error?: string;
+  } {
+    const pluginId = loaded.manifest.id;
+    const registry = this.services.pluginShortcuts;
+    if (!registry) {
+      throw apiError("UNSUPPORTED", "global shortcuts are unavailable in this host");
+    }
+    if (!request.id) throw apiError("INVALID_ARGUMENT", "shortcut.id is required");
+    if (!request.accelerator) {
+      throw apiError("INVALID_ARGUMENT", "shortcut.accelerator is required");
+    }
+    if (!request.command) {
+      throw apiError("INVALID_ARGUMENT", "shortcut.command is required");
+    }
+    // A shortcut is not a way around command ownership: only the plugin's own
+    // commands are reachable, exactly as in the command palette.
+    if (this.commands.get(request.command)?.pluginId !== pluginId) {
+      throw apiError(
+        "INVALID_ARGUMENT",
+        `shortcut command is not registered by this plugin: ${request.command}`,
+      );
+    }
+    try {
+      const entry = registry.register({
+        pluginId,
+        id: request.id,
+        accelerator: request.accelerator,
+        command: request.command,
+      });
+      this.services.audit?.({
+        pluginId,
+        api: "keyboard.globalShortcut.register",
+        ok: true,
+        ts: Date.now(),
+        accelerator: entry.accelerator,
+        command: entry.command,
+      });
+      return {
+        id: entry.id,
+        accelerator: entry.accelerator,
+        command: entry.command,
+        registered: true,
+      };
+    } catch (error) {
+      // A refused registration is an answer, not an exception: the plugin gets
+      // the code so it can fall back to another accelerator.
+      const code =
+        error instanceof PluginShortcutError ? error.code : "SHORTCUT_UNAVAILABLE";
+      this.services.audit?.({
+        pluginId,
+        api: "keyboard.globalShortcut.register",
+        ok: false,
+        errorCode: code,
+        ts: Date.now(),
+        accelerator: request.accelerator,
+        command: request.command,
+      });
+      return {
+        id: request.id,
+        accelerator: request.accelerator,
+        command: request.command,
+        registered: false,
+        error: code,
+      };
+    }
+  }
+
+  /**
+   * Host-called when the operating system reports a registered accelerator.
+   * Only the owner's own command is reachable, and a failure is audited: a
+   * system-wide key that silently does nothing is worse than a logged error.
+   */
+  async triggerPluginShortcut(entry: PluginShortcutEntry): Promise<void> {
+    const command = this.commands.get(entry.command);
+    if (!command || command.pluginId !== entry.pluginId) {
+      this.services.audit?.({
+        pluginId: entry.pluginId,
+        api: "keyboard.globalShortcut.trigger",
+        ok: false,
+        errorCode: "NOT_FOUND",
+        ts: Date.now(),
+        command: entry.command,
+      });
+      return;
+    }
+    try {
+      await command.run();
+    } catch (error) {
+      this.services.audit?.({
+        pluginId: entry.pluginId,
+        api: "keyboard.globalShortcut.trigger",
+        ok: false,
+        errorCode: (error as PluginApiError).code ?? "PLUGIN_ERROR",
+        ts: Date.now(),
+        command: entry.command,
+      });
+    }
+  }
+
   private clearContributions(pluginId: string): void {
     for (const [id, cmd] of this.commands) {
       if (cmd.pluginId === pluginId) this.commands.delete(id);
@@ -2308,6 +2673,12 @@ export class PluginRuntime {
       if (subscription.pluginId === pluginId) this.busSubscriptions.delete(id);
     }
     this.busRate.delete(pluginId);
+    // A system-wide accelerator outlives every renderer, so it is released on
+    // the same path that clears commands — disable, unload, and crash alike.
+    this.services.pluginShortcuts?.releasePlugin(pluginId);
+    // Same for a real-time connection: the host owns the socket, so a plugin
+    // that is gone keeps neither the connection nor the frames still arriving.
+    this.services.pluginSockets?.releasePlugin(pluginId);
   }
 
   /**
@@ -3089,6 +3460,27 @@ export class PluginRuntime {
   private assertEgress(loaded: LoadedPlugin, url: string, api: string): void {
     const domains = this.netDomains(loaded);
     if (isNetUrlAllowed(url, domains)) return;
+    this.refuseEgress(loaded, url, api, domains);
+  }
+
+  /**
+   * The socket half of the same check: `ws` and `wss` are admissible schemes,
+   * the allowlist and the audit entry are identical, and refusing here means
+   * the transport never opens a connection to an undeclared host.
+   */
+  private assertSocketEgress(loaded: LoadedPlugin, url: string): void {
+    const domains = this.netDomains(loaded);
+    if (isNetSocketUrlAllowed(url, domains)) return;
+    this.refuseEgress(loaded, url, "net.websocket.connect", domains);
+  }
+
+  /** One refusal path for both schemes: same audit shape, same message. */
+  private refuseEgress(
+    loaded: LoadedPlugin,
+    url: string,
+    api: string,
+    domains: readonly string[],
+  ): void {
     let host = url;
     try {
       host = new URL(url).hostname || url;
@@ -3109,6 +3501,34 @@ export class PluginRuntime {
         ? `host not in manifest.net.domains: ${host}`
         : `plugin declares no manifest.net.domains; ${host} is unreachable`,
     );
+  }
+
+  /**
+   * Forward one socket event to the plugin that owns the socket, when it is
+   * still loaded. A frame that arrives after unload is dropped rather than
+   * queued for a process that no longer exists.
+   */
+  deliverSocketEvent(pluginId: string, event: PluginSocketEvent): void {
+    const loaded = this.loaded.get(pluginId);
+    if (!loaded?.child) return;
+    // Addressed to the owner only: frames are one plugin's data and must never
+    // reach another plugin's process, which a fan-out would do.
+    try {
+      loaded.child.postMessage({
+        t: "event",
+        event: `net:websocket:${event.type}`,
+        args: [event],
+      });
+    } catch (error) {
+      this.services.audit?.({
+        pluginId,
+        api: "net.websocket.deliver",
+        ok: false,
+        errorCode: "PLUGIN_UNREACHABLE",
+        message: (error as Error).message,
+        ts: Date.now(),
+      });
+    }
   }
 
   private inFlightTool(pluginId: string): PluginToolInvocation | undefined {
@@ -3381,6 +3801,24 @@ export class PluginRuntime {
   }
 
   /**
+   * The directory one fs call resolves against.
+   *
+   * A `userSelected` mode keeps the directory the user picked. Every other mode
+   * resolves the project of the session that invoked the tool: two sessions can
+   * sit on two projects at once, so the visible workspace is a fallback only --
+   * for a panel call, which has no tool session, and for a session the host has
+   * not launched yet.
+   */
+  private fsRoot(loaded: LoadedPlugin, rule: PluginFsRule): string | null {
+    if (rule.root === "userSelected") return loaded.userRoot ?? null;
+    const sessionId = this.inFlightTool(loaded.manifest.id)?.sessionId.trim() || undefined;
+    const scoped = sessionId
+      ? (this.services.getWorkspacePathForSession?.(sessionId) ?? null)
+      : null;
+    return scoped ?? this.services.getWorkspacePath();
+  }
+
+  /**
    * Resolve one file request and decide whether it may proceed.
    *
    * Four gates in a fixed order, because each one is only sound behind the
@@ -3434,8 +3872,7 @@ export class PluginRuntime {
       return { full, rel: `<dropped>/${basename(full)}`, root: dirname(full) };
     }
     const rule: PluginFsRule = loaded.fsPolicy[mode] ?? { root: "workspace", scope: [] };
-    const root =
-      rule.root === "userSelected" ? loaded.userRoot : this.services.getWorkspacePath();
+    const root = this.fsRoot(loaded, rule);
     if (!root) {
       throw apiError(
         "NOT_FOUND",
@@ -3496,7 +3933,7 @@ export class PluginRuntime {
 
   /**
    * Resolve a request that names a file in another folder of the open project
-   * (ADR 0249, ADR 0252, ADR 0253). A view browsing a sibling folder can only
+   * (ADR 0249, ADR 0263, ADR 0264). A view browsing a sibling folder can only
    * address that folder's entries absolutely, and the two host-mediated actions
    * it offers for them (fs.openDefault, fs.reveal) are the only requests that
    * arrive that way. The widening is narrow: only for a plugin whose declared
@@ -3712,6 +4149,27 @@ export class PluginRuntime {
   }
 
   /** Host-side implementation of the allowlisted APIs; shared with panel bridge. */
+  /**
+   * The audio surface fails closed. The permission gate runs first, so an
+   * ungranted plugin gets the same `PERMISSION_DENIED` as any other API, and a
+   * granted one gets an audited `UNSUPPORTED` instead of a silent success or an
+   * uncoded crash. Nothing here touches a device.
+   */
+  private refuseAudio(loaded: LoadedPlugin, api: string): never {
+    this.assertPermission(
+      loaded,
+      AUDIO_PLAYBACK_APIS.has(api) ? "audio.playback.background" : "audio.capture.background",
+    );
+    this.services.audit?.({
+      pluginId: loaded.manifest.id,
+      api,
+      ok: false,
+      errorCode: "UNSUPPORTED",
+      ts: Date.now(),
+    });
+    throw apiError("UNSUPPORTED", `host api not available: ${api}`);
+  }
+
   private hostApi(loaded: LoadedPlugin) {
     const pluginId = loaded.manifest.id;
     const pluginPath = loaded.path;
@@ -3956,7 +4414,7 @@ export class PluginRuntime {
       workspace: {
         get: async () => {
           // The enriched payload carries the project group behind the visible
-          // workspace (ADR 0252); the path-only fallback keeps `get` working for
+          // workspace (ADR 0263); the path-only fallback keeps `get` working for
           // any caller whose services never bound the richer provider.
           const info = this.services.getWorkspaceInfo?.();
           if (info !== undefined) return info;
@@ -4310,8 +4768,7 @@ export class PluginRuntime {
         list: async (pathFromRoot: string) => {
           this.assertPermission(loaded, "fs.read");
           const rule = loaded.fsPolicy.read ?? { root: "workspace", scope: [] };
-          const root =
-            rule.root === "userSelected" ? loaded.userRoot : this.services.getWorkspacePath();
+          const root = this.fsRoot(loaded, rule);
           if (!root) throw apiError("NOT_FOUND", "No workspace is open");
           const rel = normalizeFsPath(String(pathFromRoot ?? ""));
           if (rel.split("/").includes("..")) {
@@ -4398,8 +4855,7 @@ export class PluginRuntime {
         glob: async (pattern: string) => {
           this.assertPermission(loaded, "fs.read");
           const rule = loaded.fsPolicy.read ?? { root: "workspace", scope: [] };
-          const root =
-            rule.root === "userSelected" ? loaded.userRoot : this.services.getWorkspacePath();
+          const root = this.fsRoot(loaded, rule);
           if (!root) throw apiError("NOT_FOUND", "No workspace is open");
           const matches: string[] = [];
           const visit = (dir: string, rel = "") => {
@@ -4579,6 +5035,25 @@ export class PluginRuntime {
             url,
           });
         },
+      },
+      /**
+       * Background audio is declared, gated, and not implemented: the host has
+       * no device backend yet, so every call runs the permission gate and then
+       * answers with a coded `UNSUPPORTED`. That is the contract a plugin can
+       * branch on — without it a call would fail as a bare `TypeError` with no
+       * `code` at all, and nothing would reach the audit log.
+       */
+      audio: {
+        getInputDevices: async () => this.refuseAudio(loaded, "audio.getInputDevices"),
+        openInput: async () => this.refuseAudio(loaded, "audio.openInput"),
+        closeInput: async () => this.refuseAudio(loaded, "audio.closeInput"),
+        getCaptureState: async () => this.refuseAudio(loaded, "audio.getCaptureState"),
+        onInputFrame: async () => this.refuseAudio(loaded, "audio.onInputFrame"),
+        offInputFrame: async () => this.refuseAudio(loaded, "audio.offInputFrame"),
+        openOutput: async () => this.refuseAudio(loaded, "audio.openOutput"),
+        writeOutput: async () => this.refuseAudio(loaded, "audio.writeOutput"),
+        stopOutput: async () => this.refuseAudio(loaded, "audio.stopOutput"),
+        closeOutput: async () => this.refuseAudio(loaded, "audio.closeOutput"),
       },
       net: {
         fetch: async (input: {
@@ -4804,3 +5279,15 @@ export class PluginRuntime {
     };
   }
 }
+
+/**
+ * Which audio permission each declared method belongs to. Capture and playback
+ * are separate grants, so a playback-only plugin must not be told that a
+ * capture method exists.
+ */
+const AUDIO_PLAYBACK_APIS = new Set([
+  "audio.openOutput",
+  "audio.writeOutput",
+  "audio.stopOutput",
+  "audio.closeOutput",
+]);

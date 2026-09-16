@@ -1,6 +1,5 @@
 import {
   memo,
-  useContext,
   useMemo,
   useState,
 } from "react";
@@ -17,10 +16,6 @@ import {
   IconTrash,
 } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
-import { TranscriptReadOnlyContext, useActiveSessionTitle } from "./context";
-import { selectionMarkdownWithinRow } from "../../../lib/selection-quote";
-import { requestTextWithoutAnnotations } from "../../../lib/response-annotations";
-import { IconQuote, IconChat } from "../../../components/icons";
 import { SessionMessageOrigin } from "./SessionMessageOrigin";
 import {
   CopyButton,
@@ -47,19 +42,14 @@ export const MessageRow = memo(function MessageRow({
   const openFileRef = useOpenChatFileRef();
   // Slash prompts are stored expanded; editing works on the typed form so the
   // resent turn re-expands the template (D123).
-  const editSeed = (editableUserMessage && message.command) || requestTextWithoutAnnotations(message.content || "");
+  const editSeed =
+    (editableUserMessage && message.command) || (message.content || "");
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(editSeed);
   const [retryingEdit, setRetryingEdit] = useState(false);
   const copyLabel = t("chat.copy");
   const editLabel = t("chat.editMessage");
   const deleteLabel = t("chat.deleteMessage");
-  const quoteLabel = t("chat.quote");
-  const sideChatLabel = t("chat.startSideChat");
-  const sessionTitle = useActiveSessionTitle();
-  const openSideChat = useAppStore((s) => s.openSideChat);
-  const quoteMessageIntoComposer = useAppStore((s) => s.quoteMessageIntoComposer);
-  const transcriptReadOnly = useContext(TranscriptReadOnlyContext);
   // Runtime chunks are already progressive. Rendering that source directly
   // avoids a second per-frame state loop while Markdown memoizes stable blocks.
   const displayed = message.content || "";
@@ -189,7 +179,7 @@ export const MessageRow = memo(function MessageRow({
                         {message.command}
                       </code>
                     ) : (
-                      <LinkifiedText text={requestTextWithoutAnnotations(String(message.content || ""))} />
+                      <LinkifiedText text={String(message.content || "")} />
                     )}
                   </div>
                 ) : null}
@@ -201,7 +191,7 @@ export const MessageRow = memo(function MessageRow({
             )}
           </div>
         ) : null}
-        {!editing && !transcriptReadOnly && (hasAnswer || showRevisionPager) ? (
+        {!editing && (hasAnswer || showRevisionPager) ? (
           <div className="message-actions">
             {showRevisionPager ? (
               <div className="message-revision-pager" role="group" aria-label={t("chat.revisions")}>
@@ -264,33 +254,6 @@ export const MessageRow = memo(function MessageRow({
                 <IconTrash size={13} />
               </TooltipButton>
             ) : null}
-            <TooltipButton
-              className="copy-btn icon"
-              tooltip={quoteLabel}
-              ariaLabel={quoteLabel}
-              disabled={!editSeed}
-              onClick={() =>
-                quoteMessageIntoComposer({
-                  title: sessionTitle,
-                  text: editSeed,
-                  // The rendered selection is recovered as Markdown, so a quoted
-                  // formula keeps its TeX and a quoted table keeps its rows
-                  // (ADR message-quotes-and-side-chats / D-LOCAL-selection-overlay).
-                  selection: selectionMarkdownWithinRow(message.id),
-                })
-              }
-            >
-              <IconQuote size={13} />
-            </TooltipButton>
-            <TooltipButton
-              className="copy-btn icon"
-              tooltip={sideChatLabel}
-              ariaLabel={sideChatLabel}
-              disabled={isRunning}
-              onClick={() => void openSideChat(message.id)}
-            >
-              <IconChat size={13} />
-            </TooltipButton>
           </div>
         ) : null}
       </div>

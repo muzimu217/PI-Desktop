@@ -41,8 +41,7 @@
   white-space: nowrap;
 }
 
-.import-group-select.settings-pill-select {
-  min-width: 116px;
+.import-group-select .settings-menu-select-trigger {
   height: 28px;
 }
 
@@ -276,6 +275,8 @@
   border-radius: var(--radius-2xs);
   color: var(--ds-text-muted);
   opacity: 0;
+  /* The hidden control is not a pointer target until its row reveals it. */
+  pointer-events: none;
   transition:
     opacity var(--motion-duration-fast) var(--motion-ease-out),
     background var(--motion-duration-fast) var(--motion-ease-out),
@@ -288,14 +289,34 @@
 .thread-item.active .thread-item-more:hover,
 .thread-item-more[aria-expanded="true"] {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .thread-item:focus-within .thread-item-more,
 .thread-item-more:focus-visible {
   opacity: 1;
+  pointer-events: auto;
+}
+
+/* The header add control shares the same reveal, and stays click-through until
+ * the header is hovered or focused. */
+.sidebar-session-group-add {
+  pointer-events: none;
+}
+
+/* Without hover there is nothing to reveal the row controls with, so a no-hover
+ * pointer gets them visible and tappable outright. */
+@media (hover: none) {
+  .sidebar-row-actions .thread-item-more,
+  .sidebar-menu-wrap .thread-item-more,
+  .sidebar-session-group-add {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 .thread-item-more:hover,
+.thread-item-more:focus-visible,
 .thread-item-more[aria-expanded="true"] {
   background: var(--ds-bg-hover);
   color: var(--ds-text-primary);
@@ -851,6 +872,27 @@
 .sidebar-session-group-header:hover .sidebar-menu-wrap .thread-item-more,
 .sidebar-session-group-header:focus-within .sidebar-menu-wrap .thread-item-more {
   opacity: 1;
+  pointer-events: auto;
+}
+
+/* Keyboard focus paints the header actions like the other sidebar controls. */
+.sidebar-session-group-add:focus-visible {
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-primary);
+}
+
+/* A blurred window keeps :hover latched on the row or header under the cursor,
+ * so the hover reveals collapse back to their resting, pointer-inert state. */
+.sidebar[data-window-blur="true"] .thread-item:hover .thread-item-more:not([aria-expanded="true"]),
+.sidebar[data-window-blur="true"] .sidebar-session-group-header:hover .thread-item-more:not([aria-expanded="true"]),
+.sidebar[data-window-blur="true"] .sidebar-session-group-header:hover .sidebar-session-group-add {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* An open menu trigger stays visible; its wrapper is inert while blurred. */
+.sidebar[data-window-blur="true"] .sidebar-session-group-header:hover .sidebar-menu-wrap {
+  pointer-events: none;
 }
 
 .sidebar-project-active-dot {

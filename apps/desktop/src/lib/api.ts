@@ -1,5 +1,6 @@
 import type {
   ActivationScope,
+  AgentCapabilityMove,
   AgentCapabilityQuery,
   AgentEventEnvelope,
   AgentCompactRequest,
@@ -418,6 +419,15 @@ export const api = {
       input,
     ),
   deleteProvider: (id: string) => invoke(IPC.invoke.providersDelete, id),
+  /**
+   * Set or clear one provider's API key. The only write a plugin-declared row
+   * accepts from the user path, since `updateProvider` refuses it.
+   */
+  setProviderSecret: (input: { id: string; secretValue?: string }) =>
+    invoke<{ provider: ProviderPublic | null }>(
+      IPC.invoke.providersSetSecret,
+      input,
+    ),
   testProvider: (id: string) => invoke(IPC.invoke.providersTest, id),
   /**
    * Discover models from the provider's own endpoint. Saved providers pass
@@ -609,6 +619,8 @@ export const api = {
     invoke(IPC.invoke.agentQueueRemove, { turnId }),
   prioritizeQueuedPrompt: (turnId: string) =>
     invoke(IPC.invoke.agentQueuePrioritize, { turnId }),
+  reorderQueuedPrompt: (turnId: string, direction: "up" | "down") =>
+    invoke<{ moved: boolean }>(IPC.invoke.agentQueueReorder, { turnId, direction }),
   getStatus: (sessionId: string) =>
     invoke<{ status: AgentStatus }>(IPC.invoke.agentGetStatus, sessionId),
   getAgentInstructions: (projectPath?: string) =>
@@ -690,6 +702,13 @@ export const api = {
   ) => invoke(IPC.invoke.mcpSetEnabled, { id, enabled, ...query }),
   setMcpServerScope: (id: string, scope: ActivationScope) =>
     invoke(IPC.invoke.mcpSetScope, { id, scope }),
+  /**
+   * Move one server to the other level. The document is moved, not copied, and
+   * the response carries the id it ended up under: a destination that already
+   * holds the same id or name renames the arriving server.
+   */
+  transferMcpServer: (move: AgentCapabilityMove) =>
+    invoke<{ server: McpServerRecord }>(IPC.invoke.mcpTransfer, move),
   /** Force one handshake and report what happened, for the editor's test button. */
   testMcpServer: (id: string, query?: Partial<AgentCapabilityQuery>) =>
     invoke<{ status: McpServerStatus }>(IPC.invoke.mcpTest, { id, ...query }),
@@ -708,10 +727,15 @@ export const api = {
 
   // --- Skill market ----------------------------------------------------------
   searchSkillMarket: (query: string, sources: { id: string; name: string; url: string }[]) =>
-    invoke<{ entries: SkillCatalogEntry[]; failedSources?: string[] }>(
-      IPC.invoke.skillMarketSearch,
-      { query, sources },
-    ),
+    invoke<{
+      entries: SkillCatalogEntry[];
+      failedSources?: string[];
+      /**
+       * Why each named source failed, so the market can explain a policy/DNS
+       * refusal instead of reporting every source as merely unreachable.
+       */
+      failureKinds?: Record<string, "policy" | "network">;
+    }>(IPC.invoke.skillMarketSearch, { query, sources }),
   /** Fetch one catalog document (frontmatter split off) for preview/install. */
   fetchSkillMarketDocument: (entry: SkillCatalogEntry) =>
     invoke<{ name?: string; description?: string; body: string; resources?: Array<{ path: string; body: string }> }>(
@@ -744,6 +768,13 @@ export const api = {
   ) => invoke(IPC.invoke.skillSetEnabled, { id, enabled, ...query }),
   setUserSkillScope: (id: string, scope: ActivationScope) =>
     invoke(IPC.invoke.skillSetScope, { id, scope }),
+  /**
+   * Move one skill to the other level. The document is moved, not copied, and
+   * the response carries the id it ended up under: a destination that already
+   * holds the same id or display name renames the arriving skill.
+   */
+  transferUserSkill: (move: AgentCapabilityMove) =>
+    invoke<{ skill: UserSkillRecord }>(IPC.invoke.skillTransfer, move),
   /**
    * Level and project must travel with the id: a project skill has no global
    * counterpart to fall back to, so resolving by id alone would miss it.

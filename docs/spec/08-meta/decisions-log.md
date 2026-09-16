@@ -71,8 +71,8 @@ This log freezes previously open questions into concrete decisions.
 | D393 | User-invoked Skills in the composer | **Amend D123 / D174 / ADR 0024 / ADR 0039: active built-in, plugin, and user Skills appear in a separate `Skills` group at the end of the composer slash menu. Selecting one inserts its exact id; Electron main revalidates the active project scope at send time and asks the model to call the local `Skill` tool, preserving on-demand body loading and existing permissions. Existing command names win collisions; inactive Skills remain literal slash text. See ADR 0219 and E2E-088b.** | D174's model-invoked catalog remains the body-loading and security contract, while a final explicit entry makes known workflows discoverable without moving Skill bodies into the renderer, prompt, or host protocol. |
 | D394 | Windows work-panel chrome keeps one resource action cluster | **Amend D154 / D357 / ADR 0195: the open work-panel header keeps one compact resource switcher; resource close is owned by the existing keyboard-operable context-menu rows, the viewport-fixed toggle remains the only panel collapse control, and subagent detail returns with a back chevron. Windows/Linux native controls remain fixed at the window edge. Renderer-only; no panel state, window geometry, IPC, protocol, or storage change. See ADR 0220 and E2E-067.** | The header resource `X`, viewport-fixed toggle, and Windows native close cluster read as duplicate close actions and became cramped at narrow panel widths. |
 | D396 | Renderer and plugin-panel scrollbars share one compact contract | **Amend D300: every renderer scroll container uses one 6px, trackless, transparent-at-rest scrollbar with the same hover, focus-within, scroll-reveal, and dragged-thumb states. Remove the sidebar-specific width and opacity override. The plugin-panel preload applies the same contract and 300ms reveal mark to docked and detached plugin documents, including the bundled Files view. External pages loaded inside the Browser guest remain page-owned. Presentation-only; no protocol, storage, host runtime, or external-page behavior change. See E2E-157.** | Windows' classic scrollbar made the right-side work-panel Files view visibly heavier than the conversation, while the sidebar retained a second scrollbar treatment. |
-| D-LOCAL-message-quotes | Message quotes and renderer-owned side chats | **Amend D209 / D301: every user message and assistant turn gains a Quote action that inserts a `> `-prefixed Markdown blockquote plus a `chat.quoteSource` attribution into the active session's composer draft and focuses it, using the live selection inside that message row when one exists and the message's own text otherwise; it never sends and adds no chip kind, with a 2000-character cap. Open side chat forks the anchored message through `session.fork` without activating the child, registers the child as a renderer-owned side chat of the parent, and opens one `sidechat:<childSessionId>` tab in the existing docked panel that streams from the same event stream through the background-transcript reducer, with Add to main chat, Open as a conversation, a compact Send/Stop input, and the existing permission card. Closing the tab or activating the child removes the registration; the durable child stays an ordinary session. No protocol, schema, IPC, or permission change. See ADR message-quotes-and-side-chats and E2E-CHAT-quote-prefill through E2E-CHAT-side-chat-close.** | Users needed to reuse an exact earlier message or answer and to ask a side question without replacing the visible main conversation, and the existing fork path always activated its child. *(Amended by D-LOCAL-selection-overlay: the excerpt is recovered from the rendered DOM as Markdown, and a selection inside a transcript row offers Add to chat, Ask in side chat, and Copy from a selection-following overlay.)* |
-| D-LOCAL-response-annotations | Response annotations as prompt attachments | **Amend D-LOCAL-message-quotes (decision 3) for assistant turns: selecting text in a response and choosing Add to chat attaches a numbered annotation to that turn instead of editing the composer draft — the answer body is not decorated (only a citation the model writes renders, as a numbered reference), the composer shows one annotation attachment chip whose tooltip lists the excerpts plus one control that drops them, and the next prompt carries them as `# Response annotations:` + an instruction + `<response-annotations>` JSON (`[{text, annotation, source:{messageId}}]`) + `## My request:` before the user's own text, consuming them. The visible draft, optimistic row, title, and edit seed stay annotation free, and a stored prompt carrying the block is displayed as its request. *(Amended 2026-09-12: Add to chat opens a compact comment editor whose Save writes the user's optional comment into the annotation; re-annotating an attached excerpt reopens that editor instead of a silent no-op, and the composer attachment lists each item with edit and remove controls beside clear-all.)* Quoting a user message, and the side chat's Add to main chat, keep D-LOCAL-message-quotes's draft quote; no protocol, storage-schema, IPC, or permission change. See ADR response-annotations and E2E-CHAT-annotation-attachments, E2E-CHAT-annotation-session-state.** | The draft quote copied the model's words into the user's own prompt text, and several referenced passes had no numbering the model could address; the reference implementation attaches them as numbered prompt data instead. |
+| D-LOCAL-message-quotes | Message quotes and renderer-owned side chats | *(retired by ADR 0268 on 2026-09-16)* **Amend D209 / D301: every user message and assistant turn gains a Quote action that inserts a `> `-prefixed Markdown blockquote plus a `chat.quoteSource` attribution into the active session's composer draft and focuses it, using the live selection inside that message row when one exists and the message's own text otherwise; it never sends and adds no chip kind, with a 2000-character cap. Open side chat forks the anchored message through `session.fork` without activating the child, registers the child as a renderer-owned side chat of the parent, and opens one `sidechat:<childSessionId>` tab in the existing docked panel that streams from the same event stream through the background-transcript reducer, with Add to main chat, Open as a conversation, a compact Send/Stop input, and the existing permission card. Closing the tab or activating the child removes the registration; the durable child stays an ordinary session. No protocol, schema, IPC, or permission change. See ADR message-quotes-and-side-chats and E2E-CHAT-quote-prefill through E2E-CHAT-side-chat-close.** | Users needed to reuse an exact earlier message or answer and to ask a side question without replacing the visible main conversation, and the existing fork path always activated its child. *(Amended by D-LOCAL-selection-overlay: the excerpt is recovered from the rendered DOM as Markdown, and a selection inside a transcript row offers Add to chat, Ask in side chat, and Copy from a selection-following overlay.)* |
+| D-LOCAL-response-annotations | Response annotations as prompt attachments | *(retired by ADR 0268 on 2026-09-16)* **Amend D-LOCAL-message-quotes (decision 3) for assistant turns: selecting text in a response and choosing Add to chat attaches a numbered annotation to that turn instead of editing the composer draft — the answer body is not decorated (only a citation the model writes renders, as a numbered reference), the composer shows one annotation attachment chip whose tooltip lists the excerpts plus one control that drops them, and the next prompt carries them as `# Response annotations:` + an instruction + `<response-annotations>` JSON (`[{text, annotation, source:{messageId}}]`) + `## My request:` before the user's own text, consuming them. The visible draft, optimistic row, title, and edit seed stay annotation free, and a stored prompt carrying the block is displayed as its request. *(Amended 2026-09-12: Add to chat opens a compact comment editor whose Save writes the user's optional comment into the annotation; re-annotating an attached excerpt reopens that editor instead of a silent no-op, and the composer attachment lists each item with edit and remove controls beside clear-all.)* Quoting a user message, and the side chat's Add to main chat, keep D-LOCAL-message-quotes's draft quote; no protocol, storage-schema, IPC, or permission change. See ADR response-annotations and E2E-CHAT-annotation-attachments, E2E-CHAT-annotation-session-state.** | The draft quote copied the model's words into the user's own prompt text, and several referenced passes had no numbering the model could address; the reference implementation attaches them as numbered prompt data instead. |
 | D398 | Context usage display preference | **Amend D347 / ADR 0184: the context usage inspector's leading figure — the trigger ring arc, percentage, token label, popover heading, tooltip, and `aria-label` — is configurable via `AppSettings.contextUsageDisplay` (`"remaining"` or `"used"`). Default and fallback for absent/unrecognised values is `"remaining"`. When `"used"`, the ring fills by `usedRatio`, and text shows the used-capacity pair. Warning and critical color thresholds (remaining ≤ 25 % / ≤ 10 %) stay based on remaining capacity regardless of display mode. Settings → AI → Defaults adds a segmented control (Remaining / Used) after Link open destination and before Enter-to-send. Renderer only; no protocol, storage, host, or migration change. See ADR 0222 and E2E-250.** | The remaining-only display gave weak signal at low occupancy and did not match users who reason in terms of "how much have I spent". Color must stay on remaining to avoid a misleading green ring at 90 % used. |
 | D399 | Project group manual ordering | *(amended by D402)* **Amend D093: retained project groups expose a visible-on-hover/focus grip. Native drag/drop and ArrowUp/ArrowDown on that grip write contiguous normalized-path `order` values and set `projectSort` to `manual` in renderer-local sidebar preferences. Archived and pinned priority remains ahead of manual order; project activation, host workspace identity, session ordering, and on-disk directories are unchanged.** | Users with several active repositories need a stable working order independent of recent activity or alphabetical names, while the existing path-keyed and host-owned project model remains untouched. |
 | D400 | Restore deferred tools from effective session context | **Amend D185 / ADR 0048: before each new prompt and after a mode switch, clear the in-memory deferred activation set, then restore names from successful `ToolSearch` results (`addedToolNames`) and successful deferred-tool results in the effective `buildSessionContext` projection. Keep only names still in the current deferred catalog and mode; ignore errors, interrupted or missing-result placeholders, and assistant/user prose. No host permission or workspace boundary changes.** | Clearing activations while retaining their successful transcript markers left the model able to see a capability that was absent from the next provider schema. Reconstructing only from effective successful evidence keeps the provider request coherent without parsing prose or reviving stale or disallowed tools. See ADR 0225 and E2E-008a. |
@@ -82,14 +82,14 @@ This log freezes previously open questions into concrete decisions.
 | D405 | Ideographic comma opens the slash menu | **Amend D123 / D139 / ADR 0024: a `、` (U+3001) committed as the first character of an empty composer draft is rewritten to `/` before trigger detection, so a Chinese IME reaches the ordinary slash menu without switching input methods. Only that position is rewritten; a `、` anywhere else stays ordinary punctuation, and the `@` file menu is unaffected. Shared grammar and renderer only; no IPC, storage, or autocomplete-source change. See ADR 0231 and E2E-255.** | Reaching `/new`, `/compact`, a mode alias, or a Skill forced a Chinese IME user to switch to ASCII input mid-sentence and then switch back (issue #65). |
 | D406 | Keep macOS DMG opening guidance text-only | **Amend D371 / ADR 0204: macOS DMGs expose the opening-help note as `If app won't open, read this.txt` and no longer include the executable `PI-Desktop-macOS-open.command`. macOS ZIP packages retain both the note and the helper. The note provides the narrow Terminal fallback for trusted unsigned builds; signed and notarized builds do not need it. See ADR 0232 and E2E-196b.** | The DMG should keep the normal app-to-Applications flow focused while still giving users a visible, actionable answer when an unsigned app does not open. |
 | D407 | Restore archived projects after session import | **Additive renderer behavior for issue #250: when a core or plugin import adds a new project-bound session, the import-triggered session refresh normalizes its project path and clears the renderer's archived presentation state for that project. Pathless sessions, skipped imports, historical plugin paths without an active binding, and ordinary refreshes leave archive state unchanged. Host project rows, IPC channels, plugin methods, storage schema, and data formats do not change. See ADR 0236 and E2E-257.** | The host can successfully materialize an imported session under a project while the renderer still hides that project's sidebar row as archived. Restoring only the newly imported binding makes the result discoverable without weakening deliberate archive choices during ordinary refreshes (issue #250). |
-| D408 | Prioritize MainChat in the three-column shell | **Amend ADR 0226 / ADR 0151 / ADR 0033 for issue #267: MainChat keeps a hard 450px minimum, the work panel is capped by the live budget (`client width - 450px - expanded sidebar`, with no fixed maximum), and the expanded sidebar yields at that threshold — including while `sidebar-out` still occupies flex space. A manual sidebar reopen spends panel width first and otherwise targets 460px; closing the panel restores only a sidebar the layout collapsed. The native window never changes: the reservation seam stays at zero and no geometry is applied. Preview mode temporarily unmounts MainChat and uses a window-level chrome row; collapsed-sidebar macOS preview reserves 76px, or 8px in fullscreen, for traffic lights. See ADR 0238 and E2E-LAYOUT-three-column-width-priority.** | The fixed client area had no explicit width priority, so the side docks could pin MainChat to its floor and leave the composer unusable. Making the yield order explicit keeps the chat readable inside the fixed window without reintroducing native window growth (issue #267). |
+| D408 | Prioritize MainChat in the three-column shell | **Amend ADR 0226 / ADR 0151 / ADR 0033 for issue #267: MainChat keeps a hard 450px minimum, the work panel is capped by the live budget (`client width - 450px - expanded sidebar`, with no fixed maximum), and the expanded sidebar yields at that threshold — including while `sidebar-out` still occupies flex space. A manual sidebar reopen spends panel width first and otherwise targets 460px; closing the panel restores only a sidebar the layout collapsed. The native window never changes: the reservation seam stays at zero and no geometry is applied. Preview mode temporarily unmounts MainChat and uses a window-level chrome row; collapsed-sidebar macOS preview reserves 88px, or 8px in fullscreen, for traffic lights (D433). See ADR 0238 and E2E-LAYOUT-three-column-width-priority.** | The fixed client area had no explicit width priority, so the side docks could pin MainChat to its floor and leave the composer unusable. Making the yield order explicit keeps the chat readable inside the fixed window without reintroducing native window growth (issue #267). |
 | D409 | Host-owned session collaboration messages | **Amend ADR 0237 / ADR 0165 / ADR 0213: Rust host-core owns a durable session-collaboration ledger keyed by message id and real source/target Session IDs. Plugin-mediated `spawn`, `send`, `status`, `result`, and `cancel` operations use the reviewed desktop-control gateway; the sender is bound to the active plugin Agent tool invocation, target turns retain their existing configuration, and each delivery is claimed by its actual durable turn. Completion callbacks are durable, at-most-once, and reference the settled turn. Provenance is persisted with transcript rows and cannot be forged, stripped, or edited through regeneration. The additive schema v16 migration retains queued work across restart without unattended replay, applies permission ceilings and bounded autonomous hops, and keeps the existing Task family unchanged. See ADR 0239 and E2E-PLUGIN-session-orchestrator-real-workers.** | The plugin's prior create/prompt polling path could infer neither a durable turn outcome nor a safe bidirectional sender identity. A host-owned ledger makes delivery, provenance, callback, cancellation, and restart behavior auditable without restoring the withdrawn A2A protocol. |
 | D410 | Independent session discovery and navigable collaboration projections | **Amend ADR 0239: add the reviewed read operation `session/collaboration/list`, bounded to 100 non-deleted Agent sessions and redacted to Session IDs, titles, status, updated time, readable provider/model labels, and bounded creation links. Extend the sidebar projection with readable model labels and at most eight created-session references. Render creator/created-session references as keyboard-focusable navigation buttons; independent sessions do not receive fabricated creator links. No renderer storage ownership or collaboration mutation boundary changes. See ADR 0240, E2E-SESSION-independent-top-level-communication, and E2E-SESSION-hover-card-model-and-links.** | Existing Session IDs were valid send targets but could be undiscoverable when they were not created by the plugin, while the hover card exposed only IDs and non-interactive provenance. A bounded host directory and navigable projection make durable sessions communicable and explainable without exposing transcripts or credentials. |
 | D413 | Skill market public-HTTPS catalog fetch | **Additive: Settings → Skills Market discovers SKILL.md catalogs in Electron main under a shared public-HTTPS policy (syntactic public host + DNS classification + per-hop redirect re-validation). The renderer does not fetch. Install remains `skills.create`. Catalog ids match host `valid_capability_id`. Expanded documents over 128 KiB are refused. Builtin titles are English. See ADR 0243, E2E-SKILL-MARKET-*, issue #287.** | Community skill discovery needs main-process egress without a plugin-marketplace host allowlist, and copied classifiers would collide with the MCP market. |
-| D421 | Native Pi session continuation | **Amend baseline D007: discover Pi v3 sessions as source-discriminated projections and continue them through coding-agent `AgentSession`/`SessionManager` against their canonical JSONL. Rust remains authoritative for Desktop SQLite/transcripts. Native continuation requires exact saved provider/auth, project trust, canonical path/header identity, and a cooperative lease plus byte/leaf validation; failures remain browseable/read-only. First slice excludes native rename/delete/move/revisions/Plan/Goal/queue/collaboration; the 2026-09-14 ADR 0254 amendment adds native fork and persistent side chats with exact stream re-keying and inode-tracked publication. See ADR 0254 and E2E-SESSION-native-pi-*/E2E-SESSION-native-side-chat-*.** | Importing a flattened copy cannot preserve Pi's tree or make later Desktop turns visible to Pi Web. |
+| D421 | Native Pi session continuation | **Amend baseline D007: discover Pi v3 sessions as source-discriminated projections and continue them through coding-agent `AgentSession`/`SessionManager` against their canonical JSONL. Rust remains authoritative for Desktop SQLite/transcripts. Native continuation requires exact saved provider/auth, project trust, canonical path/header identity, and a cooperative lease plus byte/leaf validation; failures remain browseable/read-only. First slice excludes native rename/delete/move/revisions/Plan/Goal/queue/collaboration; the 2026-09-14 ADR 0254 amendment adds native fork with exact stream re-keying and inode-tracked publication; the side-chat panel it added is retired by ADR 0268. See ADR 0254 and E2E-SESSION-native-pi-*.** | Importing a flattened copy cannot preserve Pi's tree or make later Desktop turns visible to Pi Web. |
 | D412 | Delta-only coalesced streaming updates | **Amend the local `message_update` contract: append-only streaming frames carry `stream: delta` plus `deltaText`/`deltaThinking` (and reset flags) without growing `content`/`thinking`. Runtime coalesces those frames every 16ms and flushes before semantic boundaries. AgentHost, inflight checkpoints, and the renderer apply deltas; `message_start`/`message_end` remain full snapshots. Transcript activity parts keep object identity when only the tail token changes. Protocol version stays 11. See ADR 0242, E2E-STREAM-long-turn-keeps-realtime, and issue #299.** | Each token re-serialized the full assistant snapshot across sidecar, AgentHost, and IPC, so a long turn cost O(n²) bytes and backlogged later short chunks. |
 | D416 | Git clone accepts only syntactically public hosts | **Amend home git clone: `parseGitCloneUrl` reuses `isPublicHostname` so loopback, private, CGNAT, link-local, ULA, and `.local`/`.localhost` remotes are rejected before `git clone` runs. HTTPS/HTTP/SSH/`git@host:path` to public hosts remain valid. `file:` and URL passwords stay rejected. Git still performs its own DNS; this is not a market-style pin. See ADR 0247 and E2E-CLONE-public-hostname-rejects-private.** | Clone accepted `http://127.0.0.1/...` and RFC1918 literals, which is a LAN/SSRF hole the market fetchers already close for HTTPS catalogs. |
-| D417 | Plugin runtime theme APIs + sidebar image token | **Add `pi.app.setTheme` and `pi.themes.upsert`/`remove`/`list` under `ui.theme` (ADR 0249 / issue #352). Remove `MAX_THEMES_PER_PLUGIN`. Runtime upsert sanitizes CSS like load-time registration and emits `pluginChanged` (`reason: "themes"`); `setTheme` persists `AppSettings.theme` and emits `settingsChanged`. Split sidebar paint: `--ds-bg-sidebar` stays a color; optional `--ds-bg-sidebar-image` holds gradients/images, with macOS vibrancy stacking sheen over the image layer.** | Theme editor plugins cannot apply a theme from their panel, cannot ship an unlimited library, and cannot live-edit production CSS without reload; sidebar gradients broke `color-mix` / vibrancy consumers when stuffed into the color token. |
+| D417 | Plugin runtime theme APIs + sidebar image token | **Add `pi.app.setTheme` and `pi.themes.upsert`/`remove`/`list` under `ui.theme` (ADR 0260 / issue #352). Remove `MAX_THEMES_PER_PLUGIN`. Runtime upsert sanitizes CSS like load-time registration and emits `pluginChanged` (`reason: "themes"`); `setTheme` persists `AppSettings.theme` and emits `settingsChanged`. Split sidebar paint: `--ds-bg-sidebar` stays a color; optional `--ds-bg-sidebar-image` holds gradients/images, with macOS vibrancy stacking sheen over the image layer.** | Theme editor plugins cannot apply a theme from their panel, cannot ship an unlimited library, and cannot live-edit production CSS without reload; sidebar gradients broke `color-mix` / vibrancy consumers when stuffed into the color token. |
 | D420 | Structured, bounded, and redacted process logs | **Amend ADR 0046 / ADR 0212: every app/host/agent NDJSON record has a stable event and top-level correlation fields. A normal tool call emits one completion/failure record, while an unexpected sidecar exit emits interruption records for active tools; the tool protocol and transcript remain unchanged. Central logging redacts credentials and local paths, bounds structured data to 8 KiB, summarizes tool results instead of copying output, and mirrors the same sanitized record to development console output.** | The old `tool start` / `tool end` rows were redundant and unclear, while free-form child/error details could leak secrets or consume unbounded storage. |
 | D422 | Host turn-end event for plugins | **`session:turnEnded` is a host event with payload `{ sessionId, turnId, reason }` (`completed` / `aborted` / `error`), broadcast once per turn actually started by `session.beginTurn` at the end of turn teardown, after the durable `session.endTurn` attempt. The emitted `turnId` is the identity the terminal runtime event carried rather than whichever turn is active, and the plugin tool context's `turnId` is populated with the same value. There is no ack and no replay: a live subscribed plugin receives it once, delivery that races a crash, reload, or host quit is not guaranteed, and receiving it does not mean every in-flight tool of that turn has exited, so cleanup must be serialised or scoped by `turnId`. No new permission is required, and no published host emits it yet (0.14.8 does not include it). See ADR 0252.** | Plugins driving a GUI had to guess turn completion with idle timers, which fire mid-turn and again after the turn ends. A host-owned once-per-turn terminal event with an explicit turn identity lets a plugin settle exactly once, and the same identity in the tool context lets it correlate late tool results. |
 | D423 | Remove the subagent turn limit | **Amend D328 / ADR 0062 / ADR 0063 / ADR 0119 / ADR 0126 / ADR 0166 / ADR 0210: `maxTurns` and `MAX_SUBAGENT_MAX_TURNS` leave the definition type, the frontmatter parser and its clamp/invalid warnings, `UserSubagentRecord` / `UserSubagentInput`, the host-core registry (record, input, frontmatter parse, document render, `MAX_TURNS_CEILING`), the five built-in documents, `SUBAGENT_PRESETS`, and the Subagent editor. A delegate ends only when it finishes, when the parent calls `TaskStop`, when the user Stops, or when a terminal parent error aborts it (ADR 0189). `maxTurns` / `max-turns` / `max_turns` in an existing document is now an unrecognized frontmatter key and is ignored like any other unknown key: no error, no warning, no definition-load failure, and no rewrite of the user's file. The `truncated` value leaves `SubagentRunStatus`, the renderer's `SubagentOutcome` union, the `chat.subagentStatus` catalog entry in every locale, and the delegation topology's warnings count; `timed_out` stays. No protocol version, schema version, or storage change. See ADR 0253, E2E-155, and E2E-SUBAGENT-legacy-turn-limit-frontmatter-is-ignored.** | The parent cannot see a delegate's live work, so it cannot size a turn cap, and the shipped 60 / 50 / 40 / 80 backstops had no derivation. The cap's only effect was to kill a delegate mid-task and surface it as `truncated` with a partial report — a state neither the user nor the parent model can resume. |
@@ -307,7 +307,7 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | D183 | Segmented tool and model latency logs *(superseded by D385 / ADR 0212; UI clause superseded by D184)* | **Every `tools.execute` call is timed in segments instead of one opaque duration: host-core emits a `tool timing` line on the `host` channel and persists `prompted`, `permissionWaitMs`, `overheadMs`, and `totalMs` next to the existing `durationMs` on `tool_execute` / `tool_denied` audit rows; the sidecar writes greppable `[timing] kind=tool …` (`hostRttMs`) and `[timing] kind=model …` (`providerWaitMs`, `streamMs`, including failed/aborted turns) lines to the `agent` channel, suppressible with `PI_DESKTOP_TIMING=0`. The original no-UI clause is superseded by D184; logging remains unchanged.** | "Executing a command is slow" was undiagnosable from the logs: approval waiting, the tool body, and the provider round trip were indistinguishable, so a 45s gap between two audit rows with 0ms durations gave no clue whether it was the user, the model, or the host. Splitting the stages makes the answer readable without reproducing the run. |
 | D158 | Turn-boundary context checkpoint compaction *(soft-boundary, model-tool, and visibility clauses superseded by D200; the model tool and visibility restored in Codex's shape by D203)* | **PI-Desktop reuses pi-agent-core's context estimation, session-context, and compaction primitives but owns the orchestration and durability. After every `turn_end`, before any next provider request, the runtime evaluates model-aware soft/hard budgets. A transient deduplicated instruction can ask the model to call the internal `CompactContext` tool; the tool's normal activity row is visible/durable, while the instruction is not. Crossing the hard budget forces checkpoint generation and blocks the request on failure. A final atomic tool batch that reaches half the hard budget is fairly head/tail-truncated only in the checkpoint copy, with explicit markers and every call/result envelope retained; original transcript rows remain complete. Exact provider overflow removes the failed assistant from model context, creates one checkpoint, and retries once. Host protocol v6 appends checkpoint records beside the untouched visible JSONL transcript; restart, late truncation, and included-boundary forks preserve the newest valid checkpoint. Disabling automatic compaction removes the tool and all automatic threshold/overflow recovery, while `/compact` remains available. OpenCode DCP is an AGPL-3.0 behavioral reference only and is neither linked nor copied (ADR 0030).** | pi's end-of-run-only behavior cannot protect long tool loops, and a model reminder alone cannot guarantee provider safety. Reusing pi's tested compaction format while adding a deterministic `turn_end` gate prevents another provider request from crossing the known window, retains user-visible history, and avoids importing an incompatible plugin/runtime and license boundary. |
 | D185 | Lazy per-turn tool activation *(the always-active `CompactContext` clause is void under D200, and holds again for `new_context` under D203; activation restoration amended by D400 / ADR 0225)* | **The sidecar keeps a complete local tool registry but sends only the mode core set and local `ToolSearch` on each new prompt. `BrowserPreview`, plugin tools, `Skill`, and plugin-development helpers appear as bounded compact catalog entries and are activated by exact-name or capability search; the next turn receives their schemas, native pi-ai deferred search is used when supported, and the in-memory set resets before the next user prompt, then restores only successful activation evidence still present in the effective context and allowed by the current catalog and mode. Host permissions, containment, timeouts, and audits are unchanged.** | Full tool schemas made simple first requests disproportionately large and repeated optional capability cost across turns. A pi-style active set preserves core coding ergonomics while making ancillary tools pay-as-you-go and provider-independent; restoring successful context evidence prevents the model from seeing a capability marker without receiving the corresponding schema. |
-| D200 | Imperceptible background context compaction *(background pre-computation, incremental trigger, silence, and no-model-tool clauses superseded by D203)* | **Compaction becomes a host-owned background activity with no user-visible surface. `contextBudget()` keeps the D158 hard limit and request headroom, derives the retained-tail target from the model window (`clamp(hardLimit * 0.2, 8k, 64k)`, still capped at half the hard budget) instead of settings, and adds `backgroundLimit = floor(hardLimit * 0.7)` as a pre-computation trigger; the soft boundary is deleted. Checkpoint generation is split from installation: `buildCheckpoint` produces one without persisting or activating it, and installation re-estimates, appends through host-core, and emits `compaction_end`. Pre-computation runs only in provider-idle windows — while a tool executes and after a run ends — and only when the context is past the background limit **and** grew by at least the retained-tail target since the newest checkpoint's baseline, so a large tail cannot trigger a summary every turn. A pre-computed checkpoint installs at the next turn boundary or prompt only if its base is still active, its `throughMessageId` anchor still exists, and it still fits the current model's budget; any miss falls through to the unchanged blocking path, and a failed background build is discarded with no event, no persistence, and no ADR 0049 fallback. The `CompactContext` tool, the `<context_management>` nudge, and the host no-confirmation allowlist entry are removed, so triggering is entirely deterministic. `compaction_start`/`compaction_end` gain an optional `phase` (`background` | `blocking`, absent means `blocking`) and `compaction_end` gains an optional `status { generation, summaryTokens }`; both are additive inside protocol v9. A successful automatic compaction produces no toast, no run-state change, and no transcript row; only a `retained_tail` fallback, an overflow retry, and manual `/compact` still notify. The context usage inspector is the single visible trace, reading `status` and the durable `SessionDetail.compaction`, with the generation counter carried inside the checkpoint's opaque `details` so no record schema change is needed. Settings exposes no compaction controls and persisted `contextCompaction` values are ignored (ADR 0061).** | Compaction was correct but intrusive: it toasted, moved the run state, spent a model turn on a tool call, left a transcript row, and always ran at the moment the user was waiting. Codex's graded trigger and increment-scoped threshold show the summary can be paid for off the critical path, and its host-only triggering removes a class of wasted turns. Deriving budgets from the model window also fixes applying one pair of absolute token counts to both a 32k and a 1M window; keeping the hard boundary untouched means none of this trades provider safety for UX. |
+| D200 | Imperceptible background context compaction *(background pre-computation, incremental trigger, silence, and no-model-tool clauses superseded by D203)* | **Compaction becomes a host-owned background activity with no user-visible surface. `contextBudget()` keeps the D158 hard limit and request headroom, derives the retained-tail target from the model window (`clamp(hardLimit * 0.2, 8k, 64k)`, still capped at half the hard budget) instead of settings, and adds `backgroundLimit = floor(hardLimit * 0.7)` as a pre-computation trigger; the soft boundary is deleted. Checkpoint generation is split from installation: `buildCheckpoint` produces one without persisting or activating it, and installation re-estimates, appends through host-core, and emits `compaction_end`. Pre-computation runs only in provider-idle windows — while a tool executes and after a run ends — and only when the context is past the background limit **and** grew by at least the retained-tail target since the newest checkpoint's baseline, so a large tail cannot trigger a summary every turn. A pre-computed checkpoint installs at the next turn boundary or prompt only if its base is still active, its `throughMessageId` anchor still exists, and it still fits the current model's budget; any miss falls through to the unchanged blocking path, and a failed background build is discarded with no event, no persistence, and no ADR 0049 fallback. The `CompactContext` tool, the `<context_management>` nudge, and the host no-confirmation allowlist entry are removed, so triggering is entirely deterministic. `compaction_start`/`compaction_end` gain an optional `phase` (`background` \| `blocking`, absent means `blocking`) and `compaction_end` gains an optional `status { generation, summaryTokens }`; both are additive inside protocol v9. A successful automatic compaction produces no toast, no run-state change, and no transcript row; only a `retained_tail` fallback, an overflow retry, and manual `/compact` still notify. The context usage inspector is the single visible trace, reading `status` and the durable `SessionDetail.compaction`, with the generation counter carried inside the checkpoint's opaque `details` so no record schema change is needed. Settings exposes no compaction controls and persisted `contextCompaction` values are ignored (ADR 0061).** | Compaction was correct but intrusive: it toasted, moved the run state, spent a model turn on a tool call, left a transcript row, and always ran at the moment the user was waiting. Codex's graded trigger and increment-scoped threshold show the summary can be paid for off the critical path, and its host-only triggering removes a class of wasted turns. Deriving budgets from the model window also fixes applying one pair of absolute token counts to both a 32k and a 1M window; keeping the hard boundary untouched means none of this trades provider safety for UX. |
 | D201 | Bounded subagents behind a `Task` tool | **Agent mode exposes `Task` when the catalog contains one of the four inline builtins or an enabled global document under `~/.agents/subagents/*.md`. The catalog is loaded by Electron main for the next prompt, is capped at 16, and keeps delegate reports out of the parent model context. There is no project-level subagent capability directory; `.pi/agents` is not scanned.** | Keeping delegation as a bounded tool preserves parent ownership of context and permissions while a global user directory makes personal delegates portable across projects (ADR 0062, ADR 0112). |
 | D202 | Managed global subagent definitions | *(Page-shape clause superseded by D257 / ADR 0126; the global-only data boundary stands)* **host-core scans global Markdown documents under `~/.agents/subagents`, stores enabled state in `<data>/agent-capabilities/subagents.json`, and exposes them through the Settings > Agent > Subagents page. The page is one fixed-height global list with no project picker or project-level source. The runtime combines enabled global documents with builtins; malformed or deleted documents produce diagnostics or disappear after scanning, and no capability state is written into the Markdown file.** | Personal delegates follow the user without creating repository changes; the explicit global-only boundary avoids a second project precedence model and keeps Extensions focused on Installed and Marketplace (ADR 0063, ADR 0112). |
 | D203 | Codex-parity context compaction | **Compaction is rebuilt to match Codex's mechanism, reversing four D200 clauses and keeping the rest. All background pre-computation and the incremental trigger scope are deleted: `prepareNextTurn()` compacts synchronously when the total context crosses `hardLimit` or the model asked for a new window. A checkpoint carries the summary plus recent **user** messages only — pi's cut point still marks the boundary, but its split-turn prefix and recent tail are folded back into the summary input so the summary covers the whole range, and the retained tail is rebuilt newest-first from user messages up to 20,000 tokens (capped at half the hard budget) with the crossing message truncated rather than dropped, then restored to chronological order. Two families run the identical lifecycle: `summary`, and a `fresh_window` rollover that requests no summary and stores a fixed marker text, selected by construction option or `PI_DESKTOP_COMPACTION_STRATEGY` and exposed in neither settings nor i18n. The model-facing `new_context` tool returns (parameterless, Codex's description verbatim, on the host no-confirmation allowlist, never assignable to a subagent) together with two per-window budget reminders appended to the current turn's system prompt — one at `clamp(hardLimit * 0.15, 8k, 32k)` remaining, one at 2,000 — each claimed once and reset on install. host-core persists the whole checkpoint chain (`read_compactions`, `write_transcript_with_compactions`, per-record fork validation, `SessionDetail.compactions`) with `compaction` kept as its newest element. `compaction_start`/`compaction_end` drop `phase`, and `compaction_end` replaces `status` with `mark { id, throughMessageId, generation, summaryTokens, summarized }`; the transcript draws one divider row per compaction after the message it covers, ending the assistant turn it lands inside and dropping a mark whose anchor is gone, and every successful compaction raises one warning toast on top of the fallback/overflow/manual toasts. Deliberate deviations from Codex: the summary precedes the retained users because `buildSessionContext` fixes that order, `hardLimit` stays "window − output reserve" instead of 90% of the window, the tool is registered in both families, and the reminders are system-prompt appends with our own thresholds and wording (ADR 0064).** | The previous round cited Codex while implementing its opposite on four counts, and its Context section claimed Codex has no model-side compaction tool when `new_context` exists. The user asked for Codex's mechanism specifically, after being told it reverses the imperceptibility goal. Parity also buys three things on its own merits: a checkpoint that keeps only user messages is far cheaper and cannot strand a tool call without its result, a visible row makes a lossy operation auditable from the transcript again, and a warning puts the "start a fresh session instead" decision where it belongs. The cost is accepted: the user waits for compaction again. |
@@ -979,6 +979,8 @@ section mirrors only marketplace/catalog items still blocking nothing.
 - Decision D397 amends ADR 0101's previous drag/drop scope. See ADR 0222 and
   E2E-102i.
 ## 2026-09-11 — Message quotes and renderer-owned side chats (D-LOCAL-message-quotes)
+
+*(Retired by ADR 0268 on 2026-09-16: the feature and its surfaces were removed, and these IDs stay retired and must not be reused. The record is kept for history.)*
 
 - Every user message and every assistant turn gains a Quote action beside Copy,
   Edit, Delete, Fork, and Retry. It inserts a `> `-prefixed Markdown blockquote
@@ -3072,6 +3074,13 @@ D193, and D194.
   different provider id, and do not retire an idle runtime. Repeating a
   definition's own pin key is omit. On-demand matching uses unique provider
   lookup. The Task catalog discloses each definition's default model.
+- Scope clarification (2026-09-15, issue #386): the opt-in governs every entry
+  point through which the AI picks a model for delegated work, not only
+  `Task.model`. A `session/collaboration/spawn` `modelKey` naming a model
+  without the opt-in is refused with `PERMISSION_DENIED` before a worker is
+  created; omitting the key, or naming the default model's own key, remains
+  inheritance. `models.list` still reports every ready model with its flag —
+  the flag advises the caller and is authoritative only in Electron main.
 
 - Models not pre-resolved at sidecar launch are resolved on-demand via the
   `provider.resolveSubagentModel` RPC to Electron main, where credentials and
@@ -4661,6 +4670,8 @@ D193, and D194.
 
 ## 2026-09-11 — Selection overlay for quotes (D-LOCAL-selection-overlay)
 
+*(Retired by ADR 0268 on 2026-09-16: the feature and its surfaces were removed, and these IDs stay retired and must not be reused. The record is kept for history.)*
+
 - Quote no longer has to be reached at the end of the answer: a non-empty text
   selection inside one transcript row floats one overlay **above** it, centered
   on the selection and clamped into its clipping ancestors' rects (the transcript
@@ -4691,6 +4702,8 @@ D193, and D194.
   `data-composer-dock` hook. See ADR message-quotes-and-side-chats and E2E-CHAT-quote-prefill, E2E-CHAT-selection-markdown, E2E-CHAT-selection-side-chat.
 
 ## 2026-09-11 — Response annotations as prompt attachments (D-LOCAL-response-annotations)
+
+*(Retired by ADR 0268 on 2026-09-16: the feature and its surfaces were removed, and these IDs stay retired and must not be reused. The record is kept for history.)*
 
 - Selecting text in an assistant turn and choosing Add to chat attaches a
   **numbered annotation** to that turn: an id, the anchored turn, the excerpt
@@ -4841,7 +4854,7 @@ D193, and D194.
   no panel width or x-offset geometry is applied.
 - Preview mode unmounts MainChat and gives the client area to the work panel
   beside the sidebar. AppShell supplies a window-level chrome row for shell
-  actions and native controls; macOS reserves 76px in windowed mode and 8px in
+  actions and native controls; macOS reserves 88px in windowed mode and 8px in
   fullscreen when the sidebar is collapsed.
 - Decision D408 records the issue #267 behavior. See ADR 0238 and
   E2E-LAYOUT-three-column-width-priority.
@@ -5015,6 +5028,8 @@ Validation contract: E2E-SIDEBAR-global-pinned-conversations.
 
 
 ## 2026-09-14 — Preserve local annotation and side-chat contracts across upstream integration
+
+*(Retired by ADR 0268 on 2026-09-16: the feature and its surfaces were removed, and these IDs stay retired and must not be reused. The record is kept for history.)*
 
 - Local ADRs now use semantic names `message-quotes-and-side-chats`,
   `response-annotations`, and `floating-annotation-index`; former local 0223–0225
@@ -5232,3 +5247,364 @@ Validation contract: E2E-SIDEBAR-global-pinned-conversations.
   replay it after the summary; set `requiresNonEmptyReasoningReplay` for
   non-official DeepSeek Completions rows so the pi-ai patch fills a documented
   placeholder instead of `""`. See ADR 0256 and E2E-005E.
+
+## 2026-09-15 — Plugin real-time capabilities (D425)
+
+- Plugins gain four host-mediated capabilities: background microphone capture,
+  background playback, system-wide accelerators, and real-time bidirectional
+  connections. The host owns every device and transport; plugins exchange typed
+  frames and never receive a device handle, a raw socket, or a Node stream.
+- New permissions `audio.capture.background` (high),
+  `audio.playback.background` (medium), `keyboard.globalShortcut` (medium),
+  `net.websocket` (high), plus `contributes.globalShortcuts` (at most 8
+  accelerator → own-command entries) as the declarative form. `ui.microphone`
+  keeps its panel-scoped meaning and is not widened.
+- Shortcut registration is refused rather than taken over:
+  `SHORTCUT_CONFLICT`, `SHORTCUT_UNAVAILABLE`, `INVALID_ACCELERATOR`,
+  `LIMIT_EXCEEDED`. An accelerator can only run one of the owning plugin's own
+  commands — no key monitoring, no raw events, no hooks.
+- Implemented in this change: `keyboard.globalShortcut` and `net.websocket`
+  (host-owned sockets, confined to `manifest.net.domains`, bounded, and released
+  with the plugin). The two audio permissions are declared, present in the
+  plugin API, and gated: with the grant the host has no device backend, so every
+  call is answered with a coded `UNSUPPORTED` refusal that is audited, until the
+  device service lands. See ADR 0257,
+  `07-plugins/03-plugin-api.md`, `07-plugins/04-plugin-security.md`, and
+  E2E-PLUGIN-global-shortcut-owns-only-its-own-command.
+
+## 2026-09-15 — Trusted extension custom agents (D426)
+
+**Add the PI-Desktop `registerAgent` ExtensionAPI contract for trusted extensions. A plugin registers bounded model metadata and a `stream` or `complete` callback; the plugin owns endpoint and authentication. The sidecar exposes a redacted model registry, assigns `extension-agent:<encoded-agent-key>` ids, and routes idle `setModel` through Electron main to the existing host-owned `session.configure` binding. The host never receives or persists plugin transport credentials, and `registerProvider` is a compatibility alias for the same plugin-owned stream shape. See ADR 0258, `07-plugins/16-trusted-extensions.md`, and E2E-TRUSTED-EXTENSION-custom-agent-stream-and-binding.**
+
+The pinned upstream pi-coding-agent package has `registerProvider` but no
+`registerAgent`; the PI-Desktop member is therefore an explicit adapter contract,
+not an unreviewed upstream registry passthrough.
+
+## 2026-09-15 — Plugin-declared providers are Host-owned rows (D427)
+
+**A plugin may declare `contributes.providers`, and the Host materializes each entry as a provider row in the native Settings → Provider list, owned by that plugin (`providers.owner_plugin_id`, schema v17; row id `plugin:<pluginId>:<declaredId>`). The declaration is re-read on every load and is authoritative for its own fields, so a dropped entry is deleted together with both credential references; `providers.update` / `providers.delete` refuse a plugin-owned row with `PROVIDER_OWNED_BY_PLUGIN`. A non-empty declaration needs the new high-risk `provider.register` permission, and an `oauth` block or `authKind: "oauth"` is refused until a Host-owned login flow exists. See ADR 0259, `07-plugins/02-plugin-manifest-schema.md` §5.4, `07-plugins/13-plugin-permissions-matrix.md`, `03-runtime/04-data-storage.md` §4.3/§7, and E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list.**
+
+It deliberately does not include plugin OAuth: the `provider.oauth` permission
+and a Host-owned plugin login flow are future work, so a declared provider has no
+OAuth login, token refresh, or account label today.
+
+## 2026-09-15 — Side chats materialize on first Send (#421)
+
+*(Retired by ADR 0268 on 2026-09-16: the feature and its surfaces were removed, and these IDs stay retired and must not be reused. The record is kept for history.)*
+
+Side-chat opening and selection quote prefill are renderer-only drafts. The
+first explicit nonempty Send creates the anchored child, with concurrent
+submissions deduplicated and failed drafts retained. Closing unsent drafts
+creates no history; existing children remain. See the
+[message quotes and side chats ADR](../../adr/message-quotes-and-side-chats.md)
+and E2E-CHAT-side-chat-fork.
+
+## 2026-09-15 — A tooltip never outlives its trigger (D428)
+
+- **The shared tooltip hook in `apps/desktop/src/components/ui.tsx` gains one
+  lifecycle contract: at most one themed tooltip is painted at a time
+  (claiming the slot closes the previous owner), and a visible tooltip closes
+  when its anchor unmounts, when the window loses focus, when the document is
+  hidden, on Escape, or when the pointer that revealed it leaves the anchor.
+  Every close also cancels a show that has not painted yet, so Escape or a
+  window blur inside the delay no longer paints a tooltip on an unfocused
+  window. A trigger that moves in the DOM within a quarter second without being
+  replaced keeps the tooltip instead of blinking it, and a tooltip revealed by
+  keyboard focus is not closed by unrelated pointer movement. The guard
+  listeners (window blur, visibility, Escape, pointer) are installed once for
+  the whole renderer instead of once per trigger. No delay, offset, placement,
+  or text behavior changes.**
+- **Row-level hover paint and hover-revealed row actions now follow the same
+  "still relevant?" rule: an idle row's hidden overflow control is
+  pointer-inert so the space it occupies belongs to the row — a click there
+  opens the conversation, or activates and toggles the project group, as the
+  title does — and a no-hover pointer gets the controls revealed under
+  `@media (hover: none)` so it never meets a hidden target. A window that loses
+  focus drops the row's and the project title's hover paint and hides the
+  revealed actions instead of leaving them latched.**
+- Renderer only: no protocol, storage, host, permission, or migration change.
+  See `04-ux/09-interaction-patterns.md` §6.4 and §9.1c,
+  E2E-UI-tooltip-never-outlives-its-trigger, and
+  E2E-UI-row-actions-do-not-swallow-the-row-click.
+
+Users reported a tooltip that occasionally never went away (the trigger
+unmounted, the window lost focus, or the pointer left the window without a
+leave event) and a session row whose hidden overflow control silently opened
+its menu instead of the conversation.
+
+## 2026-09-15 — Turn-queue priority block and row actions (D429)
+
+- "Send now" becomes a priority block instead of a head jump: a promoted entry
+  takes `MAX(priority) + 1` inside its session (schema v18, nullable `priority`),
+  so several promotions are delivered in the order they were clicked and the
+  waiting queue keeps its own `position` order behind them. Promoting an entry
+  that already carries a priority is `CONFLICT`, not another move.
+- The queued row gains move up, move down, and edit beside Send now and remove.
+  Move up/down swaps a waiting entry with its adjacent waiting neighbour through
+  `session.queueReorder` and never crosses the promoted block; editing removes
+  the row and returns its captured draft (text plus inline file references) to
+  the composer, and is refused while the input is non-empty.
+- A promoted row is locked until the Host delivers it: move up/down, edit, and
+  remove are disabled, and Send now reads as already decided.
+- The promoted block is delivered as adjacent user messages: the first promoted
+  entry starts the turn at the boundary and the rest are injected into that same
+  turn through the steering channel, so the model answers once for the whole
+  block instead of once per row. An injected entry's own turn is canceled; an
+  entry the runtime refuses to accept stays queued and leaves at the next
+  boundary as its own turn.
+- A settled turn is authoritative for the queue. A terminal event can be dropped
+  (Main never forwards one that names a turn it no longer owns) or never
+  emitted, and a turn left active inside the Host held its session's queue
+  forever — the "Send now, then Stop" stall. The settlement now closes the turn,
+  and a drain request that arrives while a pass is running is retried instead of
+  dropped. See ADR 0265, `03-runtime/01-ipc-protocol.md` (§5.6),
+  `03-runtime/04-data-storage.md`, `04-ux/08-component-spec.md` (§11), and
+  E2E-QUEUE-promote-orders-delivery-by-click.
+
+## 2026-09-16 — A manual disclosure keeps the reader's place (D430)
+
+- **A manual disclosure hands its own title to the scroller that owns it,
+  synchronously, before the expansion state changes.** The content
+  `ResizeObserver` still re-pins a pinned transcript on every content resize
+  (D287) and cannot tell a stream from a reader expanding a row, so the reader
+  states their intent first: the transcript leaves follow mode and the scroller
+  restores that title's viewport offset from inside the same observer, for as
+  many frames as the height keeps changing (an activity group animates its
+  `grid-template-rows`). `overflow-anchor: none` on `.thread-scroll` means this
+  has to be explicit.
+- **The anchor is the title element's offset from the scroller's top edge, not a
+  `scrollTop`, and the browser's own boundary clamping is adopted as the new
+  anchor.** A correction the content cannot reach, and a height change above the
+  title, are both handled without fighting the browser frame after frame. There
+  is no delayed "take the bottom back" compensation: the hold ends on real scroll
+  input, the jump-to-latest control, a new turn, or a navigation.
+- **Every scroll owner holds its own position and passes the hold outward.** The
+  transcript scroller and the nested delegate dock (`useFollowScroll`, D302) share
+  one controller; growing the dock grows the transcript's content, so an outer
+  scroller still in follow mode would drag the same title away.
+- **Input is attributed to the scroller that can consume it.** Only input that
+  really moves a container may release follow or a held position: a press on a
+  row, a control or an editable field is an ordinary click, a keystroke in a text
+  field belongs to the field, and input a nested scroller consumes is not the
+  outer scroller's gesture. Arrow keys still scroll and Space still activates a
+  focused title.
+- **Programmatic immediate scrolling records the `scrollTop` the scroller
+  actually reached**, and a sub-pixel tolerance is applied only to scroll events
+  no gesture produced. At DPR 1.1 follow asked for 841 and got 840.909; compared
+  strictly that fraction read as the reader scrolling up and dropped follow mode.
+  Real gestures are still compared exactly, so a one-pixel scroll unpins.
+- Renderer only: no protocol, storage, host, permission, or migration change.
+  See `04-ux/09-interaction-patterns.md` §9.1 and
+  E2E-CHAT-disclosure-toggle-keeps-reading-position.
+
+Readers reported that clicking a tool, thinking or activity title to expand it
+dragged the whole transcript up by the height of the opened detail, in a session
+that was sitting at the bottom — including after the turn had finished.
+## 2026-09-16 — The delete dialog, not the menu, owns the running-task refusal (#360, D431)
+
+- Amends the renderer half of D421. The sidebar menu and the Projects index menu
+  refused Delete project with a transient `project.deleteRunningBlocked` warning
+  whenever any of the project's sessions was running, and returned before
+  `ProjectDeleteDialog` was ever mounted. The refusal vanished with the toast
+  and left no path forward, so a project with one live task could not be deleted
+  at all — which is how #360 ("项目管理中无法真正删除项目") reads.
+- Both menus now always open the dialog. Each surface passes the project's live
+  running session ids (`runningSessions[session.id]`, over the rows it already
+  matches: `entry.sessions` in the sidebar, `sessionMatchesIndexProject` in the
+  index), and the dialog derives its copy from that prop on every render, so a
+  turn that starts or finishes while the dialog is open is reflected before the
+  user confirms.
+- The dialog adds a warning line naming `{{count}}` running sessions and swaps
+  its confirm label to `project.deleteRunningConfirm` ("Stop tasks and delete").
+  Confirming aborts exactly those sessions and only then calls `deleteProject`,
+  so removing a running turn stays a second, explicit confirmation of a stated
+  consequence. Cancelling removes nothing.
+- The host guard is unchanged: `projects.remove` still refuses with 1008 /
+  `CONFLICT` while an attached session has a running turn, and the dialog still
+  maps that refusal to `project.deleteRunningBlocked`. A turn that starts after
+  the abort loop is what that fallback covers.
+- Renderer only: no protocol, storage, host, permission, or migration change,
+  and no new default. `project.deleteRunningBlocked` keeps its meaning, copy,
+  and every translation. See ADR 0251, D421, and
+  E2E-PROJECT-delete-running-sessions-are-named-and-stopped.
+## 2026-09-16 — Plugin `workspace` fs roots follow the calling session (D432)
+
+- Every plugin `pi.fs.*` call whose mode root is `workspace` resolved the one
+  window-global visible workspace, so a plugin agent tool invoked from session B
+  (project B) read project A's root as soon as the user switched tabs, and failed
+  `NOT_FOUND` for every session at once when no workspace was visible (D093 fixed
+  the same rule for built-in tool execution; it never reached a plugin).
+- `plugin-runtime.ts` now resolves that root with a new private `fsRoot(loaded, rule)`
+  helper: the project of the tool session that invoked the call, asked for through
+  the additive host service `getWorkspacePathForSession`. `plugin-services.ts` wires
+  it from the session-to-project map it already keeps, so no new source of truth is
+  introduced.
+- Unchanged: the visible workspace stays the root for a panel-bridge call, which has
+  no tool session, and for a session the host does not track; a `userSelected` mode
+  still keeps the directory the user picked through `requestDirectory()`.
+- A session root now resolves when no workspace is visible at all, so a temporary
+  chat keeps working per session instead of failing for every session at once. A
+  panel call in that state still fails closed. `NOT_FOUND` for a `workspace` root is
+  therefore narrower: neither the invoking session's project nor a visible workspace
+  resolved.
+- No permission, realpath-containment, deny-list, or declared-scope/consent gate
+  changes, and the plugin API surface does not change: `pi.workspace.get` still
+  answers with the visible workspace and its project group.
+- See ADR 0266, `07-plugins/03-plugin-api.md` §3,
+  `07-plugins/13-plugin-permissions-matrix.md` §6, and
+  E2E-PLUGIN-fs-root-follows-the-calling-session.
+
+## 2026-09-16 — Quotes, annotations, and side chats are removed (ADR 0268)
+
+- Quote, the text-selection overlay, response annotations (comment editor,
+  floating index, source badges, composer attachment), and renderer-owned side
+  chats are removed from every surface. Message action rows keep Copy, Edit,
+  Delete, Fork, Retry, and Regenerate; the composer keeps its draft, chips, smart
+  Stop, and per-session draft slots; the work panel keeps its other tab kinds;
+  `session.fork` and the Fork action are unchanged.
+- Sends no longer compose a `# Response annotations:` block, and the display-side
+  reduction `requestTextWithoutAnnotations` is gone, so a prompt stored before the
+  removal is shown exactly as it was stored in the transcript, the edit seed, and
+  the queue preview.
+- Retired and never reusable: `D-LOCAL-message-quotes`, `D-LOCAL-selection-overlay`,
+  `D-LOCAL-response-annotations`, `D-native-sidechat-stream`, and the E2E IDs
+  E2E-CHAT-quote-prefill, E2E-CHAT-selection-markdown,
+  E2E-CHAT-selection-side-chat, E2E-CHAT-annotation-attachments,
+  E2E-CHAT-annotation-session-state, E2E-CHAT-annotation-source-index,
+  E2E-CHAT-annotation-ack-and-steering, E2E-CHAT-side-chat-fork,
+  E2E-CHAT-side-chat-stream, E2E-CHAT-side-chat-add-to-main,
+  E2E-CHAT-side-chat-promote, E2E-CHAT-side-chat-close, and
+  E2E-SESSION-native-side-chat-fork-survives-close.
+- No host protocol (v11), storage schema (v15), IPC channel, permission, or Rust
+  change. See ADR 0268.
+
+## 2026-09-16 — A control with no label states its square geometry
+
+- `.icon-btn` is shared with label-driven pills, so it takes its width from its
+  content — glyph plus 8px of side padding. Every icon-only use of it was
+  therefore taller than it was wide: the sidebar collapse control and the
+  composer's add button rendered 31×28, the composer's enhance and undo
+  controls 35×28 inside `.composer-right`, and the settings provider actions
+  30×28 from their 14px glyphs. The same control in the conversation topbar was
+  already a 28×28 square, so one function had two sizes.
+- Those controls now state `.icon-btn-square`, which pins both axes to the new
+  `--ds-control-size` (28px) token, keeps `flex: 0 0` so a crowded toolbar row
+  cannot shrink the control back out of square, and drops the side padding that
+  under the global `border-box` would leave a 12px content box for a 15px
+  glyph. Icon-only controls now match the square the topbar toggle, the
+  work-panel actions, and the send/stop controls already used.
+- `.composer-right .icon-btn` no longer sets inline padding. The label-driven
+  model/thinking chip sets its own padding with `!important`, so that
+  declaration only ever widened the icon-only controls beside it; the
+  maximizing enhance control keeps its label geometry while it is loading.
+- Renderer only: no protocol, storage, host, permission, or migration change.
+  See `04-ux/07-ui-design-system.md` §11.1 and `04-ux/08-component-spec.md`
+  §3.7.
+
+## 2026-09-16 — One geometry for every chrome icon control
+
+- The preview- and route-band lane actions (`.title-nav-btn`) rendered as 22px
+  tiles with `--radius-2xs` and a `--ds-tile` seat, beside 28px siblings: the
+  same dock toggle in the conversation topbar, the viewport-fixed work-panel
+  toggle, and the work-panel's own actions. One control, two sizes and two
+  shapes, in the same 46px band.
+- Those actions now take the shared chrome-control geometry (the `.ct-icon-btn`
+  group): a 28px square from `--ds-work-panel-toggle-size`, `flex: 0 0` so a
+  crowded band cannot squeeze them out of square, `--radius-md`, a transparent
+  seat with the semantic hover wash, and the 15px glyph every other chrome
+  control uses. `.title-nav-btn` keeps only its press feedback and active tone.
+- The preview action lane is derived from the control it reserves room for:
+  `--ds-preview-action-lane-width: calc(2 * var(--ds-work-panel-toggle-size) + 4px + 8px)`,
+  so the panel header's reserve and the buttons cannot drift apart.
+- Renderer only: no protocol, storage, host, permission, or migration change.
+  See `04-ux/08-component-spec.md` §2.
+
+## 2026-09-16 — The macOS traffic-light reserve has one source (D433)
+
+- The renderer's windowed lead-in for the macOS traffic lights was a hand-copied
+  `76px`: five declarations across `apps/desktop/src/styles/chrome.css` and
+  `apps/desktop/src/styles/work-panel.css` — `.main-titlebar-left` (`64px`, that
+  number minus the row's own 12px padding), `.conversation-topbar.ct-collapsed`
+  (`--ct-lead-inset`), `.sidebar-header`,
+  `.window-chrome-row:not(.sidebar-expanded)`, and the preview
+  `.work-panel-header` (`calc(76px + var(--ds-preview-action-lane-width))`) —
+  each with its own `[data-fullscreen="true"]` sibling. None of them was tied to
+  the `trafficLightPosition` the main process hands Electron, so either side
+  changing on its own would have drifted from the other.
+- The native geometry now has one home, `packages/shared/src/window-chrome.ts`:
+  `MAC_TRAFFIC_LIGHT_POSITION` (`{x:16,y:16}`) and
+  `MAC_TRAFFIC_LIGHT_CLUSTER_WIDTH_DIP` (`60`), with
+  `MAC_TRAFFIC_LIGHT_EDGE_DIP` (`16 + 60 = 76`) as the cluster's right edge. The
+  main process positions the buttons from those constants, and the renderer
+  injects the edge into `--ds-traffic-light-edge` at boot. Every consumer reads
+  `--ds-window-lead-inset`, which `chrome.css` composes once for
+  `:root[data-platform="darwin"]` as `--ds-traffic-light-edge` +
+  `--ds-traffic-light-gap` (`12px`) = `88px`.
+- The buttons used to sit flush against the green light, with a 0 gap. The
+  reserve now keeps `12px` of breathing room between the cluster's right edge and
+  the first shell control, which is why windowed mode moved from `76px` to
+  `88px`.
+- The per-selector `[data-fullscreen="true"]` overrides are gone. Fullscreen
+  hides the buttons, and the same token's `[data-fullscreen="true"]` rule drops
+  the reserve to the ordinary `8px` gutter for every consumer at once.
+- Windows and Linux are unchanged: `--ds-window-lead-inset` keeps its `0px`
+  default and those platforms still use the renderer-drawn controls in the 120px
+  right-side band. Plugin-panel windows create a plain frameless `BrowserWindow`
+  with no native traffic lights, so they are unaffected.
+- Renderer + shared constant only: no protocol, storage, host, permission, or
+  migration change, and no new default.
+- See `04-ux/08-component-spec.md`, `04-ux/09-interaction-patterns.md`, and
+  E2E-LAYOUT-three-column-width-priority.
+
+## 2026-09-16 — The work-panel header's buttons are one group
+
+- The work-panel header read as two clusters: the action group inside the header
+  (`+` and maximize, 4px apart) and the viewport-fixed collapse toggle outside
+  it. The separator between them was compounded from four declarations on
+  `.work-panel-actions` — `margin-right: 8px`, `padding-right: 8px`, a 1px
+  `--ds-border-subtle` divider, and a separate `--ds-work-panel-toggle-gap: 20px`
+  lane token — for a real 37px gap plus a hairline rule, so the same three
+  28px squares in the same 46px row looked like two unrelated clusters.
+- One token now spaces the whole row. `--ds-work-panel-control-gap: 4px`
+  replaces `--ds-work-panel-toggle-gap` and is the header's flex gap (tab strip
+  to action group), the `.work-panel-actions` gap (`+` to maximize), and — spent
+  by the header's right padding as
+  `calc(size + inset + control-gap)`, 44px — the gap from the action group to
+  the fixed collapse toggle. `.work-panel-actions` states spacing only: the
+  divider, inset, and margin are gone.
+- The lane still reserves the whole toggle, and the `+` trigger still clears the
+  toggle by 36px inside the lane (4px + the 28px maximize control + 4px), so the
+  `WORK_PANEL_HEADER_PROBE` 24px assertion and E2E-152's hit-region contract
+  still hold.
+- Renderer only: no protocol, storage, host, permission, or migration change,
+  and no new default. See `04-ux/08-component-spec.md` §5.2,
+  `04-ux/07-ui-design-system.md` §4.3, and
+  E2E-LAYOUT-three-column-width-priority.
+
+## 2026-09-16 — The work-panel controls are quiet icons, not filled seats
+
+- The work-panel header's `+` and maximize controls were painted with a
+  `--ds-tile` seat of their own, and the viewport-fixed collapse toggle added
+  `--ds-tile-deep` plus `--ds-raised-shadow` while `aria-pressed="true"`. In the
+  light theme that turned a row of three 28px controls into filled squares, with
+  the toggle reading as a raised circular pill floating over the panel header —
+  nothing like the top-left dock toggle and new-task controls beside them.
+- `+` and maximize now join the shared chrome-control group in `chrome.css` —
+  the same rule that seats the topbar's dock toggle, the viewport-fixed panel
+  toggle, and the preview/route-band lane actions — so they take one geometry
+  (28px square, `--radius-md`, `flex: 0 0`), one transparent seat, the semantic
+  `--ds-bg-hover` wash on pointer, and the `opacity: 0.4` disabled state. Their
+  duplicated rules in `work-panel.css` are gone; the partial keeps only the
+  action group's spacing.
+- The toggle's pressed state drops the fill and the raised shadow and keeps the
+  engaged ink, so the open state is the glyph swap plus `--ds-text-primary`.
+  `aria-pressed` still carries the state to assistive technology, and
+  `.app-work-panel-toggle` keeps its viewport-fixed ownership and `no-drag`
+  carve-out.
+- Keyboard focus is unchanged: the global `:focus-visible` outline applies as it
+  does to every other chrome icon control, so removing the retired
+  `:focus-visible` background wash costs no focus affordance.
+- Renderer only: no geometry, gap, inset, protocol, storage, host, permission, or
+  migration change, and no new token. See `04-ux/08-component-spec.md` §2.3 and
+  §5.2, `04-ux/07-ui-design-system.md` §4.3, and
+  E2E-LAYOUT-three-column-width-priority.

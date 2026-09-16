@@ -310,8 +310,13 @@ ids 和非负 `tokensBefore`；它不会插入 message/search 行
   存在于持久转录本中时，恢复分支之前的前缀取自转录本而非调用方。幸存
   消息保留所属的 `turn_id`
 - `session.beginTurn`
-- `session.queuePush` / `session.queueList` / `session.queueRemove` —— Host 拥有的
-  回合队列（D386 / ADR 0213，架构 v15）；push 按主体与 key 幂等，每会话最多八条
+- `session.queuePush` / `session.queueList` / `session.queueRemove` /
+  `session.queuePrioritize` / `session.queueReorder` —— Host 拥有的回合队列
+  （D386 / ADR 0213 / ADR 0265，架构 v18）；push 按主体与 key 幂等，每会话最多八条。
+  `queuePrioritize` 把条目的 `priority` 写为其会话优先区块的 `MAX + 1`（追加到区块末尾），
+  对已经带优先级的条目返回 `CONFLICT`；`queueReorder` 让一个未优先条目与其相邻的未优先
+  条目互换并返回 `{ moved }`。列出与投递顺序为：已优先条目按 `priority` 升序，其余按
+  `position` 升序
 - `session.endTurn` — 以原子方式将正在运行的回合移动到其终止状态，并且
 有条件地返回新创建的 `completed`/`error` 通知；它还会落定该会话的进行中回复
   检查点（D299）：`completed`/`error` 移除它；`recoverInflight: true`（sidecar
@@ -446,7 +451,13 @@ off | minimal | low | medium | high | xhigh | max
 
 ### 提供商与模型
 - `providers.list` / `providers.get` / `providers.create` /
-  `providers.update` / `providers.delete`
+- `providers.update` / `providers.delete` 拒绝插件自有的行
+  （`ownerPluginId`）：该行每次加载都由 manifest 刷新，因此只由其所属插件的
+  生命周期改动或删除，错误信息以 `PROVIDER_OWNED_BY_PLUGIN` 开头（ADR 0259）
+- `providers.setSecret({ id, secretValue })` — 写入或清除某一行 provider 的
+  API key（`secret:provider:<id>:api_key` 与行的 `secret_ref`）。这是插件自有行
+  接受的写入：只改声明要求的凭据，绝不改 manifest 拥有的字段。`secretValue`
+  为空或省略即删除已存 key。返回 `{ provider }`，未知 id 返回 `null`
 - `providers.getSecret` — 仅限 main/host，渲染器永远无法触达
 - `providers.listModels` / `providers.cacheModels` — 已发现的模型行及其
   宿主侧缓存（ADR 0027 / ADR 0134）

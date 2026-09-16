@@ -18,7 +18,6 @@ pub const METRIC_VERSION: u32 = 1;
 const CACHE_TTL_MS: i64 = 5 * 60 * 1000;
 const HEATMAP_DAYS: i64 = 365;
 const LARGE_CONTEXT_TOKENS: i64 = 100_000;
-const PROJECT_TOP_N: usize = 8;
 
 #[derive(Default)]
 pub struct SummaryCache(std::sync::Mutex<Option<(u64, i64, Value)>>);
@@ -340,10 +339,13 @@ pub fn summary(db: &Database, range_days: i64, project_id: Option<i64>) -> Resul
                 .map(|d| (Local::now().date_naive() - d).num_days() < range_days)
                 .unwrap_or(false)
         })
-        .fold(None, |best: Option<(&String, &i64)>, (date, tokens)| match best {
-            Some((_, best_tokens)) if *tokens <= *best_tokens => best,
-            _ => Some((date, tokens)),
-        });
+        .fold(
+            None,
+            |best: Option<(&String, &i64)>, (date, tokens)| match best {
+                Some((_, best_tokens)) if *tokens <= *best_tokens => best,
+                _ => Some((date, tokens)),
+            },
+        );
     cards.peak_day_tokens = peak.map(|(_, tokens)| *tokens).unwrap_or(0);
     cards.peak_day_date = peak.map(|(date, _)| date.clone());
     cards.longest_chat_ms = session_chat_ms.values().copied().max().unwrap_or(0);
@@ -640,8 +642,28 @@ mod tests {
         // sits outside the requested 7-day range but inside the 365-day
         // heatmap window, so its turn must still be counted exactly once.
         // Starts trail `now` because the scan is capped at summary()'s end.
-        insert_turn(&db, "t1", "s1", day(0) - 3_000, day(0) - 2_000, 100, 100, 0, "m");
-        insert_turn(&db, "t2", "s1", day(0) - 1_500, day(0) - 500, 200, 200, 0, "m");
+        insert_turn(
+            &db,
+            "t1",
+            "s1",
+            day(0) - 3_000,
+            day(0) - 2_000,
+            100,
+            100,
+            0,
+            "m",
+        );
+        insert_turn(
+            &db,
+            "t2",
+            "s1",
+            day(0) - 1_500,
+            day(0) - 500,
+            200,
+            200,
+            0,
+            "m",
+        );
         insert_turn(&db, "t3", "s1", day(1), day(1) + 60_000, 300, 300, 0, "m");
         insert_turn(&db, "t4", "s1", day(10), day(10) + 60_000, 400, 400, 0, "m");
         let summary = summary(&db, 7, None).unwrap();
@@ -663,10 +685,7 @@ mod tests {
             .heatmap
             .iter()
             .any(|cell| cell.date == local_date(day(2))));
-        assert_eq!(
-            summary.heatmap.iter().map(|day| day.turns).sum::<i64>(),
-            4
-        );
+        assert_eq!(summary.heatmap.iter().map(|day| day.turns).sum::<i64>(), 4);
     }
 
     #[test]

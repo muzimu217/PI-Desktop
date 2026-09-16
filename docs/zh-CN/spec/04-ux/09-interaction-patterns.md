@@ -851,9 +851,16 @@ Mode/provider/model/permission/shell 配置和新提示仍然存在
   （预订始终为 0）。
 - 后台会话工件永远不会更新可见面板。
 
-- 预览模式会卸载 MainChat，让工作面板填充侧边栏之外的客户区。窗口级 46px
-  chrome 行保留新建任务、侧边栏和本机窗口控件；侧边栏折叠时，macOS 窗口模式
-  左侧预留 76px，全屏预留 8px 给交通灯。
+- Preview mode unmounts MainChat and fills the client area beside the sidebar.
+  The 46px chrome row keeps shell/native controls but declares neither drag nor
+  no-drag across the panel and passes pointer events through outside controls.
+  The panel header alone owns dragging in the preview pane; its border box
+  excludes shell actions plus an 8px gap in both sidebar states on all platforms.
+  The left inset is 8px except collapsed-sidebar windowed macOS (88px through
+  `--ds-window-lead-inset`: the 76px native cluster edge from
+  `@pi-desktop/shared` plus a 12px gap).
+  Native clicks must operate controls and empty-header drags must move the
+  window; DOM/CDP clicks alone are not native hit-test proof.
 
 展开侧边栏固定为 275px。折叠/展开只改变列是否存在；历史上的调整大小手柄
 会隐藏，旧的宽度偏好不会继续持久化。
@@ -935,7 +942,7 @@ Mode/provider/model/permission/shell 配置和新提示仍然存在
   撤消发送。该撤消操作将恢复原始芯片顺序和标签；它
   从不解析序列化的 `@path` 文本。一旦回复内容开始，中止就会继续
   部分抄本，不恢复草稿。
-- 发送成功后，用户气泡仅把这些序列化的 `@path` 标记解析回与输入框一致的叶子名芯片用于展示。持久化消息和模型上下文仍是规范 `@path` 文本。点击芯片先经 `pi-desktop/fs/resolveRef` 补全引用——该通道搜索整个打开的项目，按项目组自身的文件夹顺序、主文件夹优先（ADR 0252）——再按解析结果打开：项目文件在随应用打包的 `pi.file-manager` 工作面板视图中打开（该视图不可用时退回宿主 `file:` 选项卡），会话临时目录或附件文件在宿主 `file:` 选项卡中打开，项目主文件夹中的 `.html`/`.htm` 页面仍在侧边浏览器中打开，因为侧边浏览器本就以该文件夹为根。交给工作面板的地址跟随应答的文件夹：主文件夹中的文件按项目内相对路径传递，同一项目的同级文件夹中的文件按绝对路径传递，与会话临时目录或附件文件一致。什么都没匹配到的芯片不打开任何东西，而是自己报告出来；系统默认应用不再由这次点击触发，该动作仍可从文件视图自己的右键菜单使用。
+- 发送成功后，用户气泡仅把这些序列化的 `@path` 标记解析回与输入框一致的叶子名芯片用于展示。持久化消息和模型上下文仍是规范 `@path` 文本。点击芯片先经 `pi-desktop/fs/resolveRef` 补全引用——该通道搜索整个打开的项目，按项目组自身的文件夹顺序、主文件夹优先（ADR 0263）——再按解析结果打开：项目文件在随应用打包的 `pi.file-manager` 工作面板视图中打开（该视图不可用时退回宿主 `file:` 选项卡），会话临时目录或附件文件在宿主 `file:` 选项卡中打开，项目主文件夹中的 `.html`/`.htm` 页面仍在侧边浏览器中打开，因为侧边浏览器本就以该文件夹为根。交给工作面板的地址跟随应答的文件夹：主文件夹中的文件按项目内相对路径传递，同一项目的同级文件夹中的文件按绝对路径传递，与会话临时目录或附件文件一致。什么都没匹配到的芯片不打开任何东西，而是自己报告出来；系统默认应用不再由这次点击触发，该动作仍可从文件视图自己的右键菜单使用。
 
 ### 8a.3 打开时的键盘
 

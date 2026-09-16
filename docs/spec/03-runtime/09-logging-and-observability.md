@@ -51,7 +51,15 @@ The application categories are:
 - `provider` — provider/model discovery, retries, and cache failures
 - `persistence` — transcript and outbox persistence failures
 - `updater` — updater diagnostics and errors
-- `diagnostics` — blocked navigation, menu, and template diagnostics
+- `diagnostics` — blocked navigation, menu, template, and outbound-fetch
+  diagnostics. The skill market's two channels record one
+  `skillMarket.sourceFailed` / `skillMarket.documentFailed` record per source
+  or document that produced nothing, with `source`, `host` and `kind`
+  (`policy` for a public-network-guard refusal, `network` otherwise) in `data`
+  and `NETWORK_POLICY_BLOCKED` in `code` for a refusal. The record carries the
+  host name only — never the URL, its path, query or credentials — because a
+  catalog source URL is user-supplied and the refused host is the whole
+  diagnostic value (issue #419).
 - `runtime` — host/sidecar lifecycle, uncategorized child output, and
   main-process `uncaughtException` / `unhandledRejection` records
 

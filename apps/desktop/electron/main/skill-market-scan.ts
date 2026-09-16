@@ -5,6 +5,7 @@
  * (the public-HTTPS client). One failing source only costs itself.
  */
 import {
+  isPublicNetworkPolicyFailure,
   isSafeSkillSourceUrl,
   sanitizeSkillCatalogId,
   splitSkillDocument,
@@ -17,9 +18,21 @@ import {
 
 export type CatalogRequest = (url: string, kind: "json" | "text") => Promise<unknown>;
 
+/** Why a source failed: the public-network guard refused it, or it errored. */
+export type SkillMarketFailureKind = "policy" | "network";
+
 export type SkillMarketSearchResult = {
   entries: SourcedSkillEntry[];
   failedSources: string[];
+  /**
+   * `failedSources` alone cannot tell the user why the market went quiet. Keyed
+   * by the same display name so the panel can explain a policy refusal (the
+   * local DNS lookup could not classify the host, which is what a proxy that
+   * answers DNS itself produces) apart from a source that is merely
+   * unreachable. Repeated names collapse, exactly as they already do in
+   * `failedSources`.
+   */
+  failureKinds: Record<string, SkillMarketFailureKind>;
 };
 
 export type SkillMarketDocument = {
@@ -33,6 +46,47 @@ const CACHE_TTL_MS = 5 * 60_000;
 const GITHUB_REPO = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:[/?#]|$)/;
 const JSDELIVR_GH = /^https:\/\/cdn\.jsdelivr\.net\/gh\/([^/]+)\/([^/]+)@([^/]+)\/(.+)$/;
 const SKILL_FILE = /(?:^|\/)SKILL\.md$/;
+
+/**
+ * Why a request failed, exported so the IPC boundary and the aggregator share
+ * one classifier instead of re-deriving it (issue #419).
+ */
+export function classifySkillMarketFailure(error: unknown): SkillMarketFailureKind {
+  // Structural check so this module keeps no dependency on the client's
+  // `node:dns` import and stays testable as a pure module.
+  return isPublicNetworkPolicyFailure(error) ? "policy" : "network";
+}
+
+/**
+ * Bare hostname for a diagnostics record, or undefined when the URL cannot be
+ * parsed. Never a path, query, port or credential: a catalog source URL is
+ * user-supplied and the log line only needs to name the host that was refused.
+ */
+export function skillMarketHost(url: unknown): string | undefined {
+  if (typeof url !== "string") return undefined;
+  try {
+    return new URL(url).hostname.toLowerCase() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The diagnostics payload for one failed catalog source. Built here, not at the
+ * call site, so the shape is unit-testable without Electron and so every
+ * failure record carries the same fields.
+ */
+export function skillMarketFailureDetail(
+  source: { name?: unknown; url?: unknown },
+  error: unknown,
+): { source?: string; host?: string; kind: SkillMarketFailureKind } {
+  const host = skillMarketHost(source.url);
+  return {
+    ...(typeof source.name === "string" && source.name ? { source: source.name } : {}),
+    ...(host ? { host } : {}),
+    kind: classifySkillMarketFailure(error),
+  };
+}
 
 const SKILL_CATEGORY_KEYWORDS: ReadonlyArray<readonly [SkillCatalogCategory, string[]]> = [
   ["data", ["data", "sql", "database", "postgres", "mongo", "redis", "analytics", "dataset", "spreadsheet", "excel", "xlsx", "csv", "dashboard", "chart", "visualization"]],
@@ -152,9 +206,20 @@ export function createSkillMarketAggregator(request: CatalogRequest) {
   async function search(query: string, sources: SkillMarketSource[]): Promise<SkillMarketSearchResult> {
     const trimmed = query.trim().toLocaleLowerCase();
     const usable = sources.filter((source) => isSafeSkillSourceUrl(source.url));
-    const failedSources = sources
-      .filter((source) => !isSafeSkillSourceUrl(source.url))
-      .map((source) => source.name);
+    // A source the syntactic guard never let out is a policy refusal, not a
+    // transport failure, and it must not be reported as an unreachable host.
+    const refused = sources.filter((source) => !isSafeSkillSourceUrl(source.url));
+    const failedSources = refused.map((source) => source.name);
+    // Two sources can carry the same display name (a default source and a user
+    // source with the same label), and `failedSources` already cannot tell such
+    // a pair apart. The refusal is the one worth surfacing, so `policy` wins
+    // the merge. A `Map` plus `Object.fromEntries` also keeps a source called
+    // `__proto__` from disappearing into the prototype.
+    const failures = new Map<string, SkillMarketFailureKind>();
+    const markFailure = (name: string, kind: SkillMarketFailureKind) => {
+      failures.set(name, failures.get(name) === "policy" || kind === "policy" ? "policy" : "network");
+    };
+    for (const source of refused) markFailure(source.name, "policy");
     const settled = await Promise.allSettled(
       usable.map(async (source) => {
         const entries = await loadSource(source);
@@ -170,7 +235,9 @@ export function createSkillMarketAggregator(request: CatalogRequest) {
     const seen = new Set<string>();
     settled.forEach((result, index) => {
       if (result.status === "rejected") {
-        failedSources.push(usable[index].name);
+        const name = usable[index].name;
+        failedSources.push(name);
+        markFailure(name, classifySkillMarketFailure(result.reason));
         return;
       }
       for (const entry of result.value) {
@@ -179,7 +246,7 @@ export function createSkillMarketAggregator(request: CatalogRequest) {
         entries.push(entry);
       }
     });
-    return { entries, failedSources };
+    return { entries, failedSources, failureKinds: Object.fromEntries(failures) };
   }
 
   async function fetchEntryDocument(entry: SkillCatalogEntry): Promise<SkillMarketDocument> {

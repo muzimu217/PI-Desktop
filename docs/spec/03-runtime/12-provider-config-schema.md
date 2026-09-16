@@ -41,6 +41,7 @@ Tables (canonical DDL in [04-data-storage](04-data-storage.md) §4.3–4.4, §4.
       ]
     },
     "secretRef": { "type": "string" },
+    "ownerPluginId": { "type": ["string", "null"] },
     "headers": {
       "type": "object",
       "additionalProperties": { "type": "string" },
@@ -240,6 +241,18 @@ account isolation. Agent-runtime supplies Copilot's context-sensitive request
 headers per call; a saved custom header with the same name overrides the
 default.
 
+
+A row a plugin declared through `contributes.providers` carries
+`ownerPluginId` (its row id is `plugin:<pluginId>:<declaredId>`), and it is a
+normal provider row for model resolution, discovery, connection testing, and
+session binding. It is read-only for the user path: `providers.update` and
+`providers.delete` refuse it with a `PROVIDER_OWNED_BY_PLUGIN` error. The
+declaration is re-read from the plugin manifest on every plugin load and is
+authoritative for its own fields, while stored `headers`, the OAuth account
+label, and a credential the user entered are kept. Disabling the plugin keeps
+the row and turns it off; uninstalling it, or removing the declaration, deletes
+the row and both credential refs (ADR 0259,
+`07-plugins/02-plugin-manifest-schema.md` §5.4).
 ### Copy a provider into an independent draft
 
 Model configuration offers **Copy** on ordinary non-OAuth provider rows. The
@@ -446,6 +459,8 @@ The canonical DDL lives in [04-data-storage](04-data-storage.md) (D086). Summary
 - behavior: persist config; if secretValue present, write secret store and set
   `secretRef`; legacy thinking fields may remain in
   `config_json.compatibility` but do not affect runtime resolution
+- a plugin-owned row is refused with `PROVIDER_OWNED_BY_PLUGIN`; its declaration
+  is the only writer of its own fields (§2)
 - out: `ProviderPublic`
 
 ### `providers.delete`
@@ -455,6 +470,8 @@ The canonical DDL lives in [04-data-storage](04-data-storage.md) (D086). Summary
   refresh token. The renderer uses this same operation for removing one OAuth
   account, so deleting one row cannot remove another account with the same
   `vendorKey`
+- a plugin-owned row is refused with `PROVIDER_OWNED_BY_PLUGIN`; the owning
+  plugin's lifecycle removes it
 - out: `{ ok: true }`
 
 ### `providers.testConnection`

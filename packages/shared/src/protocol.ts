@@ -77,6 +77,7 @@ export const IPC = {
     agentQueueList: "pi-desktop/agent/queue/list",
     agentQueueRemove: "pi-desktop/agent/queue/remove",
     agentQueuePrioritize: "pi-desktop/agent/queue/prioritize",
+    agentQueueReorder: "pi-desktop/agent/queue/reorder",
     agentGetStatus: "pi-desktop/agent/getStatus",
     agentInstructionsGet: "pi-desktop/agent/instructions/get",
     agentInstructionsSave: "pi-desktop/agent/instructions/save",
@@ -144,6 +145,12 @@ export const IPC = {
     providersCreate: "pi-desktop/providers/create",
     providersUpdate: "pi-desktop/providers/update",
     providersDelete: "pi-desktop/providers/delete",
+    /**
+     * Set or clear one provider's API key. Separate from `providersUpdate`
+     * because a plugin-declared row refuses a generic update while still
+     * needing the credential its declaration asks for.
+     */
+    providersSetSecret: "pi-desktop/providers/setSecret",
     providersTest: "pi-desktop/providers/testConnection",
     providersListModels: "pi-desktop/providers/listModels",
     providersRefreshModelCatalog: "pi-desktop/providers/refreshModelCatalog",
@@ -189,6 +196,7 @@ export const IPC = {
     mcpRemove: "pi-desktop/mcp/remove",
     mcpSetEnabled: "pi-desktop/mcp/setEnabled",
     mcpSetScope: "pi-desktop/mcp/setScope",
+    mcpTransfer: "pi-desktop/mcp/transfer",
     mcpTest: "pi-desktop/mcp/test",
     mcpImport: "pi-desktop/mcp/import",
     mcpMarketSearch: "pi-desktop/mcp/market/search",
@@ -201,6 +209,7 @@ export const IPC = {
     skillRemove: "pi-desktop/skill/remove",
     skillSetEnabled: "pi-desktop/skill/setEnabled",
     skillSetScope: "pi-desktop/skill/setScope",
+    skillTransfer: "pi-desktop/skill/transfer",
     skillRead: "pi-desktop/skill/read",
     skillReveal: "pi-desktop/skill/reveal",
     subagentList: "pi-desktop/subagent/list",

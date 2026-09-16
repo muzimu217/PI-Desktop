@@ -457,19 +457,33 @@ type AgentStatus = {
 
 Host 拥有每会话的 prompt 队列，renderer 只做镜像。运行中发送经
 `pi-desktop/agent/queue/push` 推入，无头 Agent Host 模块负责准入、排序并释放持久
-条目（`turn_queue`，架构 v15）。每次变化都以 `pi-desktop/agent/event/queueChanged`
+条目（`turn_queue`，架构 v18）。每次变化都以 `pi-desktop/agent/event/queueChanged`
 扇出。
 
 ```ts
 type AgentQueuePushRequest = { sessionId: string; content: string; attachments?: AgentPromptAttachment[]; idempotencyKey?: string };
-type QueuedTurnSummary = { id: string; sessionId: string; content: string; attachments?: AgentPromptAttachment[]; position: number; createdAt: string };
-// push -> QueuedTurnSummary；list -> { entries }；remove / prioritize -> { ok: true }；queueChanged -> { sessionId, entries }
+type QueuedTurnSummary = { id: string; sessionId: string; content: string; attachments?: AgentPromptAttachment[]; position: number; priority?: number; createdAt: string };
+// push -> QueuedTurnSummary；list -> { entries }；remove / prioritize -> { ok: true }；reorder -> { moved: boolean }；queueChanged -> { sessionId, entries }
 ```
 
 `push` 在会话已有八条时返回带 `queueFull` 的 `AGENT_BUSY`，同一 key 配不同输入时返回
-`IDEMPOTENCY_CONFLICT`。`prioritize` 把条目移到队列头部而不触碰运行中的回合，renderer 的
-“立即发送”随后请求优雅停止，使该条目在下一个边界启动。`remove` 取消尚未开始的条目。恢复
+`IDEMPOTENCY_CONFLICT`。`entries` 按投递顺序返回：已优先的条目在前并按 `priority` 升序
+（即点击顺序），其余条目按 `position` 排列。`prioritize` 把条目追加到优先区块末尾而不
+触碰运行中的回合，对已经带优先级的条目返回 `CONFLICT`，对已不再排队的回合同样拒绝；
+renderer 的“立即发送”随后请求优雅停止，使该条目在下一个边界启动。`reorder` 让一个未优先
+的条目与其相邻的未优先条目互换，对已优先条目、缺失条目或区块/队列边界返回
+`moved: false`；已优先的条目永远不会被当作相邻项。`remove` 取消尚未开始的条目。恢复
 的队列在桌面以 owner 身份接入之前保持挂起，因此重启绝不无人值守地启动工作。
+
+优先区块以**相邻消息**的形式投递，而不是拆成多个回合：第一个已优先条目在边界处启动回合，
+其后每个已优先条目都通过引导通道（`pi-desktop/agent/steer`，携带运行中回合的 id）注入同一
+回合，因此转录里用户行紧挨着出现、模型只回复一次。被注入的条目离开队列，它自己的回合被标记
+为已取消，因为它从不单独运行。运行时拒绝接收的条目仍留在队列中，在下一个边界作为自己的回合
+启动。
+
+队列的投递契约由 ADR 0265 冻结。回合自身的结算对队列具有权威性：终态事件可能被丢弃
+（点名 Main 已不再拥有的回合的终态事件永远不会到达模块），也可能根本没发出，因此结算会在
+模块内关闭该回合并释放它持有的队列。
 
 ### 5.7 会话协作投影
 
@@ -603,9 +617,11 @@ type AgentEvent =
 
 提供程序 `error` 事件可能包括以下中的有限诊断字段：
 `AppError.details`：`phase`（`request` 或 `stream`）、`providerStatus`、
-`providerCode`、`providerWaitMs`、`streamMs` 和 `retryAttempt`。这些领域
-是添加和编辑的；他们从不携带凭证或不受限制的
-提供商响应。瞬时流故障可能会在内部重播
+`providerCode`、`providerWaitMs`、`streamMs`、`retryAttempt`，以及网络故障
+时的 `networkCategory`、`networkCode`、`networkSyscall`、`networkHost` 和请求
+关联字段 `requestMessages`、`requestBytes`、`compactionGeneration`。这些字段
+都是新增且经过编辑的；它们从不携带凭据或不受限制的提供商响应，请求字段
+只有计数与字节大小。瞬时流故障可能会在内部重播
 同一回合，没有终端 `error` 事件或重复的辅助消息。
 第二次失败会发出终端标准化 `STREAM_FAILED` 错误。
 
@@ -1208,8 +1224,11 @@ ASCII slug：frontmatter `name` 能 slugify 时用它，否则 `SKILL.md` 用技
 
 桌面专用技能市场通道（不是 host RPC）走 Electron IPC：
 
-- `pi-desktop/skill/market/search` — `{ query, sources[] }` → `{ entries, failedSources }`。
+- `pi-desktop/skill/market/search` — `{ query, sources[] }` →
+  `{ entries, failedSources, failureKinds }`。
   主进程聚合目录 JSON 与 GitHub 仓库 SKILL.md 扫描。源 URL 必须通过公网 HTTPS 策略（ADR 0243）。单源失败只丢掉该源。
+  `failureKinds` 把 `failedSources` 中的每个名字映射到 `policy`（公网策略守卫拒绝,请求从未离开进程）或 `network`；面板据此区分策略/DNS 拒绝（即代理用户的典型情况）与单纯不可达。
+  守卫拒绝会以 `NETWORK_POLICY_BLOCKED`（spec 08 §3.1）暴露,安装面板正是按该错误码分类。
 - `pi-desktop/skill/market/fetch` — `{ entry }` → `{ name?, description?, body, resources? }`。
   主进程按同一策略拉取文档、拆 frontmatter，并可能附上 jsDelivr 目录中的兄弟 `.md`。渲染层通过现有 `skills.create` 安装。该策略即主进程公网网络客户端：语法 URL 防护、DNS 分类、逐跳重定向复核与响应上限——渲染层绝不直接触网。目录 id 会净化为 host `valid_capability_id`。
 
@@ -1308,11 +1327,11 @@ Chrome 和代理 CDP 位于随应用打包的 `pi.browser` 插件中，通过 `p
 - `fs/list({path})` → 条目首先按目录排序；忽略 `.git`，
   `node_modules`，默认忽略子集
   [15-工作区-忽略-规则](/zh-CN/spec/03-runtime/15-workspace-ignore-rules)
-- `fs/read({path, mimeType?})` → 文本 (≤512KB) / 图像数据 URL (≤5MB) / 二进制 / 太大。相对路径在工作区根内解析；`attachments/<sha256>` 以及已位于工作区、`<data_dir>/scratch/` 或 `<data_dir>/attachments/` 下的绝对路径在 realpath 校验后也可读（D334 / ADR 0172）；同一项目组中其他文件夹里的绝对路径同样可读（ADR 0249 §5、ADR 0252）。已知图片扩展名优先于 `mimeType`；无扩展名 blob 只接受图片 MIME 白名单。穿越、`~` 和其他逃逸被拒绝（`INVALID_ARGUMENT`）。
+- `fs/read({path, mimeType?})` → 文本 (≤512KB) / 图像数据 URL (≤5MB) / 二进制 / 太大。相对路径在工作区根内解析；`attachments/<sha256>` 以及已位于工作区、`<data_dir>/scratch/` 或 `<data_dir>/attachments/` 下的绝对路径在 realpath 校验后也可读（D334 / ADR 0172）；同一项目组中其他文件夹里的绝对路径同样可读（ADR 0249 §5、ADR 0263）。已知图片扩展名优先于 `mimeType`；无扩展名 blob 只接受图片 MIME 白名单。穿越、`~` 和其他逃逸被拒绝（`INVALID_ARGUMENT`）。
 - `fs/readImageDataUrl({ref, mimeType?})` → `FsImageDataUrlResult`（`image` 带 `dataUrl`，或 `missing` / `notImage` / `tooLarge`）。包含范围与 `fs/read` 相同。从不返回非图片字节。仅渲染器使用，不是插件宿主 API。
 - `fs/reveal({path})` → 在 Finder 中显示。包含范围与 `fs/read` 相同。
 - `fs/open({path})` → 用系统默认应用打开。词法包含范围与 `fs/read` 相同（读取额外做 realpath）。
-- `fs/resolveRef({ref, sessionId?})` → `FsChatRefResolveResult`（`{ match: FsChatRefMatch | null }`，match 指出应答的 `root`（`workspace` / `scratch` / `attachments`）、相对该应答根的 `relativePath`、绝对路径 `absolutePath` 与 `matchedBy`（`exact-relative` / `exact-absolute` / `path-suffix` / `basename`），以及在 `workspace` 命中时给出的 `projectRoot`（`{ path, name, primary }`，指出是哪个文件夹应答的））；`sessionId` 决定查哪个会话的临时目录。它补全智能体在聊天里打印的文件引用，因为渲染器看不到会话自己的临时目录：已经在某个已知根内指向真实文件的绝对引用直接胜出，`attachments/<sha256>` blob 直接对附件库解析；否则按优先级顺序搜索各根——整个打开的项目、再会话自己的临时目录（`<data_dir>/scratch/<sessionId>/`，ADR 0124）、最后附件库——第一个给出结果的根胜出。项目指的是打开的工作区背后的文件夹组（ADR 0249）：主文件夹先应答，其余文件夹随后按项目组自身顺序搜索（ADR 0252），因此简写落在同级文件夹里和落在主文件夹里一样自然，命中结果也指出是哪个文件夹应答的。同一个根内精确路径优先于简写；简写之间最长匹配尾优先，其次路径更浅者。文件面板的忽略集合同样生效。什么都没匹配到时返回 `match: null`；解析本身不打开任何东西（ADR 0251）。
+- `fs/resolveRef({ref, sessionId?})` → `FsChatRefResolveResult`（`{ match: FsChatRefMatch | null }`，match 指出应答的 `root`（`workspace` / `scratch` / `attachments`）、相对该应答根的 `relativePath`、绝对路径 `absolutePath` 与 `matchedBy`（`exact-relative` / `exact-absolute` / `path-suffix` / `basename`），以及在 `workspace` 命中时给出的 `projectRoot`（`{ path, name, primary }`，指出是哪个文件夹应答的））；`sessionId` 决定查哪个会话的临时目录。它补全智能体在聊天里打印的文件引用，因为渲染器看不到会话自己的临时目录：已经在某个已知根内指向真实文件的绝对引用直接胜出，`attachments/<sha256>` blob 直接对附件库解析；否则按优先级顺序搜索各根——整个打开的项目、再会话自己的临时目录（`<data_dir>/scratch/<sessionId>/`，ADR 0124）、最后附件库——第一个给出结果的根胜出。项目指的是打开的工作区背后的文件夹组（ADR 0249）：主文件夹先应答，其余文件夹随后按项目组自身顺序搜索（ADR 0263），因此简写落在同级文件夹里和落在主文件夹里一样自然，命中结果也指出是哪个文件夹应答的。同一个根内精确路径优先于简写；简写之间最长匹配尾优先，其次路径更浅者。文件面板的忽略集合同样生效。什么都没匹配到时返回 `match: null`；解析本身不打开任何东西（ADR 0262）。
 - `fs/list` 仍只限工作区；外面的遍历被拒绝（`INVALID_ARGUMENT`）。
 
 ## 13b. 桌面菜单和窗口 API

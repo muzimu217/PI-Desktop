@@ -53,6 +53,7 @@ import {
 } from "@pi-desktop/shared";
 import {
   TrustedExtensionRunner,
+  type RegisteredTrustedExtensionAgent,
   type TrustedExtensionBridge,
 } from "./extensions/runner.js";
 import type {
@@ -122,6 +123,7 @@ import {
   apiBindingForProviderModel,
   buildProviderModel,
   copilotRequestHeaders,
+  createExtensionAgentModels,
   createProviderModels,
   DEFAULT_CONTEXT_WINDOW,
   DEFAULT_MAX_TOKENS,
@@ -148,7 +150,7 @@ import {
   harvestRetainedReasoning,
   type ReasoningReplayIdentity,
 } from "./reasoning-replay.js";
-import { visionFromModelConfig } from "./model-capabilities.js";
+import { genericModelConfig, visionFromModelConfig } from "./model-capabilities.js";
 import type { ProjectInstructions } from "./project-instructions.js";
 import { projectInstructionsPrompt } from "./project-instructions-prompt.js";
 import { projectMemoryPrompt } from "./project-memory-prompt.js";
@@ -162,6 +164,7 @@ import {
   openCodeEndpointFromProvider,
   withOpenCodeSessionHeaders,
 } from "./opencode-session-headers.js";
+import { withCompactionRequestHeaders } from "./compaction-request.js";
 import {
   mergeProviderHeaders,
   providerHeadersEqual,
@@ -1456,6 +1459,13 @@ export class DesktopAgentRuntime {
   private delegationWaitTargets?: DelegationRecord[];
   private providerResponseStatus?: number;
   private providerRetryHeaders?: Record<string, string>;
+  /**
+   * Size and message count of the provider attempt in flight. A failed request
+   * has to be correlatable with how much context it carried, and on a network
+   * failure the request never returns a response to read it from (issue #234).
+   */
+  private providerRequestBytes?: number;
+  private providerRequestMessages?: number;
   private pendingProviderRetry?: ReturnType<typeof classifyAgentError>;
   /**
    * Shared bounded retry count for non-rate-limit transient failures, counted
@@ -1650,6 +1660,8 @@ Delegation rules:
         this.setAgentActivity({ phase: "waiting-model", since: Date.now() });
         this.providerResponseStatus = undefined;
         this.providerRetryHeaders = undefined;
+        this.providerRequestBytes = undefined;
+        this.providerRequestMessages = context.messages?.length;
         const requestOptions: SimpleStreamOptions = withProviderHeaders(
           withOpenCodeSessionHeaders(
             {
@@ -1658,8 +1670,9 @@ Delegation rules:
               sessionId: this.sessionId,
               // pi-ai only exposes onResponse after a request succeeds. Capture the
               // failed response separately so a 429 can honor Retry-After headers.
-              fetch: captureProviderResponse(options?.fetch, (response) => {
+              fetch: captureProviderResponse(options?.fetch, (response, requestBytes) => {
                 this.providerResponseStatus = response?.status;
+                this.providerRequestBytes = requestBytes;
                 // A gateway 502/503 can also state Retry-After, so keep headers for
                 // every status whose delay is usable instead of only for 429.
                 this.providerRetryHeaders = carriesRetryDelayHeaders(
@@ -1688,7 +1701,7 @@ Delegation rules:
           m,
           context,
           hookedOptions,
-          (retryOptions) => models.streamSimple(m, context, retryOptions),
+          (retryOptions) => this.models.streamSimple(m, context, retryOptions),
           {
             claim: (error, phase) => this.claimProviderRetry(error, phase),
             headers: () => this.providerRetryHeaders,
@@ -1994,8 +2007,11 @@ Delegation rules:
     ]
       .sort()
       .join(",");
-    return (
-      !this.disposed &&
+    const extensionAgentMatches =
+      Boolean(this.provider.extensionAgentKey) &&
+      this.provider.extensionAgentKey === config.provider.extensionAgentKey &&
+      this.provider.modelId === config.provider.modelId;
+    const providerMatches = extensionAgentMatches || (
       this.provider.id === config.provider.id &&
       this.provider.modelId === config.provider.modelId &&
       (this.provider.baseUrl ?? "") === (config.provider.baseUrl ?? "") &&
@@ -2005,8 +2021,11 @@ Delegation rules:
       providerHeadersEqual(this.provider.headers, config.provider.headers) &&
       this.provider.supportsReasoning === config.provider.supportsReasoning &&
       currentThinkingLevels === nextThinkingLevels &&
-      safeJson(this.provider.modelConfig ?? null) ===
-        safeJson(config.provider.modelConfig ?? null) &&
+      safeJson(this.provider.modelConfig ?? null) === safeJson(config.provider.modelConfig ?? null)
+    );
+    return (
+      !this.disposed &&
+      providerMatches &&
       this.mode === config.mode &&
       this.thinkingLevel ===
         clampThinkingLevel(config.provider, config.thinkingLevel) &&
@@ -2059,19 +2078,105 @@ Delegation rules:
     return { handled: await this.extensionRunner.runCommand(name, args) };
   }
 
+  private extensionProviderFor(agent: RegisteredTrustedExtensionAgent, model: Model<Api>): RuntimeProviderConfig {
+    const supportedThinkingLevels: ThinkingLevel[] = model.reasoning
+      ? ["off", "low", "medium", "high"]
+      : ["off"];
+    return {
+      id: agent.providerId,
+      name: agent.name,
+      modelId: model.id,
+      apiKey: "",
+      authKind: "none",
+      extensionAgentKey: agent.key,
+      supportsReasoning: model.reasoning,
+      supportedThinkingLevels,
+      modelConfig: genericModelConfig(model.id, ""),
+    };
+  }
+
+  private applyExtensionAgent(agent: RegisteredTrustedExtensionAgent, model: Model<Api>): void {
+    this.provider = this.extensionProviderFor(agent, model);
+    this.model = model;
+    this.models = createExtensionAgentModels({
+      providerId: agent.providerId,
+      providerName: agent.name,
+      model,
+      stream: { stream: agent.stream, streamSimple: agent.stream },
+    });
+    this.thinkingLevel = clampThinkingLevel(this.provider, this.thinkingLevel);
+    this.agent.state.model = model;
+    this.agent.state.thinkingLevel = this.thinkingLevel;
+  }
+
+  async activateTrustedExtensionAgent(agentKey: string, modelId: string): Promise<boolean> {
+    const found = this.extensionRunner?.findAgent(agentKey, modelId);
+    if (!found) return false;
+    this.applyExtensionAgent(found.agent, found.model);
+    return true;
+  }
+
+  private async setExtensionModel(model: unknown): Promise<boolean> {
+    if (!this.extensionRunner || !this.isIdle()) return false;
+    const agent = this.extensionRunner.findAgentModel(model);
+    if (!agent) return false;
+    const modelId = model && typeof model === "object" && typeof (model as { id?: unknown }).id === "string"
+      ? (model as { id: string }).id
+      : "";
+    const candidate = agent.models.find((item) => item.id === modelId);
+    if (!candidate) return false;
+    try {
+      const result = await this.host.call<{ ok?: boolean }>("extensions.model.configure", {
+        sessionId: this.sessionId,
+        mode: this.mode,
+        providerId: agent.providerId,
+        modelId: candidate.id,
+        thinkingLevel: this.thinkingLevel,
+      });
+      if (result?.ok === false) return false;
+      this.applyExtensionAgent(agent, candidate);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private isIdle(): boolean {
+    return !this.agent.state.isStreaming;
+  }
+
+  private extensionModelRegistry(): Record<string, unknown> {
+    const getRunner = () => this.extensionRunner;
+    const models = () => [this.model, ...(getRunner()?.getAgentModels() ?? [])];
+    return {
+      getAll: () => [...new Map(models().map((model) => [`${model.provider}/${model.id}`, model])).values()],
+      getAvailable: () => [...new Map(models().map((model) => [`${model.provider}/${model.id}`, model])).values()],
+      find: (providerId: string, modelId: string) =>
+        models().find((model) => model.provider === providerId && model.id === modelId),
+      getProviderDisplayName: (providerId: string) =>
+        getRunner()?.getAgents().find((agent) => agent.providerId === providerId)?.name ??
+        (providerId === this.provider.id ? this.provider.name : providerId),
+      getProviderAuthStatus: (providerId: string) => ({
+        configured: [this.provider.id, ...(getRunner()?.getAgents().map((agent) => agent.providerId) ?? [])].includes(providerId),
+        source: "plugin",
+      }),
+      hasConfiguredAuth: (model: { provider?: string }) =>
+        typeof model.provider === "string" &&
+        [this.provider.id, ...(getRunner()?.getAgents().map((agent) => agent.providerId) ?? [])].includes(model.provider),
+    };
+  }
+
   getTrustedExtensionReports() {
     return this.extensionRunner?.getLoadReports() ?? [];
   }
-
   private createExtensionBridge(): TrustedExtensionBridge {
     const runtime = this;
     return {
       sessionId: this.sessionId,
       cwd: this.projectPath ?? process.cwd(),
       getModel: () => runtime.model,
-      // The desktop owns the provider binding per session (D342); an
-      // extension cannot swap it from inside a turn.
-      setModel: async () => false,
+      setModel: (model) => runtime.setExtensionModel(model),
+      modelRegistry: runtime.extensionModelRegistry(),
       getThinkingLevel: () => runtime.thinkingLevel,
       setThinkingLevel: (level) => {
         runtime.thinkingLevel = clampThinkingLevel(runtime.provider, level as ThinkingLevel);
@@ -4635,6 +4740,9 @@ Delegation rules:
     const detailStatus = isRecord(error.details)
       ? error.details.providerStatus
       : undefined;
+    const detailNetworkCode = isRecord(error.details)
+      ? error.details.networkCode
+      : undefined;
     const providerStatus =
       typeof detailStatus === "number"
         ? detailStatus
@@ -4643,6 +4751,12 @@ Delegation rules:
       code: error.code,
       message: error.message,
       ...(typeof providerStatus === "number" ? { providerStatus } : {}),
+      // While the turn is still retrying, the transport errno is the only thing
+      // that tells a DNS failure from a TLS failure from a dropped socket; the
+      // localized summary cannot (issue #234).
+      ...(typeof detailNetworkCode === "string"
+        ? { networkCode: detailNetworkCode }
+        : {}),
     };
   }
 
@@ -4702,6 +4816,23 @@ Delegation rules:
       details: {
         ...existingDetails,
         phase,
+        // Correlation for a failure that produced no response to inspect: how
+        // much context and how many bytes the attempt carried, and which
+        // compaction generation the session was on (issue #234). Counts, flags
+        // and sizes only — never message content.
+        ...(this.providerRequestMessages !== undefined
+          ? { requestMessages: this.providerRequestMessages }
+          : {}),
+        ...(this.providerRequestBytes !== undefined
+          ? { requestBytes: this.providerRequestBytes }
+          : {}),
+        ...(this.activeCompaction
+          ? {
+              compactionGeneration: checkpointGeneration(
+                this.activeCompaction.details,
+              ),
+            }
+          : {}),
         ...(providerWaitMs !== undefined ? { providerWaitMs } : {}),
         ...(streamMs !== undefined ? { streamMs } : {}),
         ...(this.providerResponseStatus !== undefined &&
@@ -5683,7 +5814,10 @@ Delegation rules:
   ): Promise<Awaited<ReturnType<typeof compact>>> {
     return compact(
       preparation,
-      this.models,
+      // The summary is a provider request like any other turn, but
+      // pi-agent-core builds its options itself and never reaches `streamFn`,
+      // so the headers have to ride on the collection.
+      withCompactionRequestHeaders(this.models, this.provider, this.sessionId),
       this.model,
       undefined,
       this.thinkingLevel,

@@ -403,6 +403,18 @@ async function runtimeFor(
   runtimes.set(sessionId, runtime);
   // Load failures are diagnostics, never a failed prompt (spec 16 §4.4).
   await runtime.loadTrustedExtensions().catch(() => undefined);
+  if (provider.extensionAgentKey) {
+    const activated = await runtime.activateTrustedExtensionAgent(
+      provider.extensionAgentKey,
+      provider.modelId,
+    );
+    if (!activated) {
+      throw Object.assign(new Error("plugin agent is not available"), {
+        rpcCode: -32000,
+        errorCode: "MODEL_NOT_CONFIGURED",
+      });
+    }
+  }
   return runtime;
 }
 

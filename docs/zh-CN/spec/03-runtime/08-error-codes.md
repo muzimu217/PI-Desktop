@@ -68,6 +68,7 @@ type AppError = {
 | `APPROVAL_STALE` | 不 | RACP：审批已被处理或属于更早的回合 |
 | `PAYLOAD_TOO_LARGE` | 不 | RACP：帧超过协商的大小上限 |
 | `TIMEOUT` | 是的 | 通用超时 |
+| `NETWORK_POLICY_BLOCKED` | 不 | 主进程公网策略守卫拒绝了一次抓取：URL 未通过公网 HTTPS 语法检查,或本地 DNS 解析无法把该主机判定为公网地址（ADR 0243）。仅桌面端使用；在地址或解析器改变前,重试不会成功。 |
 | `HOST_SHUTTING_DOWN` | 是的 | 主机收到 EOF 正在排空；调用被拒绝而不是被启动 |
 | `RATE_LIMITED` | 是的 | 某个按调用方计的主机预算（插件会话导入、批量操作）在其窗口内被超出 |
 | `LIMIT_EXCEEDED` | 不 | 载荷超过了固定的主机上限（条目数、字节数）并被拒绝 |
@@ -292,6 +293,16 @@ Node sidecar 将提供商 SDK 错误映射到：
 不可重试 `PROVIDER_ERROR` 永远不会进入任何预算。预算耗尽后的失败仍然是
 致命的。
 
+`NETWORK_ERROR` 以有界的 `details` 携带真正失败的传输层：
+`networkCategory`（`dns`、`tls`、`timeout`、`refused`、`unreachable`、
+`reset`、`proxy`，或在没有留下任何线索时为 `unknown`）、`networkCode`
+（errno，例如 `ENOTFOUND`、`ECONNRESET`、`EPROTO`、`UND_ERR_SOCKET`），
+以及传输层提供时的 `networkSyscall` 和 `networkHost`。只保留裸主机名——
+绝不包含 URL、端口、路径、查询串或凭据——当 `providerCode` 会重复
+`networkCode` 时省略它。刻意不引入按层划分的错误码（`DNS_ERROR`、
+`TLS_ERROR`、`SOCKET_RESET` 等）：分类字段已能区分这些层，而无需为每一层
+增加用户可见的错误码与本地化文案。
+
 ### 权限超时
 UI/host 超时在内部发出 `PERMISSION_TIMEOUT`，工具结果向代理显示为拒绝 (`TOOL_DENIED`)。
 
@@ -320,9 +331,15 @@ UI/host 超时在内部发出 `PERMISSION_TIMEOUT`，工具结果向代理显示
 助手错误消息显示本地化摘要和稳定代码，并带有
 包含经过编辑的提供商响应的可访问详细信息披露，
 提供商 ID 和模型 ID。提供商详细信息上限为 600 个字符，并且
-公共 credential/header 值在事件发射之前进行编辑或
+公共 credential/header 值在事件发射或持久化之前进行编辑。
 详细信息披露也可能显示有界的 `phase`、`providerStatus`、`providerCode`、
-`providerWaitMs`、`streamMs` 和 `retryAttempt` 字段。
+`providerWaitMs`、`streamMs`、`retryAttempt`、`networkCategory`、
+`networkCode`、`networkSyscall`、`networkHost`、`requestMessages`、
+`requestBytes` 和 `compactionGeneration` 字段。请求字段只有计数与字节大小，
+压缩字段是检查点世代计数器，均不携带消息内容。当瞬时提供商故障正在重试时，
+活动指示器的原因气泡会显示本地化摘要、稳定错误码，并在网络故障时显示传输层
+errno（`NETWORK_ERROR · ENOTFOUND`），因此失败层级在重试期间与日志记录中
+同样可见。
 
 ## 6. i18n 按键约定
 

@@ -45,14 +45,14 @@ type PluginAppearance = {
 事件（见下文）上收到实时更新。在没有该通道的旧宿主上，调用以
 `UNSUPPORTED` 拒绝；面板应回退到操作系统偏好和它自己的面板内选择。
 
-`app.setTheme`（需要 `ui.theme`，ADR 0249）应用与设置选择器相同的
+`app.setTheme`（需要 `ui.theme`，ADR 0260）应用与设置选择器相同的
 `AppSettings.theme`。接受内置偏好或当前已注册的插件主题 id；未知 id 以
 `INVALID_ARGUMENT` 拒绝。宿主会持久化设置、刷新原生 chrome / 面板外观，
 并向渲染进程发出 `settingsChanged`。
 
 ### 主题（需要 `ui.theme`）
 
-调用方插件自有主题的运行时注册表。生产模式可用，无需卸载/重载（ADR 0249）。
+调用方插件自有主题的运行时注册表。生产模式可用，无需卸载/重载（ADR 0260）。
 
 ```ts
 pi.themes.upsert(input: {
@@ -172,7 +172,7 @@ pi.fs.requestDirectory(): Promise<{ path: string; name: string } | null>
 
 `workspace.get` 回答主根——`path` 与其叶子 `name` 都保持不变——并在该文件夹属于某个项目组
 （ADR 0249）时额外给出 `projectId` 与 `roots`：项目组按自身顺序登记的全部文件夹，主文件夹在前，
-每项为 `{ path, name, primary }`（ADR 0252）。`workspace:changed` 携带同一对象，两者都由主机持有
+每项为 `{ path, name, primary }`（ADR 0263）。`workspace:changed` 携带同一对象，两者都由主机持有
 的项目组记录回答，因此事件与主动拉取不会互相矛盾。无法解析项目组的主机会省略 `projectId` 与
 `roots`，也就是插件本来就会处理的 `{ path, name }`；读取这些元数据不需要新权限，也不新增 SDK 方法。
 
@@ -184,12 +184,12 @@ pi.fs.requestDirectory(): Promise<{ path: string; name: string } | null>
 `fs.readText` 使用相同的 `fs.read` 根目录、符号链接、受保护路径、拒绝列表和范围检查；
 目录会被拒绝。主机会记录这次操作。路径默认相对根目录；只有「本项目已注册的另一个文件夹根」
 之内的绝对路径才会被接受，而且**只有这个动作与 `fs.reveal` 接受**（其他模式一律不接受
-绝对路径），该根随即成为这次请求的包含基点（ADR 0249 §5、ADR 0253）——这正是视图用来指
+绝对路径），该根随即成为这次请求的包含基点（ADR 0249 §5、ADR 0264）——这正是视图用来指
 名「非主文件夹里的文件」的形状。
 
 `fs.reveal` 在操作系统文件管理器中显示一个已存在且可读取的文件，并在平台支持时选中它。
 它使用相同的 `fs.read` 检查，拒绝目录，并记录成功和失败。路径的接受方式与 `fs.openDefault`
-完全一致：默认相对根目录，落在本项目另一个已注册文件夹根之内时可以是绝对路径（ADR 0253）。
+完全一致：默认相对根目录，落在本项目另一个已注册文件夹根之内时可以是绝对路径（ADR 0264）。
 
 路径相对于该模式的 root —— 工作区，或者当该模式声明
 `root: "userSelected"` 时，用户通过 `requestDirectory()` 选中的目录。
@@ -197,6 +197,8 @@ pi.fs.requestDirectory(): Promise<{ path: string; name: string } | null>
 而凭证 deny-list 压过两者（参见
 [04-plugin-security.md](/zh-CN/spec/07-plugins/04-plugin-security) §6）。
 `remove` 不递归，并且把路径移进系统回收站。
+在 `workspace` 根下，路径相对于调用该调用的工具会话所属的项目，面板调用没有工具会话时
+回退到可见工作区（ADR 0266）。
 
 `list` 返回单个目录的条目（按名称排序），使插件可以惰性遍历目录树，
 而不必拉取整个仓库的 `glob` 再自行重组。它施加与 `glob` 完全相同的守卫，
@@ -381,6 +383,12 @@ Session ID，并复用该会话的项目、模型、上下文和权限配置；`
 不是 worker 身份。`status` 和 `result` 是有界投影，不会加载完整转录本。`cancel` 只中断
 精确的排队投递或绑定回合，并保留目标会话及其历史。
 
+`spawn` 中显式指定的 `modelKey` 属于 AI 自动调度的模型选择，需要该模型自身的
+`ModelBinding.availableForSubagents` 许可；对用户未勾选的模型，宿主在创建 worker 之前
+返回 `PERMISSION_DENIED`。省略 `modelKey` 仍然是继承——先取已勾选的模型，否则取默认
+模型——显式写出默认模型自己的键同样按继承处理，而不是一次选择
+（ADR subagent-model-opt-in）。
+
 `spawn` 和 `send` 仅在插件当前 Agent 工具调用期间有效。broker 注入 `pluginId`、来源
 `sessionId`、来源 `turnId` 和调用身份；插件参数不能提供或覆盖这些字段。面向用户的插件
 面板可使用自有插件身份调用 `cancel`，但不能用该路径发送或创建工作。宿主执行来源权限
@@ -511,6 +519,32 @@ pi.net.fetch(input: {
 }): Promise<{ status: number; headers: Record<string, string>; bodyText: string }>
 ```
 
+```ts
+pi.net.websocket.connect(input: {
+  url: string
+  headers?: Record<string, string>
+  protocols?: string[]
+  timeoutMs?: number
+}): Promise<{ socketId: string }>
+
+pi.net.websocket.send(input: { socketId: string; data: string | Uint8Array }): Promise<void>
+pi.net.websocket.close(input: { socketId: string; code?: number; reason?: string }): Promise<void>
+```
+
+需要 `net.websocket`。`connect` 会和 `fetch` 一样被严格限制在
+`manifest.net.domains` 之内，`connect` / `close` 会记入审计。帧以宿主事件的
+形式到达：`net:websocket:open`、`net:websocket:message`、`net:websocket:close`、
+`net:websocket:error`，每个都带着持有它的 `socketId`，用 `pi.events.on` 订阅。
+只有持有该套接字的那个插件会收到它们。
+
+套接字由宿主持有，所以插件不能超过四个套接字，不能发送或接收大于 1 MiB 的帧，
+也不能排队超过 4 MiB 的未发送数据；每一种都会被拒绝（`LIMIT_EXCEEDED`），或者
+直接关闭连接，而不是让宿主的内存继续增长。一次 connect 会带上 `headers` 与
+`protocols`，所以按连接认证的端点无需把凭证暴露给插件代码。拒绝会说明原因：
+非 `ws(s)` 的 URL 或畸形的协议令牌是 `INVALID_ARGUMENT`，握手没有完成是
+`TIMEOUT`，握手失败是 `CONNECT_FAILED`，套接字不属于该插件是 `NOT_FOUND`，
+主机不在白名单内是 `PERMISSION_DENIED`。
+
 ### 桌面控制（需要 `desktop.control`）
 
 ```ts
@@ -557,6 +591,84 @@ navigator.mediaDevices.getUserMedia({ audio: true })
 设备权限。插件拿不到原生麦克风句柄或宿主密钥；浏览器的语音识别和语音合成
 仍由页面持有。面板应提供文本回退，并通过其无障碍状态播报权限或识别失败。
 
+### 音频（需要 `audio.capture.background` / `audio.playback.background`）
+
+**可以调用，但本条分支尚未实现设备后端。** `pi.audio` 存在于插件宿主进程
+中，恰好暴露下面这十个方法。每个方法都保留自己的权限要求：六个采集方法
+（`getInputDevices`、`openInput`、`closeInput`、`getCaptureState`、
+`onInputFrame`、`offInputFrame`）需要 `audio.capture.background`，四个播放
+方法（`openOutput`、`writeOutput`、`stopOutput`、`closeOutput`）需要
+`audio.playback.background`。没有授权时调用会被拒绝为 `PERMISSION_DENIED`，
+并按权限名记入审计，与其他所有需要把关的 API 完全一致。拿到授权后宿主仍然
+没有设备后端，所以每次调用都会以带错误码的 `UNSUPPORTED` 拒绝：消息是
+`host api not available: audio.<method>`，审计条目是
+`{ api: "audio.<method>", ok: false, errorCode: "UNSUPPORTED" }`。八个异步
+方法用这个错误拒绝；`onInputFrame` / `offInputFrame` 是无法 reject 的同步
+注册辅助函数，因此它们直接抛出带同一个 `code: "UNSUPPORTED"` 的 `Error`，
+而不是注册一个永远不会触发的处理器。不会有任何东西接触设备，也不会产生
+任何帧。`onInputFrame` 是注册回调 —— 它不是事件名 —— 帧形状见
+`packages/plugin-sdk/src/index.ts` 中的 `PluginAudioInputFrame`。等设备服务
+落地后，权限和这个表面都保持不变，只有拒绝会被真实行为取代：设备由宿主
+持有，插件只交换 PCM16 帧，永远拿不到设备句柄、`MediaStream`、操作系统
+设备路径或 Node 流，每个插件只允许一条输入流，禁用、卸载或崩溃会停止采集
+并丢弃已排队的播放。
+
+```ts
+pi.audio.getInputDevices(): Promise<PluginAudioInputDevice[]>
+pi.audio.openInput(options?: PluginAudioOpenInputOptions): Promise<PluginAudioInputSession>
+pi.audio.closeInput(streamId: string): Promise<void>
+pi.audio.getCaptureState(): Promise<PluginAudioCaptureState>
+pi.audio.onInputFrame(handler: (frame: PluginAudioInputFrame) => void): void
+pi.audio.offInputFrame(handler: (frame: PluginAudioInputFrame) => void): void
+pi.audio.openOutput(options: PluginAudioOpenOutputOptions): Promise<PluginAudioOutputSession>
+pi.audio.writeOutput(input: { streamId: string; data: Uint8Array }): Promise<void>
+pi.audio.stopOutput(streamId: string): Promise<void>
+pi.audio.closeOutput(streamId: string): Promise<void>
+```
+
+### 键盘（需要 `keyboard.globalShortcut`）
+
+```ts
+pi.keyboard.registerGlobalShortcut(input: {
+  id: string
+  accelerator: string
+  command: string
+}): Promise<PluginGlobalShortcut>
+
+pi.keyboard.unregisterGlobalShortcut(id: string): Promise<void>
+pi.keyboard.listGlobalShortcuts(): Promise<PluginGlobalShortcut[]>
+
+type PluginGlobalShortcut = {
+  id: string
+  accelerator: string
+  command: string
+  registered: boolean
+  error?: string
+}
+```
+
+宿主 —— 而不是插件 —— 持有 Electron 的 `globalShortcut`。插件把一个加速键
+映射到自己的一条命令，由宿主完成注册、冲突检查、触发和释放；插件永远
+拿不到键盘钩子、`before-input-event`、原始输入设备或按键事件流，一次触发
+也只是属于该插件的一条命令。
+
+`command` 必须已经由调用插件注册；否则以 `INVALID_ARGUMENT` 失败。被操作
+系统保留、被 PI-Desktop 自己当前占用（默认 `Alt+Space` 打开插件启动器、
+`Mod+Shift+W` 唤起窗口；用户改绑后释放出来的加速键可以再次被插件使用）或
+已被另一个插件持有的加速键会被拒绝而不是被抢走，被拒绝的重新注册会保留原来
+的绑定。拒绝是返回的结果，不是抛出的异常：
+`registerGlobalShortcut` 以 `registered: false` 解析，并带 `error` 为
+`SHORTCUT_CONFLICT`、`SHORTCUT_UNAVAILABLE`（平台拒绝）、
+`INVALID_ACCELERATOR` 或 `LIMIT_EXCEEDED`（每个插件最多 8 条）。
+`UNSUPPORTED` 和 `INVALID_ARGUMENT` 会抛出。用同一个 `id` 再次注册会替换
+该条目的加速键。
+
+每条带 `default` 的 `contributes.globalShortcuts` 条目会在插件加载后由宿主
+注册，但仅当它的命令确实注册成功；没有 `default` 的条目等待
+`registerGlobalShortcut` 调用。`unregisterGlobalShortcut` 删除一条条目，
+未知 id 时什么都不做；`listGlobalShortcuts` 列出宿主当前为调用插件持有的
+条目。禁用、卸载和崩溃时全部释放，注册 / 注销都会记入审计。
+
 ## 4. 错误模型
 
 ```ts
@@ -590,7 +702,7 @@ pi.events.off(event, handler)
   论点。 `pi.bus.subscribe` 是接收这些信息的正常方式； `events.on`
 查看插件持有的每个订阅的原始流。
 - `workspace:changed` —— 载荷是 `workspace.get()` 的对象或 `null`，在缓存的工作区路径变化时发送：
-  主文件夹的 `path` 与 `name`，以及在该文件夹属于某个项目组时的 `projectId` 与 `roots`（ADR 0252）。
+  主文件夹的 `path` 与 `name`，以及在该文件夹属于某个项目组时的 `projectId` 与 `roots`（ADR 0263）。
   一次运行中的第一个工作区可能先不带文件夹发送一次、再带文件夹重发一次，因为项目组记录是在那次推送
   之后才读取的。
 - `plugin:settingsChanged`（由插件设置页面编辑触发）
@@ -672,7 +784,7 @@ window.pluginBridge.on(event, handler)
 - `appearance:changed` —— 载荷是上面的 `PluginAppearance`，在应用的配色或
   语言发生变化时发送，因此面板可以实时重新着色和重新标注文案。
 - `workspace:changed` —— 载荷是 `workspace.get()` 的对象或 `null`，在打开的项目变化时发送：
-  主文件夹的 `path` 与 `name`，以及在该文件夹属于某个项目组时的 `projectId` 与 `roots`（ADR 0252）。
+  主文件夹的 `path` 与 `name`，以及在该文件夹属于某个项目组时的 `projectId` 与 `roots`（ADR 0263）。
 - `view:open`（仅限停靠的工作面板视图；独立 `ui.panel` 窗口不会收到）——载荷为
   `{ path: string }`，即主机要求该视图展示的 location。创建时就带 location 的视图
   已经从入口 URL 拿到它；这个事件投递的是之后的 location。
@@ -729,6 +841,16 @@ window.pluginBridge.on(event, handler)
 - `clipboard.*`、`shell.openExternal`、`net.fetch`
 - `browser.*`（访客页 CDP；`browser.cdp`）
 - `services.register` / `unregister`、`bus.publish` / `subscribe`、`events.on` / `off`
+- `keyboard.registerGlobalShortcut` / `unregisterGlobalShortcut` / `listGlobalShortcuts`
+  （`keyboard.globalShortcut`；Electron 的 `globalShortcut` 由宿主持有）
+- `net.websocket.connect` / `send` / `close`（`net.websocket`；套接字由宿主
+  持有，受白名单限制，有界，随插件一起释放）
+
+`pi.audio.*` 已存在于插件宿主进程中并且可以调用：十个方法都由
+`audio.capture.background` / `audio.playback.background` 把关，而这条分支没有
+设备后端，所以获得授权的调用会以带错误码的 `UNSUPPORTED` 拒绝，并记入该方法
+自己的审计条目（`audio.<method>`、`ok: false`）；`onInputFrame` /
+`offInputFrame` 无法 reject，因此同步抛出同一个错误码。不会打开任何设备。
 
 本机插件通知使用 Electron 主进程通知界面；
 他们不会在任务通知收件箱中创建持久行，并且不会

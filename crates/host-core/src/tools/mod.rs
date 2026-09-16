@@ -16,8 +16,8 @@ use tokio::process::{ChildStderr, ChildStdin, ChildStdout, Command};
 use tokio::sync::{mpsc, watch};
 
 use crate::index::IndexStore;
-use ignore::WalkBuilder;
 use crate::workspace::{resolve_tool_path_with_external, simple_canonicalize, ToolRoot};
+use ignore::WalkBuilder;
 
 mod grep_rg;
 pub mod hashline;
@@ -3300,8 +3300,8 @@ mod tests {
                 allow_external_paths: true,
                 hashline: None,
                 index: None,
-    index_grep_boost: false,
-},
+                index_grep_boost: false,
+            },
         )
         .await;
         assert_eq!(
@@ -3461,8 +3461,8 @@ mod tests {
                 allow_external_paths: true,
                 hashline: None,
                 index: None,
-    index_grep_boost: false,
-},
+                index_grep_boost: false,
+            },
         )
         .await;
         assert!(read.ok, "external read failed: {:?}", read.content);
@@ -3486,8 +3486,8 @@ mod tests {
                 allow_external_paths: true,
                 hashline: None,
                 index: None,
-    index_grep_boost: false,
-},
+                index_grep_boost: false,
+            },
         )
         .await;
         assert!(grep.ok, "external grep failed: {:?}", grep.content);
@@ -3511,8 +3511,8 @@ mod tests {
                 allow_external_paths: true,
                 hashline: None,
                 index: None,
-    index_grep_boost: false,
-},
+                index_grep_boost: false,
+            },
         )
         .await;
         assert!(
@@ -3540,8 +3540,8 @@ mod tests {
                 allow_external_paths: true,
                 hashline: None,
                 index: None,
-    index_grep_boost: false,
-},
+                index_grep_boost: false,
+            },
         )
         .await;
         assert!(glob.ok, "external glob failed: {:?}", glob.content);
@@ -3569,8 +3569,8 @@ mod tests {
                 allow_external_paths: true,
                 hashline: None,
                 index: None,
-    index_grep_boost: false,
-},
+                index_grep_boost: false,
+            },
         )
         .await;
         assert!(write.ok, "external write failed: {:?}", write.content);
@@ -3592,8 +3592,8 @@ mod tests {
                 allow_external_paths: true,
                 hashline: None,
                 index: None,
-    index_grep_boost: false,
-},
+                index_grep_boost: false,
+            },
         )
         .await;
         assert!(edit.ok, "external edit failed: {:?}", edit.content);

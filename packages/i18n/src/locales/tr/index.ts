@@ -2266,6 +2266,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
     turns: "{{count}} tur",
     tooltipTurns_one: "1 tur",
     tooltipTurns_other: "{{count}} tur",
+    dayDelta: "O gün",
     granularityDaily: "Günlük",
     granularityWeekly: "Haftalık",
     granularityCumulative: "Kümülatif",

@@ -328,7 +328,7 @@ test("weeklyBuckets returns no buckets for an empty series", () => {
 test("weeklyBuckets groups a single day into its ISO week (Monday start)", () => {
   // 2026-03-10 is a Tuesday; its ISO week starts Monday 2026-03-09.
   const buckets = weeklyBuckets([{ date: "2026-03-10", tokens: 400 }]);
-  assert.deepEqual(buckets, [{ start: "2026-03-09", end: "2026-03-10", tokens: 400 }]);
+  assert.deepEqual(buckets, [{ start: "2026-03-09", end: "2026-03-10", tokens: 400, turns: 0 }]);
 });
 
 test("weeklyBuckets sums whole weeks and stays stable across a year boundary", () => {
@@ -342,8 +342,22 @@ test("weeklyBuckets sums whole weeks and stays stable across a year boundary", (
     { date: "2025-01-06", tokens: 50 },
   ]);
   assert.deepEqual(buckets, [
-    { start: "2024-12-30", end: "2025-01-05", tokens: 100 },
-    { start: "2025-01-06", end: "2025-01-06", tokens: 50 },
+    { start: "2024-12-30", end: "2025-01-05", tokens: 100, turns: 0 },
+    { start: "2025-01-06", end: "2025-01-06", tokens: 50, turns: 0 },
+  ]);
+});
+
+test("weeklyBuckets carries the daily turn counts into the week bucket", () => {
+  // The heatmap cells report turns; the weekly tooltip reads them straight off
+  // the bucket, so the sum has to survive the aggregation (and stay 0 when the
+  // source — e.g. stats.dailyTotals — has no turn count at all).
+  const buckets = weeklyBuckets([
+    { date: "2026-03-09", tokens: 100, turns: 2 },
+    { date: "2026-03-10", tokens: 300, turns: 5 },
+    { date: "2026-03-11", tokens: 50 },
+  ]);
+  assert.deepEqual(buckets, [
+    { start: "2026-03-09", end: "2026-03-11", tokens: 450, turns: 7 },
   ]);
 });
 
@@ -520,4 +534,57 @@ test("tooltip styles are token-based and cannot steal the hover", async () => {
   assert.match(block, /var\(--text-/);
   // The chart panel must let the bubble escape the tile edge.
   assert.match(css, /\.stats-chart-panel \{[\s\S]*?overflow: visible/);
+});
+
+test("y-axis stops stay distinct at every magnitude", () => {
+  // A quarter-stop axis printed "0, 0, 1, 1, 1" once the totals were single
+  // digit, so the step is derived from the top and the top stop is always the
+  // real maximum (the axis is capped by the data, not floating above it).
+  assert.match(page, /function axisTicks\(axisMax: number\)/);
+  assert.match(page, /values\.push\(axisMax\)/);
+  // The baseline label is now the axis' own 0 stop — the bar view used to draw
+  // its "0" at y = bottom + 14 inside a 126-unit viewBox, which clipped it into
+  // a stray "^" under the plot.
+  assert.doesNotMatch(page, /y=\{bottom \+ 14\} textAnchor="start">\s*0/);
+});
+
+test("weekly and cumulative views share one axis frame and hover readout", () => {
+  // Both alternative shapes of the activity card have to be as legible as the
+  // daily grid: a labelled y-axis, a month row, x-axis week/day labels and a
+  // hover bubble. They reuse the trend chart's axis/crosshair classes on
+  // purpose, so the page keeps a single chart vocabulary.
+  assert.match(page, /const ACTIVITY_VIEW = \{/);
+  assert.match(page, /<AxisGrid ticks=\{axisTicks\(/);
+  assert.match(page, /monthTicksFor\(/);
+  assert.match(page, /axisLabelIndices\(/);
+  assert.match(page, /stats-week-track/);
+  assert.match(page, /stats-week-bar-active/);
+  assert.match(page, /stats-cumulative-line/);
+  assert.match(page, /stats\.dayDelta/);
+
+  const weeklyAt = page.indexOf("function WeeklyActivity");
+  const cumulativeAt = page.indexOf("function CumulativeActivity");
+  assert.ok(weeklyAt !== -1 && cumulativeAt !== -1 && weeklyAt < cumulativeAt);
+  // Each view owns its crosshair, marker and bubble inside its own positioned
+  // plot wrapper — a bubble hoisted to the daily grid would never fire here.
+  for (const at of [weeklyAt, cumulativeAt]) {
+    const body = page.slice(at, at + 6000);
+    assert.match(body, /stats-trend-crosshair/);
+    assert.match(body, /className="stats-trend-plot" ref=\{plotRef\}/);
+    assert.match(body, /className="stats-tooltip"/);
+  }
+});
+
+test("the weekly bar view keeps empty weeks visible and reads turns", () => {
+  const body = page.slice(
+    page.indexOf("function WeeklyActivity"),
+    page.indexOf("function CumulativeActivity"),
+  );
+  // A sparse year (one active week out of ~53) must not render as a single bar
+  // floating in an empty card: every week gets its own track.
+  assert.match(body, /className="stats-week-track"/);
+  assert.match(body, /height=\{bottom - top\}/);
+  assert.match(body, /stats\.tooltipTurns/);
+  // And the daily cells' turn counts reach the bucket (see the dataset test).
+  assert.match(page, /tokens, turns \}\) => \(\{ date, tokens, turns \}\)/);
 });

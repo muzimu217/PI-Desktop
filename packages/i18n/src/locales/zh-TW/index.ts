@@ -2234,6 +2234,7 @@ sklm: {
     turns: "{{count}} 輪",
     tooltipTurns_one: "1 輪",
     tooltipTurns_other: "{{count}} 輪",
+    dayDelta: "當日",
     granularityDaily: "每日",
     granularityWeekly: "每週",
     granularityCumulative: "累計",

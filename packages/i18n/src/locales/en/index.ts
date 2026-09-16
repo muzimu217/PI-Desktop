@@ -2266,6 +2266,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
     turns: "{{count}} turns",
     tooltipTurns_one: "1 turn",
     tooltipTurns_other: "{{count}} turns",
+    dayDelta: "That day",
     granularityDaily: "Daily",
     granularityWeekly: "Weekly",
     granularityCumulative: "Cumulative",

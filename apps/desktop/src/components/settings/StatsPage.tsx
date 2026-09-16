@@ -16,6 +16,7 @@ import {
   buildStatsDataset,
   buildTrend,
   cumulativeSeries,
+  niceCeil,
   parseDateKey,
   sliceRecent,
   weeklyBuckets,
@@ -162,6 +163,95 @@ const TOOLTIP_ROOM = 76;
 
 type HeatTip = { index: number; left: number; top: number; below: boolean };
 
+/*
+ * Weekly bars and the cumulative area share one plot box instead of their own
+ * ad-hoc numbers: the same 664 × 126 canvas as the daily grid, so the activity
+ * card keeps a single height across the granularity switch, with a left gutter
+ * for the y-axis labels and a bottom row for the x-axis dates.
+ */
+const ACTIVITY_VIEW = { width: 664, height: 126, left: 46, right: 648, top: 24, bottom: 102 };
+
+/**
+ * Y-axis stops from 0 to a round top. The step is derived from the top so the
+ * labels stay distinct at every magnitude — five quarter stops would print
+ * "0, 0, 1, 1, 1" on a small axis — and the last stop is always `axisMax`, so
+ * the axis is visibly capped by the real data instead of floating above it.
+ */
+function axisTicks(axisMax: number) {
+  const raw = axisMax / 4;
+  const magnitude = 10 ** Math.floor(Math.log10(raw));
+  const normalised = raw / magnitude;
+  const step = (normalised <= 1 ? 1 : normalised <= 2 ? 2 : normalised <= 5 ? 5 : 10) * magnitude;
+  const values = [0];
+  for (let value = step; value < axisMax - step / 1000; value += step) values.push(value);
+  values.push(axisMax);
+  const plotHeight = ACTIVITY_VIEW.bottom - ACTIVITY_VIEW.top;
+  return values.map((value) => ({
+    value,
+    y: ACTIVITY_VIEW.bottom - (value / axisMax) * plotHeight,
+  }));
+}
+
+/** Shared y-axis: a gridline per stop, with its label in the left gutter. */
+function AxisGrid({ ticks }: { ticks: Array<{ value: number; y: number }> }) {
+  return (
+    <>
+      {ticks.map((tick) => (
+        <g key={tick.value}>
+          <line
+            className="stats-trend-axis"
+            x1={ACTIVITY_VIEW.left}
+            y1={tick.y}
+            x2={ACTIVITY_VIEW.right}
+            y2={tick.y}
+          />
+          <text
+            className="stats-trend-tick"
+            x={ACTIVITY_VIEW.left - 8}
+            y={tick.y + 3}
+            textAnchor="end"
+          >
+            {formatAxis(tick.value)}
+          </text>
+        </g>
+      ))}
+    </>
+  );
+}
+
+/**
+ * Month labels for the row above a plot: one per month, dropped when it would
+ * land closer than a three-letter label plus a gap to the previous one, so the
+ * axis thins itself out in a narrow card instead of overlapping.
+ *
+ * A window that opens mid-month starts on a partial period whose label would
+ * sit hard against the y-axis and then push the *next* month out of the axis
+ * entirely (a 365-day window loses October that way), so a leading partial
+ * period is skipped and the axis starts on the first whole month.
+ */
+function monthTicksFor(dates: string[], xAt: (index: number) => number) {
+  const ticks: Array<{ label: string; x: number }> = [];
+  dates.forEach((date, index) => {
+    const month = Number(date.slice(5, 7)) - 1;
+    const previous = index > 0 ? Number(dates[index - 1].slice(5, 7)) - 1 : -1;
+    if (month === previous) return;
+    if (index === 0 && date.slice(8) !== "01") return;
+    const x = xAt(index);
+    if (ticks.length > 0 && x - ticks[ticks.length - 1].x < 34) return;
+    ticks.push({ label: MONTHS[month], x });
+  });
+  return ticks;
+}
+
+/** Evenly spaced x-axis label positions, capped so the axis never crowds. */
+function axisLabelIndices(count: number, limit = 6): number[] {
+  if (count === 0) return [];
+  const labels = Math.min(limit, count);
+  if (labels === 1) return [0];
+  const gap = (count - 1) / (labels - 1);
+  return Array.from({ length: labels }, (_, position) => Math.round(position * gap));
+}
+
 function Heatmap({
   heatmap,
   granularity,
@@ -178,7 +268,12 @@ function Heatmap({
   const svgRef = useRef<SVGSVGElement | null>(null);
   const weekdayLabels = t("stats.heatWeekdays").split(",");
   const { cells, monthTicks } = heatmap;
-  const daily = useMemo(() => cells.map(({ date, tokens }) => ({ date, tokens })), [cells]);
+  // Carry `turns` through: the weekly bars re-aggregate it so their tooltip
+  // reads like the daily one (tokens · turns) off the same single RPC.
+  const daily = useMemo(
+    () => cells.map(({ date, tokens, turns }) => ({ date, tokens, turns })),
+    [cells],
+  );
   const weekly = useMemo(() => weeklyBuckets(daily), [daily]);
   const cumulative = useMemo(() => cumulativeSeries(daily), [daily]);
 
@@ -286,9 +381,11 @@ function Heatmap({
       ) : (
         <CumulativeActivity points={cumulative} ariaSummary={ariaSummary} />
       )}
-      {tip && tipCell ? (
+      {granularity === "daily" && tip && tipCell ? (
         // Rich hover hint: localized date, then tokens · turns. aria-hidden —
-        // the sr-only table below already carries the numbers for AT.
+        // the sr-only table below already carries the numbers for AT. Only the
+        // daily grid anchors here; the weekly and cumulative views own their
+        // own bubble inside their plot wrapper.
         <div
           className="stats-tooltip"
           aria-hidden="true"
@@ -334,7 +431,16 @@ function Heatmap({
   );
 }
 
-/** ISO-week bar view of the 365-day window: x = week index, height = tokens. */
+/**
+ * ISO-week bar view of the 365-day window: x = week index, height = tokens.
+ *
+ * Every week paints a full-height `stats-week-track` and only the weeks with
+ * spend draw a bar on top of it. Without the track a sparse year (one active
+ * week out of ~53) renders as a single bar floating in an empty card; with it
+ * the window's full extent — and which weeks are genuinely idle — reads at a
+ * glance. Hovering a column adds a crosshair plus the same rich bubble the
+ * daily grid uses, so the two views read the same way.
+ */
 function WeeklyActivity({
   buckets,
   ariaSummary,
@@ -342,72 +448,152 @@ function WeeklyActivity({
   buckets: StatsWeeklyBucket[];
   ariaSummary: StatsAriaSummary;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale = i18n.resolvedLanguage ?? i18n.language ?? "";
+  const [tip, setTip] = useState<{ index: number; left: number } | null>(null);
+  const plotRef = useRef<HTMLDivElement | null>(null);
   if (buckets.length === 0) {
     return <div className="stats-trend-tick">{t("stats.empty")}</div>;
   }
-  const left = 24;
-  const right = 660;
-  const top = 20;
-  const bottom = 116;
-  const max = Math.max(1, ...buckets.map((bucket) => bucket.tokens));
+  const { left, right, top, bottom, width, height } = ACTIVITY_VIEW;
+  const axisMax = niceCeil(Math.max(1, ...buckets.map((bucket) => bucket.tokens)));
   const step = (right - left) / buckets.length;
-  const barWidth = Math.max(3, Math.min(10, step - 4));
-  // Month axis: one tick where the bucket's Monday enters a new month, thinned
-  // like the daily grid so 12 labels never collide.
-  const monthTicks: Array<{ label: string; column: number }> = [];
-  buckets.forEach((bucket, index) => {
-    const month = Number(bucket.start.slice(5, 7)) - 1;
-    const previous = index > 0 ? Number(buckets[index - 1].start.slice(5, 7)) - 1 : -1;
-    if (month !== previous) monthTicks.push({ label: MONTHS[month], column: index });
-  });
+  // ~8 units wide at the 53-column density, capped so a short series does not
+  // turn into fat slabs.
+  const barWidth = Math.max(2, Math.min(26, step - 3));
+  const centreX = (index: number) => left + (index + 0.5) * step;
+  const barHeight = (tokens: number) => (tokens / axisMax) * (bottom - top);
+  const monthTicks = monthTicksFor(
+    buckets.map((bucket) => bucket.start),
+    centreX,
+  );
+  const labelIndices = axisLabelIndices(buckets.length);
+  const tipBucket = tip ? buckets[tip.index] : null;
+
+  // Snap to the hovered column, then convert that column back to pixels inside
+  // the positioned wrapper for the bubble (same mapping as the trend chart).
+  const onMove = (event: React.MouseEvent<SVGSVGElement>) => {
+    const plot = plotRef.current;
+    if (!plot) return;
+    const plotRect = plot.getBoundingClientRect();
+    const svgRect = event.currentTarget.getBoundingClientRect();
+    if (svgRect.width === 0) return;
+    const viewX = ((event.clientX - svgRect.left) / svgRect.width) * ACTIVITY_VIEW.width;
+    const index = Math.min(
+      buckets.length - 1,
+      Math.max(0, Math.floor(((viewX - left) / (right - left)) * buckets.length)),
+    );
+    const anchor =
+      svgRect.left - plotRect.left + centreX(index) * (svgRect.width / ACTIVITY_VIEW.width);
+    setTip({
+      index,
+      left: Math.min(
+        Math.max(anchor, TOOLTIP_HALF),
+        Math.max(plotRect.width - TOOLTIP_HALF, TOOLTIP_HALF),
+      ),
+    });
+  };
+
   return (
-    <svg
-      className="stats-heatmap"
-      viewBox="0 0 664 126"
-      role="img"
-      aria-label={t("stats.heatmapAria", ariaSummary)}
-    >
-      {monthTicks.map((tick, position) =>
-        // Odd positions thin the axis; column 0 would sit under the max-value
-        // label, so the axis starts from the second month.
-        position % 2 === 1 || tick.column === 0 ? null : (
+    <div className="stats-trend-plot" ref={plotRef}>
+      <svg
+        className="stats-heatmap"
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={t("stats.heatmapAria", ariaSummary)}
+        onMouseMove={onMove}
+        onMouseLeave={() => setTip(null)}
+      >
+        <AxisGrid ticks={axisTicks(axisMax)} />
+        {monthTicks.map((tick) => (
           <text
-            key={`${tick.label}-${tick.column}`}
+            key={`${tick.label}-${tick.x}`}
             className="stats-heat-month"
-            x={left + tick.column * step}
+            x={tick.x}
             y={10}
+            textAnchor="middle"
           >
             {tick.label}
           </text>
-        ),
-      )}
-      <text className="stats-heat-axis" x={left} y={top - 6} textAnchor="start">
-        {formatAxis(max)}
-      </text>
-      {buckets.map((bucket, index) => {
-        const height = (bucket.tokens / max) * (bottom - top);
-        return (
-          <rect
-            key={bucket.start}
-            className="stats-week-bar"
-            x={left + index * step + (step - barWidth) / 2}
-            y={bottom - height}
-            width={barWidth}
-            height={height}
-            rx={2}
+        ))}
+        {buckets.map((bucket, index) => {
+          const x = left + index * step + (step - barWidth) / 2;
+          return (
+            <g key={bucket.start}>
+              <rect
+                className="stats-week-track"
+                x={x}
+                y={top}
+                width={barWidth}
+                height={bottom - top}
+                rx={2}
+              />
+              {bucket.tokens > 0 ? (
+                <rect
+                  className={cx("stats-week-bar", tip?.index === index && "stats-week-bar-active")}
+                  x={x}
+                  y={bottom - barHeight(bucket.tokens)}
+                  width={barWidth}
+                  height={barHeight(bucket.tokens)}
+                  rx={2}
+                />
+              ) : null}
+            </g>
+          );
+        })}
+        <line className="stats-trend-axis" x1={left} y1={bottom} x2={right} y2={bottom} />
+        {labelIndices.map((index) => (
+          <text
+            key={buckets[index].start}
+            className="stats-trend-tick"
+            x={centreX(index)}
+            y={bottom + 14}
+            textAnchor="middle"
+          >
+            {buckets[index].start.slice(5)}
+          </text>
+        ))}
+        {tip ? (
+          <line
+            className="stats-trend-crosshair"
+            x1={centreX(tip.index)}
+            y1={top}
+            x2={centreX(tip.index)}
+            y2={bottom}
           />
-        );
-      })}
-      <line className="stats-trend-axis" x1={left} y1={bottom} x2={right} y2={bottom} />
-      <text className="stats-heat-axis" x={left} y={bottom + 14} textAnchor="start">
-        0
-      </text>
-    </svg>
+        ) : null}
+      </svg>
+      {tip && tipBucket ? (
+        // Week range on the first line, tokens · turns on the second — the same
+        // shape as the daily bubble so hovering either view reads identically.
+        <div
+          className="stats-tooltip"
+          aria-hidden="true"
+          style={{ left: tip.left, top: 6, transform: "translateX(-50%)" }}
+        >
+          <div className="stats-tooltip-date">
+            {tipBucket.start === tipBucket.end
+              ? formatFullDate(tipBucket.start, locale)
+              : `${formatFullDate(tipBucket.start, locale)} – ${formatFullDate(tipBucket.end, locale)}`}
+          </div>
+          <div className="stats-tooltip-value">
+            {formatTokens(tipBucket.tokens)} {t("stats.tableTokens")}
+            {" · "}
+            {t("stats.tooltipTurns", { count: tipBucket.turns })}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
-/** Running-total area view: the annotation at the line's end is the window total. */
+/**
+ * Running-total area view: the annotation at the line's end is the window
+ * total. The axis, the month row and the per-day date labels come from the same
+ * helpers as the weekly bars, so the two views share one frame; hovering a day
+ * reads out the running total *and* that day's own spend, which is the delta
+ * the line alone cannot show.
+ */
 function CumulativeActivity({
   points,
   ariaSummary,
@@ -415,42 +601,145 @@ function CumulativeActivity({
   points: StatsCumulativePoint[];
   ariaSummary: StatsAriaSummary;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale = i18n.resolvedLanguage ?? i18n.language ?? "";
+  const [tip, setTip] = useState<{ index: number; left: number } | null>(null);
+  const plotRef = useRef<HTMLDivElement | null>(null);
   if (points.length === 0) {
     return <div className="stats-trend-tick">{t("stats.empty")}</div>;
   }
-  const left = 24;
-  const right = 648;
-  const top = 20;
-  const bottom = 116;
+  const { left, right, top, bottom, width, height } = ACTIVITY_VIEW;
   const total = points[points.length - 1].tokens;
-  const max = Math.max(1, total);
+  const axisMax = niceCeil(Math.max(1, total));
   const xAt = (index: number) =>
     points.length === 1
       ? (left + right) / 2
       : left + (index / (points.length - 1)) * (right - left);
-  const yAt = (value: number) => bottom - (value / max) * (bottom - top);
+  const yAt = (value: number) => bottom - (value / axisMax) * (bottom - top);
   const line = points
     .map((point, index) => `${index === 0 ? "M" : "L"}${xAt(index)},${yAt(point.tokens)}`)
     .join(" ");
   const area = `M${xAt(0)},${bottom} ${points
     .map((point, index) => `L${xAt(index)},${yAt(point.tokens)}`)
     .join(" ")} L${xAt(points.length - 1)},${bottom} Z`;
+  const monthTicks = monthTicksFor(
+    points.map((point) => point.date),
+    xAt,
+  );
+  const labelIndices = axisLabelIndices(points.length);
+  const tipPoint = tip ? points[tip.index] : null;
+  const lastIndex = points.length - 1;
+  // Running total minus the previous day's: the spend of the hovered day.
+  const dayDelta = tip ? points[tip.index].tokens - (tip.index > 0 ? points[tip.index - 1].tokens : 0) : 0;
+
+  const onMove = (event: React.MouseEvent<SVGSVGElement>) => {
+    const plot = plotRef.current;
+    if (!plot) return;
+    const plotRect = plot.getBoundingClientRect();
+    const svgRect = event.currentTarget.getBoundingClientRect();
+    if (svgRect.width === 0) return;
+    const viewX = ((event.clientX - svgRect.left) / svgRect.width) * ACTIVITY_VIEW.width;
+    const fraction = points.length === 1 ? 0.5 : (viewX - left) / (right - left);
+    const index = Math.min(lastIndex, Math.max(0, Math.round(fraction * lastIndex)));
+    const anchor =
+      svgRect.left - plotRect.left + xAt(index) * (svgRect.width / ACTIVITY_VIEW.width);
+    setTip({
+      index,
+      left: Math.min(
+        Math.max(anchor, TOOLTIP_HALF),
+        Math.max(plotRect.width - TOOLTIP_HALF, TOOLTIP_HALF),
+      ),
+    });
+  };
+
   return (
-    <svg
-      className="stats-heatmap"
-      viewBox="0 0 664 126"
-      role="img"
-      aria-label={t("stats.heatmapAria", ariaSummary)}
-    >
-      <line className="stats-trend-axis" x1={left} y1={bottom} x2={right} y2={bottom} />
-      <path className="stats-cumulative-area" d={area} />
-      <path className="stats-cumulative-line" d={line} />
-      {/* The end label is the whole point of this view: the window total. */}
-      <text className="stats-heat-axis" x={xAt(points.length - 1)} y={Math.max(12, yAt(total) - 8)} textAnchor="end">
-        {formatTokens(total)}
-      </text>
-    </svg>
+    <div className="stats-trend-plot" ref={plotRef}>
+      <svg
+        className="stats-heatmap"
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label={t("stats.heatmapAria", ariaSummary)}
+        onMouseMove={onMove}
+        onMouseLeave={() => setTip(null)}
+      >
+        <AxisGrid ticks={axisTicks(axisMax)} />
+        {monthTicks.map((tick) => (
+          <text
+            key={`${tick.label}-${tick.x}`}
+            className="stats-heat-month"
+            x={tick.x}
+            y={10}
+            textAnchor="middle"
+          >
+            {tick.label}
+          </text>
+        ))}
+        <line className="stats-trend-axis" x1={left} y1={bottom} x2={right} y2={bottom} />
+        <path className="stats-cumulative-area" d={area} />
+        <path className="stats-cumulative-line" d={line} />
+        {labelIndices.map((index) => (
+          <text
+            key={points[index].date}
+            className="stats-trend-tick"
+            x={xAt(index)}
+            y={bottom + 14}
+            textAnchor="middle"
+          >
+            {points[index].date.slice(5)}
+          </text>
+        ))}
+        {tip ? (
+          <line
+            className="stats-trend-crosshair"
+            x1={xAt(tip.index)}
+            y1={top}
+            x2={xAt(tip.index)}
+            y2={bottom}
+          />
+        ) : null}
+        {/*
+         * The end label is the whole point of this view: the window total. Its
+         * dot is dropped while the last day is hovered so the marker below does
+         * not draw a second ring on the same spot.
+         */}
+        <text
+          className="stats-heat-axis"
+          x={xAt(lastIndex)}
+          y={Math.max(12, yAt(total) - 8)}
+          textAnchor="end"
+        >
+          {formatTokens(total)}
+        </text>
+        {tip?.index === lastIndex ? null : (
+          <circle className="stats-trend-marker stats-trend-marker-total" cx={xAt(lastIndex)} cy={yAt(total)} r={3} />
+        )}
+        {tip ? (
+          <circle
+            className="stats-trend-marker stats-trend-marker-total"
+            cx={xAt(tip.index)}
+            cy={yAt(points[tip.index].tokens)}
+            r={3}
+          />
+        ) : null}
+      </svg>
+      {tip && tipPoint ? (
+        <div
+          className="stats-tooltip"
+          aria-hidden="true"
+          style={{ left: tip.left, top: 6, transform: "translateX(-50%)" }}
+        >
+          <div className="stats-tooltip-date">{formatFullDate(tipPoint.date, locale)}</div>
+          <div className="stats-tooltip-row">
+            <span>{t("stats.totalTokens")}</span>
+            <span className="stats-tooltip-num">{formatTokens(tipPoint.tokens)}</span>
+          </div>
+          <div className="stats-tooltip-row">
+            <span>{t("stats.dayDelta")}</span>
+            <span className="stats-tooltip-num">{formatTokens(dayDelta)}</span>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -915,33 +1204,33 @@ export function StatsPage() {
 
       <div className="stats-pair">
         <section className="settings-card-block">
-          <div className="stats-card-head">
-            <h3 className="settings-card-heading">{t("stats.activity")}</h3>
-            <div className="settings-segment" role="group" aria-label={t("stats.activity")}>
-              {GRANULARITIES.map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  className={cx("settings-segment-item", granularity === mode && "active")}
-                  aria-pressed={granularity === mode}
-                  onClick={() => setGranularity(mode)}
-                >
-                  {mode === "daily"
-                    ? t("stats.granularityDaily")
-                    : mode === "weekly"
-                      ? t("stats.granularityWeekly")
-                      : t("stats.granularityCumulative")}
-                </button>
-              ))}
-            </div>
-          </div>
           <div className="settings-panel stats-chart-panel">
+            <div className="stats-card-head">
+              <h3 className="settings-card-heading">{t("stats.activity")}</h3>
+              <div className="settings-segment" role="group" aria-label={t("stats.activity")}>
+                {GRANULARITIES.map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    className={cx("settings-segment-item", granularity === mode && "active")}
+                    aria-pressed={granularity === mode}
+                    onClick={() => setGranularity(mode)}
+                  >
+                    {mode === "daily"
+                      ? t("stats.granularityDaily")
+                      : mode === "weekly"
+                        ? t("stats.granularityWeekly")
+                        : t("stats.granularityCumulative")}
+                  </button>
+                ))}
+              </div>
+            </div>
             <Heatmap heatmap={heatmap} granularity={granularity} ariaSummary={heatAria} />
           </div>
         </section>
         <section className="settings-card-block">
-          <h3 className="settings-card-heading">{t("stats.modelUsage")}</h3>
           <div className="settings-panel stats-chart-panel">
+            <h3 className="settings-card-heading">{t("stats.modelUsage")}</h3>
             <Donut models={models} />
           </div>
         </section>
@@ -949,30 +1238,30 @@ export function StatsPage() {
 
       <div className="stats-pair">
         <section className="settings-card-block">
-          <div className="stats-card-head">
-            <h3 className="settings-card-heading">{t("stats.trend")}</h3>
-            {/* Scoped to the trend chart; independent of the global range. */}
-            <div className="settings-segment" role="group" aria-label={t("stats.range")}>
-              {([7, 30] as const).map((days) => (
-                <button
-                  key={days}
-                  type="button"
-                  className={cx("settings-segment-item", trendRange === days && "active")}
-                  aria-pressed={trendRange === days}
-                  onClick={() => setTrendRange(days)}
-                >
-                  {t(days === 7 ? "stats.range7" : "stats.range30")}
-                </button>
-              ))}
-            </div>
-          </div>
           <div className="settings-panel stats-chart-panel">
+            <div className="stats-card-head">
+              <h3 className="settings-card-heading">{t("stats.trend")}</h3>
+              {/* Scoped to the trend chart; independent of the global range. */}
+              <div className="settings-segment" role="group" aria-label={t("stats.range")}>
+                {([7, 30] as const).map((days) => (
+                  <button
+                    key={days}
+                    type="button"
+                    className={cx("settings-segment-item", trendRange === days && "active")}
+                    aria-pressed={trendRange === days}
+                    onClick={() => setTrendRange(days)}
+                  >
+                    {t(days === 7 ? "stats.range7" : "stats.range30")}
+                  </button>
+                ))}
+              </div>
+            </div>
             <Trend trend={trend} ariaSummary={trendAria} />
           </div>
         </section>
         <section className="settings-card-block">
-          <h3 className="settings-card-heading">{t("stats.insights")}</h3>
           <div className="settings-panel stats-chart-panel">
+            <h3 className="settings-card-heading">{t("stats.insights")}</h3>
             <ul className="stats-insights">
               <li>
                 <span>{t("stats.cacheLeverage")}</span>
@@ -999,8 +1288,8 @@ export function StatsPage() {
       </div>
 
       <section className="settings-card-block">
-        <h3 className="settings-card-heading">{t("stats.topSessions")}</h3>
         <div className="settings-panel">
+          <h3 className="settings-card-heading">{t("stats.topSessions")}</h3>
           {sessions.length === 0 ? (
             <div className="settings-row">
               <div className="settings-row-copy">

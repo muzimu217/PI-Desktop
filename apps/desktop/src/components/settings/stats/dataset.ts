@@ -61,17 +61,27 @@ export function startOfIsoWeek(date: Date): Date {
  * The bucket `start` is the Monday even when the window begins mid-week, so
  * consecutive buckets are always 7 days apart and a 365-day window maps to
  * ~53 stable columns.
+ *
+ * `turns` is optional on the input because the daily total the host returns
+ * (`stats.dailyTotals`) has no turn count; the heatmap cells do, and they are
+ * what the activity card feeds in. Days that do not report it contribute 0, so
+ * the bucket always carries a number and the weekly tooltip can read it
+ * without a second lookup.
  */
-export function weeklyBuckets(days: StatsDailyPoint[]): StatsWeeklyBucket[] {
+export function weeklyBuckets(
+  days: ReadonlyArray<{ date: string; tokens: number; turns?: number }>,
+): StatsWeeklyBucket[] {
   const buckets: StatsWeeklyBucket[] = [];
   for (const day of days) {
     const start = localDateKey(startOfIsoWeek(parseDateKey(day.date)));
+    const turns = day.turns ?? 0;
     const last = buckets[buckets.length - 1];
     if (last && last.start === start) {
       last.tokens += day.tokens;
+      last.turns += turns;
       last.end = day.date;
     } else {
-      buckets.push({ start, end: day.date, tokens: day.tokens });
+      buckets.push({ start, end: day.date, tokens: day.tokens, turns });
     }
   }
   return buckets;
@@ -141,7 +151,13 @@ export type StatsHeatCell = {
 };
 
 /** One ISO-week (Monday-anchored) bucket of the 365-day heatmap window. */
-export type StatsWeeklyBucket = { start: string; end: string; tokens: number };
+export type StatsWeeklyBucket = {
+  start: string;
+  end: string;
+  tokens: number;
+  /** Completed turns in the week (0 when the source days did not report it). */
+  turns: number;
+};
 
 /** One day of the running total over the heatmap window. */
 export type StatsCumulativePoint = { date: string; tokens: number };

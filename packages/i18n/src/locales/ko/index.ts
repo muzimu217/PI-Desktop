@@ -2266,6 +2266,7 @@ importConfirm: "가져온 확장은 에이전트 프로세스 안에서 에이�
     turns: "{{count}}턴",
     tooltipTurns_one: "1턴",
     tooltipTurns_other: "{{count}}턴",
+    dayDelta: "당일",
     granularityDaily: "일별",
     granularityWeekly: "주별",
     granularityCumulative: "누적",

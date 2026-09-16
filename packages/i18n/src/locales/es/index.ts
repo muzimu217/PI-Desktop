@@ -2225,6 +2225,7 @@ sklm: {
     "turns": "{{count}} turnos",
     "tooltipTurns_one": "1 turno",
     "tooltipTurns_other": "{{count}} turnos",
+    "dayDelta": "Ese día",
     "granularityDaily": "Diario",
     "granularityWeekly": "Semanal",
     "granularityCumulative": "Acumulado",

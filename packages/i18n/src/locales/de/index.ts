@@ -2225,6 +2225,7 @@ sklm: {
     "turns": "{{count}} Züge",
     "tooltipTurns_one": "1 Zug",
     "tooltipTurns_other": "{{count}} Züge",
+    "dayDelta": "An dem Tag",
     "granularityDaily": "Täglich",
     "granularityWeekly": "Wöchentlich",
     "granularityCumulative": "Kumuliert",

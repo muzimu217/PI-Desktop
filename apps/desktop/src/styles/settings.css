@@ -2269,7 +2269,9 @@
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
   gap: var(--space-3);
-  align-items: start;
+  /* Reference layout pairs cards at equal height; stretch lets the shorter
+     panel fill the row instead of leaving a ragged bottom edge. */
+  align-items: stretch;
 }
 
 /*
@@ -2283,6 +2285,9 @@
 */
 .stats-pair > .settings-card-block {
   margin-bottom: 0;
+  /* Let the single chart panel inside stretch to the row's tallest card. */
+  display: flex;
+  flex-direction: column;
 }
 
 .stats-heatmap {
@@ -2299,6 +2304,11 @@
 .stats-chart-panel {
   padding: 14px 16px;
   overflow: visible;
+  /* Fill the stretched card block so paired panels stay equal height. The
+     chart inside keeps its own aspect ratio and top-aligns, leaving any
+     slack below it (matches the airy reference card). */
+  flex: 1;
+  min-height: 0;
 }
 
 /*
@@ -2460,6 +2470,22 @@
 
 /* Weekly granularity: ISO-week bars on the same geometry as the day grid. */
 .stats-week-bar { fill: var(--chart-1); }
+
+/*
+  Every week keeps a full-height track and only the weeks with spend draw a bar
+  over it. The track is the window's own extent, not a value, so it stays a
+  neutral wash rather than a fifth blue level (the same reasoning as the today
+  ring on `.stats-heat-today`) — a bare bar chart would show a sparse year as a
+  single bar lost in an empty card.
+*/
+.stats-week-track {
+  fill: color-mix(in oklab, var(--ds-text-primary) 6%, transparent);
+}
+
+/* The hovered week lifts clear of its own track so the crosshair reads. */
+.stats-week-bar-active {
+  fill: color-mix(in oklab, var(--chart-1) 70%, var(--ds-text-primary));
+}
 
 /* Cumulative granularity: running-total area with its total line. */
 .stats-cumulative-area { fill: color-mix(in oklab, var(--chart-1) 16%, transparent); }

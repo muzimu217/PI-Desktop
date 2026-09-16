@@ -15,16 +15,13 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 pub mod fast_path;
 pub mod metrics;
+pub mod refresh;
 
 use metrics::{BuildProgress, IndexMetrics, WorkspaceIndexMetrics};
 
 pub const MAX_FILES: usize = 50_000;
 pub const MAX_FILE_BYTES: u64 = 1024 * 1024;
 pub const MAX_INDEXED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
-/// Minimum spacing between same-path auto refreshes of a workspace index.
-/// Bounds how long Grep's fast path can keep serving candidates that predate
-/// an in-place edit, without paying for a re-walk on every `workspace.set`.
-pub const AUTO_REFRESH_MIN_INTERVAL: std::time::Duration = std::time::Duration::from_secs(600);
 // v2 stores the whole *visible* file set, not just the ingested subset: the
 // `files` table gained `content_indexed`. The index is a rebuildable cache, so
 // `open` quarantines a v1 database and re-crawls rather than migrating.
@@ -208,41 +205,6 @@ impl IndexStore {
             last_refresh: Arc::new(Mutex::new(HashMap::new())),
             disabled: true,
         }
-    }
-
-    /// Whether a same-path auto refresh of `root` is due now. Calling this
-    /// consumes the answer: the interval restarts from the call, whether or
-    /// not the caller goes through with the refresh (a workspace the user
-    /// keeps switching to should not queue up refreshes).
-    pub fn refresh_due(&self, root: &Path) -> bool {
-        let root_id = root_id(&normalize_root(root));
-        let mut last = self.last_refresh.lock().unwrap();
-        let due = match last.get(&root_id) {
-            Some(at) => at.elapsed() >= AUTO_REFRESH_MIN_INTERVAL,
-            None => true,
-        };
-        if due {
-            last.insert(root_id, Instant::now());
-        }
-        due
-    }
-
-    /// Mark a `fresh` root `building` ahead of a same-path auto refresh, so
-    /// `index.status` tells the truth while the re-walk runs.
-    pub fn request_refresh(&self, root: &Path) -> Result<()> {
-        let root = normalize_root(root);
-        let root_id = root_id(&root);
-        self.set_root_status(
-            &root_id,
-            &root,
-            RootUpdate {
-                status: IndexStatus::Building,
-                file_count: 0,
-                indexed_bytes: 0,
-                error_count: 0,
-                last_error: None,
-            },
-        )
     }
 
     /// Shared fast-path counters, for callers that record into them (the Grep
@@ -831,39 +793,6 @@ mod tests {
             rebuilding.ensure_index(root.path()).unwrap(),
             EnsureOutcome::InProgress,
         ));
-    }
-
-    #[test]
-    fn same_path_refresh_is_due_once_then_spacing_kicks_in() {
-        let data = tempfile::tempdir().unwrap();
-        let root = tempfile::tempdir().unwrap();
-        fs::write(root.path().join("one.txt"), "one\n").unwrap();
-        let store = IndexStore::open(data.path()).unwrap();
-
-        assert!(store.refresh_due(root.path()), "first set is due");
-        assert!(
-            !store.refresh_due(root.path()),
-            "the interval restarts on the first call"
-        );
-        // An unrelated root has its own clock.
-        let other = tempfile::tempdir().unwrap();
-        assert!(store.refresh_due(other.path()));
-    }
-
-    #[test]
-    fn request_refresh_marks_a_fresh_root_building() {
-        let data = tempfile::tempdir().unwrap();
-        let root = tempfile::tempdir().unwrap();
-        fs::write(root.path().join("one.txt"), "one\n").unwrap();
-        let store = IndexStore::open(data.path()).unwrap();
-        store.rebuild(root.path(), IndexLimits::default()).unwrap();
-        assert_eq!(store.status(Some(root.path())).unwrap()[0].status, "fresh");
-
-        store.request_refresh(root.path()).unwrap();
-        assert_eq!(
-            store.status(Some(root.path())).unwrap()[0].status,
-            "building"
-        );
     }
 
     #[test]

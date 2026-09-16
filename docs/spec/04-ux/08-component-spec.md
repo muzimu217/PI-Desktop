@@ -480,7 +480,11 @@ visually distinct from list content.
   activated and names the group, while every other selected folder is retained
   as a group root and is shown in Project archive details, not as an open
   project tab. Group chats, instructions, and memory use the same group
-  identity. The dialog follows
+  identity. A source selector offers This computer and Git repository: the git
+  source swaps the folder list for a repository URL field plus a clone
+  destination row, seeds the project name from the repository name until the
+  user types their own, and creates the project by cloning into the chosen
+  folder first. The dialog follows
   the shell's neutral gray surfaces, with a 480px maximum width,
   `--radius-lg-plus` (18px) corners, and the shared `--ds-shadow-dialog`
   elevation. Its compact type hierarchy uses `--text-lg` for the title,
@@ -492,9 +496,9 @@ visually distinct from list content.
   repeat its label as placeholder text. Edit project reuses the same surface,
   loads the host-owned group, allows the name and non-primary folders to be
   adjusted, keeps Primary first and non-removable, and rejects removal of a
-  folder that still owns chats. The folder section exposes the current
-  local source as a compact source chip; a future remote source can replace
-  that slot without changing the project name or workspace list contract. The
+  folder that still owns chats. The source selector offers This computer and
+  Git repository as equal peers; a repository URL reuses the clone rules of
+  ADR 0247 and its checkout becomes the primary root of the same group.
   dialog does not add explanatory copy for durable memory or multi-selection.
   The surface has no outer stroke, section rules, footer divider, or dashed
   picker border. The action row stays fixed while the content scrolls; narrow

@@ -102,7 +102,7 @@
 
 ### 使用统计（不设设置目的地）
 
-D335 / ADR 0173 继续有效，ADR 0273 已被取代：不提供 `usage` 目的地，也不为其
+D335 / ADR 0173 继续有效，短暂的重新引入已按 #478 裁决撤除：不提供 `usage` 目的地，也不为其
 保留分组。宿主自有的聚合口径（`stats.summary` / `stats.topSessions`，基于持久
 的已完成回合历史）与 `stats.getTokenUsageHistory` 一同留在 Core 表面。跨工具
 仪表盘仍由 `pi.token-insights` 插件承担，界面由插件自带，无法导入应用内部组件。
@@ -124,6 +124,11 @@ D335 / ADR 0173 继续有效，ADR 0273 已被取代：不提供 `usage` 目的�
 - 插件启动器在 macOS 默认为 `Option + Space`，在 Windows/Linux 默认为
     `Alt + Space`；本机全局注册遵循相同覆盖。未绑定时会同时关闭 Electron 注册、
     Windows host hook 和聚焦窗口后备
+  - 窗口可见性只有一行、一个开关键 `Alt + Shift + W`：把可见且在前台的窗口隐藏到
+    托盘，把已隐藏或已最小化的窗口调回来。它是唯一的窗口键 —— 已弃用的
+    `Cmd/Ctrl + Shift + W` 呼出组合键已移除 —— 并且避开 `Cmd/Ctrl + W`，因为
+    macOS 把它用于自己的关闭窗口命令；读取配置映射时，已存储的
+    `closeWindow` / `summonWindow` 覆盖项会并入它（D438、D439）
 
 ### 模型配置（`agent` 选项卡）
 - **Studio Hero**：提供商计数、就绪计数和当前默认 provider/model 摘要

@@ -1656,7 +1656,7 @@ identify the platform validation still needed.
 
 #### E2E-STATS-summary-cards-range: usage summary renders host aggregation
 
-> **Suite note (2026-09-16)**: the dashboard ships as a plugin (ADR 0273), so
+> **Suite note (2026-09-16)**: the dashboard ships as a plugin (the #478 call), so
 > the UI journeys below are parked. The host-core `stats::tests` suite stays
 > the reproducible floor for what the board used to assert.
 
@@ -1671,7 +1671,7 @@ identify the platform validation still needed.
   `03-runtime/06-host-rpc-protocol.md`
 - **Acceptance**: B (model config adjacent), Quality (data correctness)
 - **Milestone**: M6+
-- **Status**: Parked — the dashboard ships as a plugin (ADR 0273); the stats
+- **Status**: Parked — the dashboard ships as a plugin (the #478 call); the stats
   RPC stays covered by host unit tests
 
 #### E2E-STATS-heatmap-today: today's heatmap cell is highlighted
@@ -1686,7 +1686,7 @@ identify the platform validation still needed.
   `04-ux/06-settings-ia.md`
 - **Acceptance**: B (data correctness), D (visual), Quality
 - **Milestone**: M6+
-- **Status**: Parked — the dashboard ships as a plugin (ADR 0273); the stats
+- **Status**: Parked — the dashboard ships as a plugin (the #478 call); the stats
   RPC stays covered by host unit tests
 
 #### E2E-STATS-project-breakdown: Top8 + Other fold + No-project bucket
@@ -1703,7 +1703,7 @@ identify the platform validation still needed.
   `04-ux/06-settings-ia.md`
 - **Acceptance**: B (data correctness), D (visual)
 - **Milestone**: M6+
-- **Status**: Parked — the dashboard ships as a plugin (ADR 0273); the stats
+- **Status**: Parked — the dashboard ships as a plugin (the #478 call); the stats
   RPC stays covered by host unit tests
 
 #### E2E-STATS-soft-deleted-excluded: trashed sessions never reach the totals (R12)
@@ -1719,7 +1719,7 @@ identify the platform validation still needed.
   `04-ux/06-settings-ia.md`
 - **Acceptance**: B (data correctness), Quality (R12 invariant)
 - **Milestone**: M6+
-- **Status**: Parked — the dashboard ships as a plugin (ADR 0273); the stats
+- **Status**: Parked — the dashboard ships as a plugin (the #478 call); the stats
   RPC stays covered by host unit tests
   (`soft_deleted_sessions_exit_summary_and_top_sessions`)
 
@@ -1734,7 +1734,7 @@ identify the platform validation still needed.
   `03-runtime/06-host-rpc-protocol.md`
 - **Acceptance**: D (state completeness), B
 - **Milestone**: M6+
-- **Status**: Parked — the dashboard ships as a plugin (ADR 0273); the stats
+- **Status**: Parked — the dashboard ships as a plugin (the #478 call); the stats
   RPC stays covered by host unit tests
 
 ### Workspace Open
@@ -4545,6 +4545,14 @@ identify the platform validation still needed.
   old global binding, focused fallback, and Alt+Space host fallback are all
   inactive. 11) Press and release Ctrl/Command alone, confirm an IME candidate,
   and hold the back/forward chord long enough to generate repeats.
+  12) With the main window focused, press the window-visibility chord
+  `Alt + Shift + W` and confirm the window hides to the tray with no
+  close-behaviour prompt and with the app still running; from another
+  application, press it again and confirm the window returns and focuses.
+  13) Seed one profile with a stored customized `closeWindow` binding and one
+  with a customized `summonWindow` binding; confirm each profile keeps that
+  binding on the single toggle row after restart and that `Cmd/Ctrl + Shift +
+  W` registers nothing.
 - **Expected**: Actions are grouped as Navigation, Agent, and Window with
   platform-native key labels; recording has visible focus and `Escape` cancels;
   the custom Search chord takes effect immediately, replaces the old chord,
@@ -4555,13 +4563,21 @@ identify the platform validation still needed.
   macOS accelerator, and disables the Windows launcher fallback layers;
   individual and global reset restore the shared defaults; Keyboard shortcuts is
   its own Settings destination. Modifier-only and IME keydowns dispatch nothing,
-  and a held history chord traverses only once per physical press.
+  and a held history chord traverses only once per physical press. The
+  window-visibility key is one toggle on `Alt + Shift + W` — a visible, focused
+  window hides to the tray, anything else shows and focuses — and it never
+  enters the close path, so it raises no close-behaviour prompt and never quits;
+  it is globally registered and deliberately avoids `Cmd/Ctrl + W`, which macOS
+  spends on its own close-window command; the retired `Cmd/Ctrl + Shift + W`
+  chord registers nothing, and a stored `closeWindow`/`summonWindow` override
+  folds into the toggle (D438, D439).
 - **Specs linked**: `04-ux/06-settings-ia.md`, `04-ux/07-ui-design-system.md`,
   `03-runtime/01-ipc-protocol.md`
 - **Acceptance**: F (settings persistence), Quality (keyboard accessibility)
 - **Milestone**: M5
 - **Status**: Unit-covered (`keyboard-shortcuts.test.ts`,
-  `settings-keyboard-shortcuts.test.mjs`, host settings RPC test); rendered scenario Draft
+  `settings-keyboard-shortcuts.test.mjs`, `window-toggle-shortcut.test.mjs`,
+  host settings RPC test); rendered scenario Draft
 
 #### E2E-073a: Developer mode gates the developer-tools console
 
@@ -7484,14 +7500,14 @@ identify the platform validation still needed.
   `Alt+Shift+V` and inspect the answer. 5) Disable and uninstall A and confirm
   the accelerator becomes free and B can take it; repeat after terminating A's
   runtime (crash) and while A's panel is closed. 6) Attempt the app's own
-  launcher accelerator `Alt+Space`, the `Mod+Shift+W` summon binding, a
+  launcher accelerator `Alt+Space`, the `Alt+Shift+W` window toggle, a
   reserved binding such as `Mod+C`, an invalid accelerator, and a ninth
   shortcut for one plugin.
 - **Expected**: Only A's own command runs for the accelerator; a shortcut whose
   `command` is not registered by the plugin is refused with `INVALID_ARGUMENT`.
   B receives a refusal (`registered: false`, code `SHORTCUT_CONFLICT`) and keeps
   no accelerator while A holds it. The host's own `Alt+Space` launcher and
-  `Mod+Shift+W` summon shortcuts and OS-reserved bindings are refused with
+  `Alt+Shift+W` window-toggle shortcuts and OS-reserved bindings are refused with
   `SHORTCUT_CONFLICT` or `SHORTCUT_UNAVAILABLE`; an invalid accelerator is
   refused with `INVALID_ACCELERATOR` and the ninth per-plugin shortcut with
   `LIMIT_EXCEEDED`. Disabling, unloading, or crashing a plugin releases every
@@ -7621,6 +7637,7 @@ identify the platform validation still needed.
 | D — Workspace (project delete) | E2E-PROJECT-delete-removes-project-and-owned-sessions |
 | F — Persistence (project delete) | E2E-PROJECT-delete-removes-project-and-owned-sessions |
 | Quality (project delete) | E2E-PROJECT-delete-removes-project-and-owned-sessions |
+| Quality (two-click delete) | E2E-SESSION-two-click-delete-arms-first |
 | Security (plugin real-time capabilities) | E2E-PLUGIN-global-shortcut-owns-only-its-own-command, E2E-PLUGIN-permission-gate-for-real-time-capabilities, E2E-PLUGIN-background-audio-and-realtime-connection |
 | C — Conversation & stream (disclosure reading position) | E2E-CHAT-disclosure-toggle-keeps-reading-position |
 | E — Tools & permissions (disclosure reading position) | E2E-CHAT-disclosure-toggle-keeps-reading-position |
@@ -7651,6 +7668,7 @@ identify the platform validation still needed.
 | Post-MVP remote control | E2E-221, E2E-222, E2E-223, E2E-224, E2E-225, E2E-226, E2E-227, E2E-228, E2E-229, E2E-230, E2E-231, E2E-232 |
 | Trusted extensions (R7 v1) | E2E-241, E2E-242, E2E-TRUSTED-EXTENSION-custom-agent-stream-and-binding, E2E-243, E2E-244, E2E-245, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
 | M6+ (Project delete) | E2E-PROJECT-delete-removes-project-and-owned-sessions |
+| M6+ (Two-click delete) | E2E-SESSION-two-click-delete-arms-first |
 | C — Conversation & stream (model fallback) | E2E-SUBAGENT-ordered-model-fallback-preserves-work |
 | Quality (model fallback isolation) | E2E-SUBAGENT-ordered-model-fallback-preserves-work |
 | C — Conversation & stream (legacy subagent turn limit) | E2E-SUBAGENT-legacy-turn-limit-frontmatter-is-ignored |
@@ -8262,12 +8280,14 @@ This test plan spec is accepted when:
   active workspace; C a root of a stored two-folder project group.
 - **Steps**: open Settings → Project archive, open A's row menu, choose Delete
   project, and confirm in the dialog. Then repeat the same action from the
-  sidebar project menu for B while B is the active workspace. Then attempt the
-  same action for C, then for a path the host no longer knows, and finally for a
+  sidebar project menu for B while B is the active workspace: the item arms on
+  the first click and only the second click removes B. Then attempt the same
+  action for C, then for a path the host no longer knows, and finally for a
   fourth project D while one of D's tasks is still running.
 - **Expected**: the dialog names the project, states that the project and its
   sessions with their transcripts are removed permanently, and states that the
-  folder on disk is not deleted; nothing is removed before the confirmation.
+  folder on disk is not deleted; nothing is removed before the confirmation, and
+  an armed item that is left alone disarms itself and removes nothing.
   After confirming, the durable project row, that project's sessions, their
   transcripts, scratch and review files, and its durable project memory are
   gone, while the folder on disk is untouched. The deleted project disappears
@@ -8327,6 +8347,31 @@ This test plan spec is accepted when:
   ids, the dialog's running-session line and stop-and-delete label, the abort
   loop running before `deleteProject`, the `CONFLICT` fallback, and the new
   copy in every shipped catalog; the end-to-end journey remains Draft
+
+### E2E-SESSION-two-click-delete-arms-first
+
+- **Preconditions**: a project with one idle session and one running session,
+  both reachable from the sidebar session menu, the sidebar project menu, and
+  the Projects index.
+- **Steps**: open the session menu of the idle session, press Delete once, and
+  leave the item armed until the arm expires before pressing it again to confirm
+  the removal. Repeat for a project row from the sidebar menu and from the
+  Projects index.
+- **Expected**: the first press removes nothing and relabels the item to
+  `nav.deleteTaskConfirm` / `project.deleteMenuConfirm` ("Delete?" / "确认删除？")
+  with `data-armed="true"`; the menu stays open, and an outside press, Escape, or
+  the expiry clears the arm without removing anything. Only the second press
+  removes the session with its transcript and its row, and only the second press
+  on a project row removes an idle project. A session and a project never share
+  an arm. Deleting a project whose turn is live still opens the dialog that names
+  those sessions and stops them (see
+  E2E-PROJECT-delete-running-sessions-are-named-and-stopped).
+- **Specs linked**: `04-ux/09-interaction-patterns.md` §1.6, D421, D431, D441
+- **Acceptance criterion**: Quality
+- **Milestone**: M6+
+- **Status**: Partially automated — `apps/desktop/test/two-step-delete.test.mjs`
+  pins the shared arm and its expiry, both labels in every shipped catalog, and
+  that the first press only arms; the end-to-end journey remains Draft
 ### US-UI-59 Session-rooted background tools
 - Start a visible turn in project A, switch to project B while it runs, and
   inspect both sidebar status indicators.
@@ -12088,6 +12133,33 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Milestone**: M5
 - **Status**: Unit-covered (`apps/desktop/test/git-clone.test.mjs`)
 
+
+#### E2E-258: Create project dialog can start from a git repository
+
+- **Preconditions**: The Create project dialog opens from the Projects heading
+  (no existing project is required); `git` is installed.
+- **Steps**:
+  1. Switch the source selector to Git repository.
+  2. Paste `https://github.com/octocat/Hello-World.git` and confirm the project
+     name field is seeded with `Hello-World`, then type a custom name.
+  3. Choose a clone destination folder and confirm the destination row shows it.
+  4. Confirm Create and inspect the workspace, sidebar, and project archive.
+  5. Reopen the dialog, switch to Git repository, and paste a private or
+     malformed remote.
+- **Expected**: The dialog swaps the folder list for a repository URL field plus
+  a clone destination row and keeps one project name field; Create stays
+  disabled until the URL parses and a folder is chosen. Confirming runs
+  `git clone` into the chosen folder with the renderer still owning project
+  creation: the checkout becomes the primary root and the entered name names the
+  group. Private, loopback, link-local, credential-bearing, and malformed
+  remotes leave Create disabled (ADR 0247) and no folder is written.
+- **Specs linked**: `03-runtime/01-ipc-protocol.md` §9, `04-ux/08-component-spec.md`,
+  ADR 0273, ADR 0233, ADR 0247
+- **Acceptance**: Quality (project entry), D (workspace)
+- **Milestone**: M5
+- **Status**: Unit-covered (`apps/desktop/test/project-create-dialog.test.mjs`,
+  `apps/desktop/test/git-clone.test.mjs`); full UI scenario Draft (run only in a
+  capable environment when this surface changes)
 #### E2E-257: Importing into an archived project restores its visibility
 
 - **Preconditions**: A durable project has been archived in the renderer
@@ -12387,16 +12459,20 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   policy error without fetching the private target. A judged refusal is not
   retried; a local resolver that answered nothing is, and is reported as
   `NETWORK_RESOLVE_FAILED` (`kind` `unresolved`) rather than as an address-check
-  refusal — the guard reached no verdict, so nothing may claim it did. Every
-  other refusal carries `NETWORK_POLICY_BLOCKED` (spec 08 §3.1) with its
-  `reason`, the class of the refused address, and the route that address was
-  judged on, so the install sheet can name the reason and offer a retry instead
-  of leaving the install button disabled with no explanation, and the market
-  list can tell a refused source apart from a merely unreachable one. A proxied
-  hop whose answer is the RFC 2544 fake-IP class is refused on a direct or
-  unreadable route and accepted on the proxied one, every other non-public class
-  still refuses on all routes, and each redirect hop is judged on its own route
-  (ADR 0272).
+  refusal — the guard reached no verdict, so nothing may claim it did. An address
+  in a proxy's fake-IP range (`198.18.0.0/15`, Clash's default) is refused and not
+  retried where the guard judged it — a direct or unreadable route — and is
+  accepted on the proxied one, and is reported as `kind` `fake-ip` with
+  `addressKind` `benchmark` and `reason` `non-public-address` — distinct from a
+  real private target (`kind` `policy`, `addressKind` `private`), because the guard
+  judged the target in the second case and only the proxy's placeholder in the
+  first. Every other refusal carries `NETWORK_POLICY_BLOCKED` (spec 08 §3.1) with
+  its `reason`, the address it resolved to, the class of that address, and the
+  route it was judged on, so the install sheet can name the reason and offer a
+  retry instead of leaving the install button disabled with no explanation, and the
+  market list can tell a refused source apart from a merely unreachable one. Every
+  other non-public class still refuses on all routes, and each redirect hop is
+  judged on its own route (ADR 0272).
 - **Specs linked**: `05-security/01-security.md`, ADR 0243, ADR 0272,
   `03-runtime/01-ipc-protocol.md` §12b
 - **Acceptance**: Security, Quality

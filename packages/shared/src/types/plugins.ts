@@ -70,8 +70,44 @@ export type PluginUiMeta = {
   width?: number;
   height?: number;
   title?: string | PluginLocalizedString;
+  /**
+   * Panel placement. `"panel"` (default) keeps the host-owned 46px drag band
+   * and its three-control capsule. `"widget"` is a transparent, frameless
+   * floating surface with neither, sized from the inside: the page owns its
+   * whole rectangle and drags the window through a host-provided drag map.
+   */
+  shape?: "panel" | "widget";
+  /** Floating widget placement only: keep the surface above other windows. */
+  alwaysOnTop?: boolean;
+  /** Overrides the per-shape default: panels are resizable, widgets are not. */
+  resizable?: boolean;
 };
 
+
+/**
+ * A development plugin waiting for its permission review.
+ *
+ * Choosing a folder is a request, not consent: the host answers with what the
+ * folder declares and loads nothing until the user accepts it. `kind` is
+ * `"load"` for a folder or scaffold that is not registered yet, and `"reload"`
+ * for a plugin already loaded whose manifest now asks for more than the
+ * approval it is running under.
+ */
+export type PluginPermissionReview = {
+  kind: "load" | "reload";
+  /** Absolute path of the plugin folder being reviewed. */
+  path: string;
+  id: string;
+  name: string;
+  version?: string;
+  /** Every permission the manifest declares. */
+  permissions: string[];
+  /**
+   * What is beyond the current approval: new permission names, and widened file
+   * scopes rendered as `fs.<mode>…` entries. Empty for a first load.
+   */
+  addedPermissions: string[];
+};
 /**
  * One plugin-contributed work panel view, resolved for the current window.
  *

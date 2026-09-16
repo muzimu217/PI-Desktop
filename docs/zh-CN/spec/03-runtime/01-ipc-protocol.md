@@ -57,6 +57,7 @@ event: pi-desktop/<domain>/event/<name>
 - `pi-desktop/session/list`
 - `pi-desktop/project/open`
 - `pi-desktop/project/clone`
+- `pi-desktop/project/cloneCheckout`
 - `pi-desktop/project/openFolder`
 - `pi-desktop/project-group/list`
 - `pi-desktop/project-group/create`
@@ -1044,6 +1045,7 @@ StrictMode 会在挂载时把 effect 跑两遍，第二次尝试会再开一个�
 
 - `project/open()`：系统目录选择器
 - `project/clone({ url })`：选择父目录，将 URL `git clone` 进去，并返回克隆后的工作区（由渲染器激活）
+- `project/cloneCheckout({ url, parentPath })`：将公共远程 `git clone` 到显式指定的父目录，返回 `{ path, name }`，不更改当前工作空间；新建项目对话框先用它克隆，再创建逻辑项目组
 - `project/openFolder(path)`：打开系统文件中已知的项目目录
 - `project/get()`：当前工作空间
 - `project/list()`：持久的项目记录，包括导入创建的条目
@@ -1227,8 +1229,8 @@ ASCII slug：frontmatter `name` 能 slugify 时用它，否则 `SKILL.md` 用技
 - `pi-desktop/skill/market/search` — `{ query, sources[] }` →
   `{ entries, failedSources, failureKinds, failureDetails }`。
   主进程聚合目录 JSON 与 GitHub 仓库 SKILL.md 扫描。源 URL 必须通过公网 HTTPS 策略（ADR 0243）。单源失败只丢掉该源。
-  `failureKinds` 把 `failedSources` 中的每个名字映射到 `policy`（公网策略守卫判定了目标并拒绝,请求从未离开进程）、`unresolved`（本地 DNS 解析没有返回答案,因此没有判定任何地址——这是解析器或代理的环境状况,不是对源的判定）或 `network`。`failureDetails` 以同样的键携带真正失败的主机、守卫自己的 `reason`、被拒地址的类别以及判定该地址的线路（`proxied`、`direct`,或传输层读不出线路时的 `unknown`,ADR 0272）；面板据此说明**被拒的是什么**,而不只是哪个源没出结果。
-  判定型拒绝以 `NETWORK_POLICY_BLOCKED` 暴露,解析器无应答以 `NETWORK_RESOLVE_FAILED` 暴露（spec 08 §3.1）；安装面板正是按这两个错误码分类。
+  `failureKinds` 把 `failedSources` 中的每个名字映射到 `policy`（守卫判定了目标自身的非公网地址并拒绝）、`fake-ip`（判定的是本地代理伪造的 fake-IP 占位地址,如 Clash 默认的 `198.18.0.0/15`；在直连或读不出线路时仍被拒绝,因为守卫在那里失败关闭、这个应用会自己去连该地址,但这是本地网络的状况而不是源的问题）、`unresolved`（本地 DNS 解析没有返回答案,因此没有判定任何地址）或 `network`。`failureDetails` 以同样的键携带真正失败的主机、解析到的地址、守卫自己的 `reason`、地址类别以及判定该地址的线路（`proxied`、`direct`,或传输层读不出线路时的 `unknown`,ADR 0272）；面板据此说明**被拒的是什么**（例如「代理把 github.com 应答为 198.18.0.1」）,而不只是哪个源没出结果。
+  判定型拒绝与 fake-IP 拒绝都以 `NETWORK_POLICY_BLOCKED` 暴露（两者都是守卫作出的拒绝）,解析器无应答以 `NETWORK_RESOLVE_FAILED` 暴露（spec 08 §3.1）；安装面板正是按这些错误码与结构化 `reason` 分类。
 - `pi-desktop/skill/market/fetch` — `{ entry }` → `{ name?, description?, body, resources? }`。
   主进程按同一策略拉取文档、拆 frontmatter，并可能附上 jsDelivr 目录中的兄弟 `.md`。渲染层通过现有 `skills.create` 安装。该策略即主进程公网网络客户端：语法 URL 防护、按承载 `net.fetch` 的会话线路判定的逐跳 DNS 分类（ADR 0272）、逐跳重定向复核与响应上限——渲染层绝不直接触网。目录 id 会净化为 host `valid_capability_id`。
 
@@ -1379,7 +1381,8 @@ menu/rendererReady() -> { ready: true }
 type NativeMenuAction =
   | "undo" | "redo" | "cut" | "copy" | "paste" | "selectAll"
   | "reload" | "zoomIn" | "zoomOut" | "resetZoom"
-  | "toggleFullScreen" | "minimize" | "toggleMaximize" | "close";
+  | "toggleFullScreen" | "minimize" | "toggleMaximize" | "close"
+  | "restoreMainWindow" | "toggleMainWindow";
 
 menu/nativeAction({ action: NativeMenuAction })
   -> { maximized: boolean; fullScreen: boolean }

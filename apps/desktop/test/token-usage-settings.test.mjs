@@ -18,7 +18,7 @@ const zhLocale = await readFile(
   "utf8",
 );
 
-// D335 / ADR 0173 stands, and ADR 0273 settles the follow-up: the dashboard
+// D335 / ADR 0173 stands, and the #478 call settles the follow-up: the dashboard
 // ships as the pi.token-insights plugin, so the whole stats UI layer is gone
 // from the app. Core keeps the turns / usage / stats RPCs and their shared
 // types — that is the surface a plugin calls.
@@ -39,7 +39,7 @@ test("usage statistics is not a settings destination", () => {
 });
 
 test("the stats UI layer stays deleted while the RPCs stay on Core", () => {
-  // The dashboard is plugin-owned (ADR 0273): no first-party page component
+  // The dashboard is plugin-owned (issue #478): no first-party page component
   // may come back for a plugin to "reuse" — a plugin cannot import app
   // internals and ships its own UI.
   assert.doesNotMatch(settingsPage, /stats/);

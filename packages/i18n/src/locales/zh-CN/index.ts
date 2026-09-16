@@ -71,8 +71,7 @@ export const zhCN = {
     newTask: "新建任务",
     openProject: "打开项目…",
     settings: "设置…",
-    closeWindow: "关闭窗口",
-    summonWindow: "呼出窗口",
+    toggleWindow: "呼出 / 隐藏窗口",
     refreshMarket: "刷新插件市场",
     search: "搜索…",
     toggleSidebar: "侧边栏",
@@ -157,6 +156,7 @@ export const zhCN = {
     createBranch: "从此处分支",
     branchTitle: "{{title}}（分支）",
     deleteTask: "删除",
+    deleteTaskConfirm: "确认删除？",
     copyConversationId: "复制对话 ID",
     openSessionPath: "打开会话路径",
     timeGroupYesterday: "昨天",
@@ -549,6 +549,12 @@ sklm: {
       dnsHint:
         "该校验在本机解析主机,而下载本身会走代理。如果你使用代理、VPN 或自定义 DNS,请检查 设置 → 通用 → 网络。",
       failureSourceHost: "{{name}}（{{host}}）",
+      remoteErrorFakeIp: "代理用 fake-IP 地址应答了目录源,已显示内置精选",
+      previewFakeIpError: "代理把该主机解析成了 fake-IP 地址,应用的地址校验因此拒绝,未安装任何内容。",
+      fakeIpHint:
+        "代理把 {{host}} 应答为 {{address}} —— 这是代理用作 fake-IP 占位地址的保留基准测试段,不是该源的真实地址。请把代理切换为系统代理模式,或检查 设置 → 通用 → 网络。",
+      fakeIpHintPlain:
+        "本地代理把该主机解析成了保留段里的 fake-IP 占位地址,而不是该源的真实地址。请把代理切换为系统代理模式,或检查 设置 → 通用 → 网络。",
       remoteErrorQuery: "无法查询技能市场,已显示内置精选",
       remotePartial: "部分目录源不可用（{{names}}）",
     },
@@ -633,8 +639,7 @@ sklm: {
       toggleSidebar: "切换侧边栏",
       openWorkPanel: "切换侧边面板",
       abort: "停止当前任务",
-      closeWindow: "关闭窗口",
-      summonWindow: "将窗口带到前台",
+      toggleWindow: "呼出或隐藏窗口",
       resetZoom: "重置缩放",
       zoomIn: "放大",
       zoomOut: "缩小",
@@ -1079,6 +1084,11 @@ sklm: {
     createNameLabel: "项目名称",
     createFoldersLabel: "工作区",
     createComputer: "此电脑",
+    createSourceLabel: "来源",
+    createSourceGit: "Git 仓库",
+    createRepositoryLabel: "仓库地址",
+    createChooseLocation: "选择文件夹",
+    createLocationHint: "克隆保存的位置",
     createPrimary: "主要",
     createRemoveFolder: "移除文件夹",
     createAddFolder: "添加文件夹",
@@ -1150,6 +1160,7 @@ sklm: {
     archive: "归档项目",
     restore: "恢复项目",
     delete: "删除项目",
+    deleteMenuConfirm: "确认删除？",
     deleteTitle: "删除项目",
     deleteDescription: "将永久删除 {{name}}，此操作无法撤销。",
     deleteSessions_one: "{{count}} 个会话及其对话记录将被永久删除。",
@@ -1237,6 +1248,15 @@ sklm: {
       unanswered: "第 {{number}} 题未回答",
       skipped: "第 {{number}} 题已跳过",
     },
+  },
+  /**
+   * Host-owned window menu of a floating plugin widget (`ui.shape: "widget"`).
+   * A widget has no control capsule, so its context menu carries these.
+   */
+  pluginPanelWidget: {
+    alwaysOnTop: "始终置顶",
+    minimize: "最小化",
+    close: "关闭挂件",
   },
   panel: {
     title: "工作面板",
@@ -1469,6 +1489,11 @@ sklm: {
     permsMore: "另有 {{count}} 项",
     permissionsTitle: "权限",
     permissionReview: "权限确认",
+    devReviewTitle: "加载 {{name}}？",
+    devReviewNewTitle: "{{name}} 请求更多权限",
+    devReviewBody: "这是来自本机文件夹的开发插件。请确认它可以执行的操作——在你同意前不会加载任何内容。",
+    devReviewAccept: "加载插件",
+    devReviewLoading: "加载中…",
     permissionReviewTitle: "安装 {{name}}？",
     permissionReviewBody: "请确认此插件可以执行的操作。高风险权限在你同意前会保持禁用。",
     acceptInstall: "同意并安装",

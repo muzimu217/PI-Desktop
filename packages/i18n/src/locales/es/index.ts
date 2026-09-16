@@ -69,8 +69,7 @@ export const es = {
     "newTask": "Nueva tarea",
     "openProject": "Abrir proyecto…",
     "settings": "Configuración…",
-    "closeWindow": "Cerrar ventana",
-    "summonWindow": "Traer ventana al frente",
+    "toggleWindow": "Mostrar/Ocultar ventana",
     "refreshMarket": "Actualizar mercado",
     "search": "Buscar…",
     "toggleSidebar": "Barra lateral",
@@ -155,6 +154,7 @@ export const es = {
     "createBranch": "Rama desde aquí",
     "branchTitle": "{{title}} (rama)",
     "deleteTask": "Eliminar",
+    "deleteTaskConfirm": "¿Eliminar?",
     "copyConversationId": "Copiar ID de conversación",
     "openSessionPath": "Abrir ruta de sesión",
     "timeGroupYesterday": "Ayer",
@@ -547,6 +547,14 @@ sklm: {
       dnsHint:
         "Esa comprobación resuelve el host localmente, mientras que la descarga usaría tu proxy. Si usas un proxy, una VPN o una configuración de DNS propia, revisa Ajustes → General → Red.",
       failureSourceHost: "{{name}} ({{host}})",
+      remoteErrorFakeIp:
+        "Tu proxy respondió con direcciones fake-IP para las fuentes del catálogo: se muestran las selecciones integradas",
+      previewFakeIpError:
+        "Tu proxy resolvió este host a una dirección fake-IP, así que la comprobación de direcciones de la aplicación lo rechazó: no se instaló nada.",
+      fakeIpHint:
+        "Tu proxy respondió {{host}} con {{address}}, un rango de referencia reservado que los proxys usan como marcador fake-IP, no la dirección real de la fuente. Cambia el proxy al modo de proxy del sistema o revisa Ajustes → General → Red.",
+      fakeIpHintPlain:
+        "Un proxy local resolvió este host a un marcador fake-IP en un rango reservado, no a la dirección real de la fuente. Cambia el proxy al modo de proxy del sistema o revisa Ajustes → General → Red.",
       remoteErrorQuery: "No se pudo consultar el mercado de skills: se muestran las selecciones integradas",
       remotePartial: "Algunas fuentes del catálogo no están disponibles ({{names}})",
     },
@@ -632,8 +640,7 @@ sklm: {
       "toggleSidebar": "Alternar barra lateral",
       "openWorkPanel": "Alternar panel lateral",
       "abort": "Detener tarea activa",
-      "closeWindow": "Cerrar ventana",
-      "summonWindow": "Traer ventana al frente",
+      "toggleWindow": "Mostrar u ocultar la ventana",
       "resetZoom": "Restablecer zoom",
       "zoomIn": "Acercar",
       "zoomOut": "Zoom out",
@@ -1076,6 +1083,11 @@ sklm: {
     "createNameLabel": "Nombre del proyecto",
     "createFoldersLabel": "Espacio de trabajo",
     "createComputer": "Este equipo",
+    "createSourceLabel": "Origen",
+    "createSourceGit": "Repositorio Git",
+    "createRepositoryLabel": "URL del repositorio",
+    "createChooseLocation": "Elegir carpeta",
+    "createLocationHint": "Carpeta donde se guarda el clon",
     "createPrimary": "Principal",
     "createRemoveFolder": "Quitar carpeta",
     "createAddFolder": "Añadir carpeta",
@@ -1147,6 +1159,7 @@ sklm: {
     "archive": "Archivar proyecto",
     "restore": "Restaurar proyecto",
     "delete": "Eliminar proyecto",
+    "deleteMenuConfirm": "¿Eliminar?",
     "deleteTitle": "Eliminar proyecto",
     "deleteDescription": "{{name}} se eliminará de forma permanente y no se puede deshacer.",
     "deleteSessions_one": "{{count}} sesión guardada se eliminará de forma permanente junto con sus transcripciones.",
@@ -1234,6 +1247,15 @@ sklm: {
       "unanswered": "Pregunta {{number}} no respondida",
       "skipped": "Pregunta {{number}} omitida"
     }
+  },
+  /**
+   * Host-owned window menu of a floating plugin widget (`ui.shape: "widget"`).
+   * A widget has no control capsule, so its context menu carries these.
+   */
+  "pluginPanelWidget": {
+    "alwaysOnTop": "Siempre visible",
+    "minimize": "Minimizar",
+    "close": "Cerrar el widget"
   },
   "panel": {
     "title": "Panel de trabajo",
@@ -1466,6 +1488,11 @@ sklm: {
     "permsMore": "+{{count}} más",
     "permissionsTitle": "Permisos",
     "permissionReview": "Revisión de permisos",
+    "devReviewTitle": "¿Cargar {{name}}?",
+    "devReviewNewTitle": "{{name}} ahora solicita más acceso",
+    "devReviewBody": "Este complemento de desarrollo proviene de una carpeta de este equipo. Revise lo que puede hacer: no se carga nada hasta que lo acepte.",
+    "devReviewAccept": "Cargar complemento",
+    "devReviewLoading": "Cargando…",
     "permissionReviewTitle": "¿Instalar {{name}}?",
     "permissionReviewBody": "Revise lo que puede hacer este complemento. Los permisos de mayor riesgo permanecen bloqueados hasta que los acepte.",
     "acceptInstall": "Aceptar e instalar",

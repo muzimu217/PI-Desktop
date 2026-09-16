@@ -804,7 +804,7 @@ command belonging to that plugin.
 `command` must already be registered by the calling plugin; anything else fails
 `INVALID_ARGUMENT`. An accelerator reserved by the operating system, one
 PI-Desktop itself currently spends (by default `Alt+Space` opens the plugin
-launcher and `Mod+Shift+W` summons the window; once the user rebinds one of
+launcher and `Alt+Shift+W` shows or hides the window; once the user rebinds one of
 them, the freed accelerator is available again), or one held by another plugin
 is refused rather than taken over, and a refused re-registration leaves the
 previous binding in place.
@@ -915,6 +915,32 @@ Detached panel pages using the current chrome contract declare
 `<meta name="pi-plugin-chrome" content="v2">` and use the published variable
 for normal-flow top spacing. The host preserves that page-owned spacing. A
 page without the marker remains supported through the legacy additive offset.
+
+### 6.1 Floating widgets
+
+A manifest may declare `"ui": { "shape": "widget" }`. The panel then opens as a
+floating widget: the same sandboxed, permission-gated page in a transparent,
+frameless window with no 46px drag band, no control capsule, and no rectangular
+native shadow. The page owns its whole rectangle and normally paints a
+silhouette smaller than it — a round orb, for instance — so the host must not
+draw a frame around that silhouette.
+
+- `--pi-plugin-titlebar-height` is `0px`, and the legacy additive top offset is
+  not applied either, whatever chrome marker the page declares.
+- The placement is published before page scripts run as
+  `document.documentElement.dataset.piPluginPanelShape`: `panel`, `widget`, or
+  `view`.
+- Dragging uses a whole-window drag map: empty space moves the window, while
+  standard controls (`button`, `input`, `a`, `[tabindex]`, …) and every element
+  marked `data-pi-plugin-no-drag` stay clickable.
+- A widget has no capsule, so the host owns an equivalent menu behind the
+  surface's own context menu: close, minimize, and always on top. A plugin may
+  still close its own widget through `ui.closePanel()`.
+- `ui.width` / `ui.height` are honoured down to 120×120 (a panel's minimum stays
+  360×280). `ui.alwaysOnTop` pins a widget above other windows, and
+  `ui.resizable` defaults to `false` for a widget and `true` for a panel.
+- Nothing else changes: same preload, same `pluginBridge` channels, same
+  permission gate, same session partition and egress policy.
 
 A docked view may also be given one subject to show. The `location` a work-panel
 tab already carries is delivered to any contributed view — not only

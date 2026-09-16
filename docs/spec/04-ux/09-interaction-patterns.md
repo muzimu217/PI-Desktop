@@ -15,7 +15,7 @@
 | `Cmd/Ctrl + Shift + P` | Open command palette | Global (D014) |
 | `Cmd/Ctrl + N` | New chat/session | Global |
 | `Cmd/Ctrl + O` | Open project | Global |
-| `Cmd/Ctrl + W` | Close window | Global |
+| `Alt + Shift + W` | Show or hide the window (toggle) | OS-global (D439); hides to the tray, never quits |
 | `Cmd/Ctrl + ,` | Open settings | Global |
 | `Cmd/Ctrl + B` | Toggle sidebar | Global |
 | `Cmd/Ctrl + J` | Toggle work panel | Global; active session |
@@ -74,6 +74,16 @@
   the panel's normal activation instead of issuing a second application
   activation or window-stack move. The launcher always opens on the display
   nearest the pointer.
+- The window visibility key is one toggle (`Alt + Shift + W`): a visible,
+  focused window hides to the tray, and anything else — hidden, minimized, or
+  behind another application — is shown and focused. Hiding never enters the
+  close path, so it raises no close-behaviour prompt, destroys nothing, and
+  never quits the app. The key is globally registered, so it deliberately
+  avoids `Cmd/Ctrl + W`, which macOS spends on its own close-window command and
+  which would be taken from every application if the app claimed it. The
+  retired `Cmd/Ctrl + Shift + W` summon chord is not registered either, and
+  stored `closeWindow`/`summonWindow` overrides are folded into the toggle when
+  the map is read (D438, D439).
 
 ### 1.5 Plugin launcher shortcuts
 
@@ -217,6 +227,14 @@ may be retained while exactly one workspace supplies the visible shell context.
 - **Archive** is non-destructive. Archived rows are hidden by default,
   available through Show archived, and restorable. Archiving does not cancel
   a turn or delete a transcript.
+- **Delete** removes a session or a project permanently and takes two clicks:
+  the first arms the overflow item and relabels it (`nav.deleteTaskConfirm` /
+  `project.deleteMenuConfirm`), and only the second click removes the row. The
+  arm expires on its own, so a row never stays one stray click away from a
+  permanent delete, and the folder on disk is never touched. A project whose
+  turn is still live still opens the confirmation dialog that names those
+  sessions and stops them first; an idle project is removed on that second
+  click.
 - **Create branch** snapshots an idle conversation's complete active
   transcript into an independent session in the same project/Temporary scope.
   The command is disabled while the source runs. Success selects the child and

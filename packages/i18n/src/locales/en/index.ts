@@ -76,8 +76,7 @@ export const en = {
     newTask: "New Task",
     openProject: "Open Project…",
     settings: "Settings…",
-    closeWindow: "Close Window",
-    summonWindow: "Summon Window",
+    toggleWindow: "Show/Hide Window",
     refreshMarket: "Refresh marketplace",
     search: "Search…",
     toggleSidebar: "Sidebar",
@@ -162,6 +161,7 @@ export const en = {
     createBranch: "Branch from here",
     branchTitle: "{{title}} (branch)",
     deleteTask: "Delete",
+    deleteTaskConfirm: "Delete?",
     copyConversationId: "Copy conversation ID",
     openSessionPath: "Open session path",
     timeGroupYesterday: "Yesterday",
@@ -554,6 +554,14 @@ sklm: {
       dnsHint:
         "That check resolves the host locally, while the download itself would use your proxy. If you use a proxy, a VPN, or a custom DNS setup, check Settings → General → Network.",
       failureSourceHost: "{{name}} ({{host}})",
+      remoteErrorFakeIp:
+        "Your proxy answered the catalog sources with fake-IP addresses — showing built-in picks",
+      previewFakeIpError:
+        "Your proxy resolved this host to a fake-IP address, so the app's address check refused it — nothing was installed.",
+      fakeIpHint:
+        "Your proxy answered {{host}} with {{address}} — a reserved benchmark range that proxies use as a fake-IP placeholder, not the source's real address. Switch the proxy to system-proxy mode, or check Settings → General → Network.",
+      fakeIpHintPlain:
+        "A local proxy resolved this host to a fake-IP placeholder in a reserved range, not to the source's real address. Switch the proxy to system-proxy mode, or check Settings → General → Network.",
       remoteErrorQuery: "Could not query the skill market — showing built-in picks",
       remotePartial: "Some catalog sources are unavailable ({{names}})",
     },
@@ -639,8 +647,7 @@ sklm: {
       toggleSidebar: "Toggle sidebar",
       openWorkPanel: "Toggle side panel",
       abort: "Stop active task",
-      closeWindow: "Close window",
-      summonWindow: "Bring window to front",
+      toggleWindow: "Show or hide the window",
       resetZoom: "Reset zoom",
       zoomIn: "Zoom in",
       zoomOut: "Zoom out",
@@ -1092,6 +1099,11 @@ sklm: {
     createNameLabel: "Project name",
     createFoldersLabel: "Workspace",
     createComputer: "This computer",
+    createSourceLabel: "Source",
+    createSourceGit: "Git repository",
+    createRepositoryLabel: "Repository URL",
+    createChooseLocation: "Choose folder",
+    createLocationHint: "Where the clone is saved",
     createPrimary: "Primary",
     createRemoveFolder: "Remove folder",
     createAddFolder: "Add folder",
@@ -1163,6 +1175,7 @@ sklm: {
     archive: "Archive project",
     restore: "Restore project",
     delete: "Delete project",
+    deleteMenuConfirm: "Delete?",
     deleteTitle: "Delete project",
     deleteDescription: "This permanently removes {{name}} and cannot be undone.",
     deleteSessions_one: "{{count}} saved session and its transcripts is deleted permanently.",
@@ -1250,6 +1263,15 @@ sklm: {
       unanswered: "Question {{number}} not answered",
       skipped: "Question {{number}} skipped",
     },
+  },
+  /**
+   * Host-owned window menu of a floating plugin widget (`ui.shape: "widget"`).
+   * A widget has no control capsule, so its context menu carries these.
+   */
+  pluginPanelWidget: {
+    alwaysOnTop: "Always on top",
+    minimize: "Minimize",
+    close: "Close widget",
   },
   panel: {
     title: "Work panel",
@@ -1483,6 +1505,11 @@ importConfirm: "Imported extensions run inside the agent process with the same a
     permsMore: "+{{count}} more",
     permissionsTitle: "Permissions",
     permissionReview: "Permission review",
+    devReviewTitle: "Load {{name}}?",
+    devReviewNewTitle: "{{name}} now requests more access",
+    devReviewBody: "This development plugin comes from a folder on this machine. Review what it can do — nothing is loaded until you accept.",
+    devReviewAccept: "Load plugin",
+    devReviewLoading: "Loading…",
     permissionReviewTitle: "Install {{name}}?",
     permissionReviewBody: "Review what this plugin can do. Higher-risk permissions stay blocked until you accept them.",
     acceptInstall: "Accept and install",

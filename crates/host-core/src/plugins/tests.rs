@@ -1967,3 +1967,27 @@ fn market_cards_and_details_read_the_catalog_i18n_block() {
         Some("Reads nothing else")
     );
 }
+
+#[test]
+fn plugin_ui_meta_parses_the_floating_widget_placement() {
+    let widget: PluginUiMeta = serde_json::from_value(json!({
+        "panel": "renderer/index.html",
+        "width": 200,
+        "height": 200,
+        "shape": "widget",
+        "alwaysOnTop": true,
+        "resizable": false
+    }))
+    .unwrap();
+    assert_eq!(widget.shape.as_deref(), Some("widget"));
+    assert_eq!(widget.always_on_top, Some(true));
+    assert_eq!(widget.resizable, Some(false));
+
+    // A manifest that never heard of widgets keeps deserializing untouched, and
+    // the camelCase keys stay the wire contract.
+    let panel: PluginUiMeta =
+        serde_json::from_value(json!({ "panel": "renderer/index.html" })).unwrap();
+    assert!(panel.shape.is_none());
+    assert!(panel.always_on_top.is_none());
+    assert!(panel.resizable.is_none());
+}

@@ -78,7 +78,7 @@ export type StartupDependencies = {
   } | null) => void;
   applyDeveloperMode: (settings?: { developerMode?: unknown } | null) => void;
   applyPluginLauncherShortcut: (keybindings?: KeybindingOverrides) => void;
-  applySummonWindowShortcut: (keybindings?: KeybindingOverrides) => void;
+  applyToggleWindowShortcut: (keybindings?: KeybindingOverrides) => void;
   ensureWindow: () => Promise<boolean>;
   bootHostStatus: (bootError: unknown) => unknown;
   flushPendingApplicationMenuCommands: () => void;
@@ -121,7 +121,7 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
       applyApplicationMenuSettings,
       applyDeveloperMode,
       applyPluginLauncherShortcut,
-      applySummonWindowShortcut,
+      applyToggleWindowShortcut,
       ensureWindow,
       bootHostStatus,
       flushPendingApplicationMenuCommands,
@@ -221,12 +221,13 @@ export function registerApplicationStartup(deps: StartupDependencies): void {
         // Keep the OS-locale menu until settings can be read again, while
         // retaining the historical default launcher fallback for this failure.
         applyPluginLauncherShortcut();
-        applySummonWindowShortcut();
+        applyPluginLauncherShortcut();
+        applyToggleWindowShortcut();
       }
     } else {
       // If the backend never started, retain the default focused/global path.
       applyPluginLauncherShortcut();
-      applySummonWindowShortcut();
+      applyToggleWindowShortcut();
     }
     await ensureWindow();
     if (process.env.PI_DESKTOP_MCP_CONTROL === "1") {

@@ -7,6 +7,7 @@ import type {
   ActivationScope,
   MarketPluginDetail,
   MarketPluginSummary,
+  PluginPermissionReview,
   PluginServiceStatus,
   PluginSummary,
   ProjectRecord,
@@ -53,6 +54,12 @@ export function usePluginsPage() {
     newPermissions: string[];
     version?: string;
   } | null>(null);
+  /**
+   * A development plugin whose folder was chosen but not yet granted. Loading a
+   * folder is a request: nothing is registered until the user answers, so the
+   * declaration waits here the same way an install does.
+   */
+  const [pendingReview, setPendingReview] = useState<PluginPermissionReview | null>(null);
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [templatePick, setTemplatePick] = useState<TemplateId | null>(null);
   const [creating, setCreating] = useState(false);
@@ -294,9 +301,10 @@ export function usePluginsPage() {
 
   const loadDev = () =>
     run(async () => {
-      await api.loadDevPlugin();
-      await refreshPlugins();
-      showToast(t("plugins.loadDevDone"), { variant: "success" });
+      const result = await api.loadDevPlugin();
+      // The folder picker reports the declaration; the review is the grant.
+      if (result.canceled || !result.review) return;
+      setPendingReview(result.review);
     });
 
   // A pi CLI extension becomes a development plugin holding `agent.extension`
@@ -322,7 +330,13 @@ export function usePluginsPage() {
     run(async () => {
       setReloadingId(id);
       try {
-        await api.reloadPlugin(id);
+        const result = await api.reloadPlugin(id);
+        // The manifest asks for more than it is running with: ask first, and
+        // load only after the answer.
+        if (result.review) {
+          setPendingReview(result.review);
+          return;
+        }
         await refreshPlugins();
         showToast(t("plugins.reloadDone"), { variant: "success" });
       } finally {
@@ -341,41 +355,82 @@ export function usePluginsPage() {
     setCreating(true);
     try {
       const created = await api.createPluginFromTemplate(template);
-      await refreshPlugins();
       setTemplatePick(null);
       // A canceled folder picker is not a failure: leave the page untouched.
       if (created.canceled) return;
-      // Scaffolding only makes the plugin run; development also needs the folder
-      // itself open, so activate it as the project and land on chat with the
-      // plugin sources in the workspace the agent and the file panel read.
-      let opened: ProjectWorkspace | null = null;
-      let openError: unknown = null;
-      try {
-        opened = created.dir ? await activateProject(created.dir) : null;
-      } catch (e) {
-        // The plugin is already created and loaded; a failed open must not erase
-        // that, so it is reported on its own instead of replacing the result.
-        openError = e;
+      // Scaffolding writes files; loading waits for the same review a folder
+      // picked by hand goes through.
+      if (created.review) {
+        await activateTemplateProject(created);
+        setPendingReview(created.review);
+        return;
       }
-      showToast(
-        t(
-          opened
-            ? "plugins.newFromTemplateOpened"
-            : "plugins.newFromTemplateDone",
-          { name: created.name ?? "" },
-        ),
-        { variant: "success" },
-      );
-      if (openError) {
-        showToast(
-          openError instanceof Error ? openError.message : String(openError),
-          { variant: "error" },
-        );
-      }
+      await finishTemplate(created);
     } catch (e) {
       showToast(e instanceof Error ? e.message : String(e), { variant: "error" });
     } finally {
       setCreating(false);
+    }
+  };
+
+  /** Open the scaffolded folder so the sources land in the workspace. */
+  const activateTemplateProject = async (created: { dir?: string }) => {
+    try {
+      return created.dir ? await activateProject(created.dir) : null;
+    } catch (e) {
+      // The plugin exists on disk either way; a failed open is reported on its
+      // own instead of replacing the result.
+      return e;
+    }
+  };
+
+  const finishTemplate = async (created: { dir?: string; name?: string }) => {
+    await refreshPlugins();
+    const opened = await activateTemplateProject(created);
+    showToast(
+      t(
+        opened && !(opened instanceof Error)
+          ? "plugins.newFromTemplateOpened"
+          : "plugins.newFromTemplateDone",
+        { name: created.name ?? "" },
+      ),
+      { variant: "success" },
+    );
+    if (opened instanceof Error) {
+      showToast(opened.message, { variant: "error" });
+    }
+  };
+
+  /**
+   * The answer to a development permission review. The accepted set is what the
+   * user just saw, and it becomes the ceiling every later hot reload is measured
+   * against — a folder or a manifest edit can never widen it on its own.
+   */
+  const confirmReview = async () => {
+    const review = pendingReview;
+    if (!review) return;
+    setBusyId(review.id);
+    try {
+      if (review.kind === "reload") {
+        await api.confirmReloadPlugin({
+          id: review.id,
+          grantedPermissions: review.permissions,
+        });
+        await refreshPlugins();
+        showToast(t("plugins.reloadDone"), { variant: "success" });
+      } else {
+        await api.confirmLoadDevPlugin({
+          path: review.path,
+          grantedPermissions: review.permissions,
+        });
+        await refreshPlugins();
+        showToast(t("plugins.loadDevDone"), { variant: "success" });
+      }
+      setPendingReview(null);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : String(e), { variant: "error" });
+    } finally {
+      setBusyId(null);
     }
   };
 
@@ -544,6 +599,9 @@ export function usePluginsPage() {
     detailUpToDate,
     detailPackagePending,
     detailWithdrawn,
+    pendingReview,
+    setPendingReview,
+    confirmReview,
   };
 }
 

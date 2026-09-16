@@ -57,6 +57,7 @@ Examples:
 - `pi-desktop/project/open`
 - `pi-desktop/project/pickFolders`
 - `pi-desktop/project/clone`
+- `pi-desktop/project/cloneCheckout`
 - `pi-desktop/project/openFolder`
 - `pi-desktop/project-group/list`
 - `pi-desktop/project-group/create`
@@ -1272,6 +1273,10 @@ authorization code. `accountLabel` is a display string.
   changing the active workspace
 - `project/clone({ url })`: pick a parent directory, `git clone` the URL into
   it, and return the cloned workspace (the renderer then activates it)
+- `project/cloneCheckout({ url, parentPath })`: `git clone` a public remote
+  into an explicit parent folder and return `{ path, name }` without changing
+  the active workspace; the Create project dialog uses it before it creates the
+  logical project group
 - `project/openFolder(path)`: open a known project directory in the system file
   manager
 - `project/get()`: current workspace
@@ -1482,18 +1487,23 @@ Desktop-only skill market channels (not host RPC) live on Electron IPC:
   builtin-safe catalog JSON and GitHub repo SKILL.md scans. Source URLs must pass
   the public-HTTPS policy (ADR 0243). One failing source is dropped; the rest
   still return. `failureKinds` maps each name in `failedSources` to `policy`
-  (the public-network guard judged the target and refused it, so the request
-  never left the process), `unresolved` (the local DNS lookup returned no answer,
-  so no address was judged — a resolver or proxy condition, not a verdict on the
-  source), or `network`. `failureDetails` carries the same keys with the host
-  that actually failed, the guard's own `reason`, the class of the refused
-  address, and the route that address was judged on (`proxied`, `direct`, or
-  `unknown` when the transport reported no readable route, ADR 0272), which is
-  what lets the panel name *what* was refused instead of only which source went
-  quiet.
-  `NETWORK_POLICY_BLOCKED` and an unanswered resolver as `NETWORK_RESOLVE_FAILED`
-  (spec 08 §3.1); the install sheet classifies a failed preview on those two
-  codes.
+  (the guard judged the target's own non-public address and refused it),
+  `fake-ip` (it judged a fake-IP placeholder the local proxy invented for the
+  name — Clash's `198.18.0.0/15`; still refused on a direct or unreadable route,
+  where the guard fails closed and this app would dial that address itself, but a
+  condition of the local network rather than a fact about the source),
+  `unresolved` (the local DNS lookup returned no answer, so no address was
+  judged), or `network`.
+  `failureDetails` carries the same keys with the host that actually failed, the
+  address it resolved to, the guard's own `reason`, that address's class, and the
+  route the guard judged it on (`proxied`, `direct`, or `unknown` when the
+  transport reported no readable route, ADR 0272), which is what lets the panel
+  name *what* was refused — "your proxy answered github.com with 198.18.0.1" —
+  instead of only which source went quiet. A judged refusal and a fake-IP refusal
+  both surface as `NETWORK_POLICY_BLOCKED` (both are refusals the guard decided),
+  and an unanswered resolver as `NETWORK_RESOLVE_FAILED` (spec 08 §3.1); the
+  install sheet classifies a failed preview on those codes together with the
+  structured `reason`.
 - `pi-desktop/skill/market/fetch` — `{ entry }` → `{ name?, description?, body, resources? }`.
   Main fetches the document over the same policy, splits frontmatter, and may
   attach sibling `.md` files from a jsDelivr listing. The renderer installs
@@ -1704,7 +1714,8 @@ a generic main-process command surface:
 type NativeMenuAction =
   | "undo" | "redo" | "cut" | "copy" | "paste" | "selectAll"
   | "reload" | "zoomIn" | "zoomOut" | "resetZoom"
-  | "toggleFullScreen" | "minimize" | "toggleMaximize" | "close";
+  | "toggleFullScreen" | "minimize" | "toggleMaximize" | "close"
+  | "restoreMainWindow" | "toggleMainWindow";
 
 menu/nativeAction({ action: NativeMenuAction })
   -> { maximized: boolean; fullScreen: boolean }

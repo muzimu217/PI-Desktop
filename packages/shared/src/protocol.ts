@@ -2,7 +2,7 @@ export const PROTOCOL_VERSION = 11 as const;
 export const SCHEMA_VERSION = 16 as const;
 export const APP_ID = "com.pi-desktop.app";
 export const APP_NAME = "PI-Desktop";
-export const APP_VERSION = "0.14.8-native.1";
+export const APP_VERSION = "0.14.9-beta.1";
 
 export const APP_MENU_COMMANDS = [
   "newTask",
@@ -34,6 +34,7 @@ export const NATIVE_MENU_ACTIONS = [
   "toggleMaximize",
   "close",
   "restoreMainWindow",
+  "toggleMainWindow",
 ] as const;
 
 export type NativeMenuAction = (typeof NATIVE_MENU_ACTIONS)[number];
@@ -126,6 +127,7 @@ export const IPC = {
     projectGroupInstructionsGet: "pi-desktop/project-group/instructions/get",
     projectGroupInstructionsSave: "pi-desktop/project-group/instructions/save",
     projectClone: "pi-desktop/project/clone",
+    projectCloneCheckout: "pi-desktop/project/cloneCheckout",
     projectGet: "pi-desktop/project/get",
     projectList: "pi-desktop/project/list",
     projectSet: "pi-desktop/project/set",
@@ -166,7 +168,15 @@ export const IPC = {
     extensionsCommandRun: "pi-desktop/extensions/commands/run",
     extensionsUiRespond: "pi-desktop/extensions/ui/respond",
     pluginLoadDev: "pi-desktop/plugin/loadDev",
+    /**
+     * The answer to a development plugin's permission review. Loading a folder
+     * is a two-step: `pluginLoadDev` returns the declaration, and this commits
+     * the permissions the user accepted.
+     */
+    pluginLoadDevConfirm: "pi-desktop/plugin/loadDevConfirm",
     pluginReload: "pi-desktop/plugin/reload",
+    /** Commits a reviewed widening for an already-loaded development plugin. */
+    pluginReloadConfirm: "pi-desktop/plugin/reloadConfirm",
     pluginCreateFromTemplate: "pi-desktop/plugin/createFromTemplate",
     pluginInstallFromPath: "pi-desktop/plugin/installFromPath",
     pluginInstallFromPackage: "pi-desktop/plugin/installFromPackage",

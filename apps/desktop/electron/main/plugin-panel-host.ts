@@ -1,10 +1,14 @@
-import { BrowserWindow, ipcMain, session } from "electron";
+import { BrowserWindow, ipcMain, Menu, session } from "electron";
 import { pathToFileURL } from "node:url";
 import { join, resolve } from "node:path";
+import { catalogs, resolveLocale } from "@pi-desktop/i18n";
 import { isNetUrlAllowed, THEME_ASSET_SCHEME } from "@pi-desktop/plugin-sdk";
 import { builtinWindowBackground } from "@pi-desktop/shared";
 import {
   isPluginPanelWindowControlAction,
+  PLUGIN_PANEL_MIN_SIZE,
+  PLUGIN_PANEL_WIDGET_MIN_SIZE,
+  PLUGIN_PANEL_WIDGET_ARGUMENT,
   PLUGIN_PANEL_WINDOW_CONTROL_CHANNEL,
   PLUGIN_PANEL_WINDOW_STATE_CHANNEL,
   PLUGIN_PANEL_LOCALE_ARGUMENT_PREFIX,
@@ -20,6 +24,18 @@ export type PluginPanelOpenRequest = {
   width: number;
   height: number;
   htmlPath: string;
+  /**
+   * `"panel"` (default) keeps the 46px host drag band and its three-control
+   * capsule. `"widget"` opens the same sandboxed page as a transparent floating
+   * surface with neither, so a plugin can be a small orb the user keeps on
+   * screen. The plugin surface itself is unchanged: same preload bridge, same
+   * partition, same egress policy.
+   */
+  shape?: "panel" | "widget";
+  /** Floating widget placement only: keep the surface above other windows. */
+  alwaysOnTop?: boolean;
+  /** Overrides the per-shape default: panels are resizable, widgets are not. */
+  resizable?: boolean;
   /**
    * Egress allowlist from `manifest.net.domains`. A panel is a full web page:
    * `sandbox: true` removes Node, not the network, so without this the panel is
@@ -141,6 +157,12 @@ export class PluginPanelHost {
   private senderResolvers: Array<(senderId: number) => string | null> = [];
   /** Observer for failures of the fire-and-forget legacy sync bridge. */
   private onBridgeError?: (pluginId: string, channel: string, error: unknown) => void;
+  /**
+   * Locale per floating-widget web contents. Presence in this map is also what
+   * makes a window a widget for `showWidgetMenu`, so a panel never gets a
+   * context menu it did not ask for.
+   */
+  private widgetLocales = new Map<number, string>();
 
   constructor(
     bridge: BridgeHandler,
@@ -299,10 +321,53 @@ export class PluginPanelHost {
         if (window.isMaximized()) window.unmaximize();
         else window.maximize();
         break;
+      case "contextMenu":
+        this.showWidgetMenu(window);
+        break;
       case "close":
         window.close();
         break;
     }
+  }
+
+  /**
+   * A floating widget has no capsule, so its own context menu opens the host's
+   * window menu instead. Without it the only way out of a widget would be a
+   * plugin-authored close button, and a plugin that never added one would leave
+   * a window the user cannot dismiss.
+   *
+   * Only a widget is registered in `widgetLocales`; a panel or docked view that
+   * asks for this action gets nothing, because panels keep the capsule.
+   */
+  private showWidgetMenu(window: BrowserWindow): void {
+    if (window.isDestroyed() || window.webContents.isDestroyed()) return;
+    const locale = this.widgetLocales.get(window.webContents.id);
+    if (locale === undefined) return;
+    const labels = catalogs[resolveLocale(locale)].pluginPanelWidget;
+    const menu = Menu.buildFromTemplate([
+      {
+        label: labels.alwaysOnTop,
+        type: "checkbox",
+        checked: window.isAlwaysOnTop(),
+        click: (item) => {
+          if (!window.isDestroyed()) window.setAlwaysOnTop(item.checked);
+        },
+      },
+      { type: "separator" },
+      {
+        label: labels.minimize,
+        click: () => {
+          if (!window.isDestroyed()) window.minimize();
+        },
+      },
+      {
+        label: labels.close,
+        click: () => {
+          if (!window.isDestroyed()) window.close();
+        },
+      },
+    ]);
+    menu.popup({ window });
   }
 
   /**
@@ -335,18 +400,32 @@ export class PluginPanelHost {
     const ses = session.fromPartition(partition, { cache: true });
     this.applyEgressPolicy(ses, request);
 
+    const widget = request.shape === "widget";
+    const minSize = widget ? PLUGIN_PANEL_WIDGET_MIN_SIZE : PLUGIN_PANEL_MIN_SIZE;
     const win = new BrowserWindow({
-      width: Math.max(360, request.width || 480),
-      height: Math.max(280, request.height || 360),
+      width: Math.max(minSize.width, request.width || (widget ? 220 : 480)),
+      height: Math.max(minSize.height, request.height || (widget ? 220 : 360)),
       title: request.title,
       show: false,
       autoHideMenuBar: true,
       // The host theme is only a fallback; the preload samples the actual
       // plugin page colors after it has loaded and paints the chrome from them.
-      backgroundColor: builtinWindowBackground(request.theme),
-      // Every platform uses the same frameless surface. The preload owns the
-      // only visible window controls: a fixed three-button capsule.
+      backgroundColor: widget ? "#00000000" : builtinWindowBackground(request.theme),
+      // Every platform uses the same frameless surface. A panel's visible window
+      // controls are the preload's three-button capsule; a floating widget has
+      // no chrome of its own — the plugin draws its silhouette edge to edge.
       frame: false,
+      transparent: widget,
+      // A transparent window would otherwise carry a rectangular native shadow
+      // around an orb that is round; a widget draws its own glow instead.
+      hasShadow: !widget,
+      resizable: request.resizable ?? !widget,
+      alwaysOnTop: widget && request.alwaysOnTop === true,
+      // A floating widget is a desktop companion, not a taskbar entry, and it
+      // has no capsule to restore from a maximized state.
+      skipTaskbar: widget,
+      maximizable: !widget,
+      ...(widget ? { fullscreenable: false } : {}),
       webPreferences: {
         session: ses,
         preload: join(__dirname, "../preload/plugin-panel.js"),
@@ -357,6 +436,7 @@ export class PluginPanelHost {
         additionalArguments: [
           `${PLUGIN_PANEL_LOCALE_ARGUMENT_PREFIX}${encodeURIComponent(request.locale)}`,
           `--pi-plugin-panel-theme=${request.theme}`,
+          ...(widget ? [PLUGIN_PANEL_WIDGET_ARGUMENT] : []),
           ...(request.development
             ? ["--pi-plugin-panel-development=1"]
             : []),
@@ -385,8 +465,10 @@ export class PluginPanelHost {
     // while the window is still alive; reading `webContents` later throws
     // "Object has been destroyed" and surfaces an uncaught main-process dialog.
     const webContentsId = win.webContents.id;
+    if (widget) this.widgetLocales.set(webContentsId, request.locale);
     win.on("closed", () => {
       this.pendingDrops.delete(webContentsId);
+      this.widgetLocales.delete(webContentsId);
       this.windows.delete(request.pluginId);
     });
 

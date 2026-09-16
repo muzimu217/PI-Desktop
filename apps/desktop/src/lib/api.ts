@@ -50,6 +50,7 @@ import type {
   OAuthStartResult,
   OAuthVendor,
   PluginSummary,
+  PluginPermissionReview,
   PluginSettingDefinition,
   PluginServiceStatus,
   PluginViewMeta,
@@ -534,6 +535,11 @@ export const api = {
       IPC.invoke.projectClone,
       { url },
     ),
+  cloneProjectInto: (url: string, parentPath: string) =>
+    invoke<{ path: string; name: string }>(IPC.invoke.projectCloneCheckout, {
+      url,
+      parentPath,
+    }),
   pickFiles: () =>
     invoke<{ token: string | null; canceled?: boolean }>(IPC.invoke.composerPickFiles),
   getDroppedFilePath: (file: File) =>
@@ -651,8 +657,24 @@ export const api = {
     invoke<PlanResolutionResult>(IPC.invoke.plansResolve, resolution),
   listPlugins: () =>
     invoke<{ plugins: PluginSummary[] }>(IPC.invoke.pluginList),
-  loadDevPlugin: () => invoke(IPC.invoke.pluginLoadDev),
-  reloadPlugin: (id: string) => invoke(IPC.invoke.pluginReload, id),
+  /**
+   * Picking a folder only reports what it declares; the load happens in
+   * `confirmLoadDevPlugin` once the user has seen that.
+   */
+  loadDevPlugin: () =>
+    invoke<{ canceled?: boolean; review?: PluginPermissionReview }>(
+      IPC.invoke.pluginLoadDev,
+    ),
+  confirmLoadDevPlugin: (input: { path: string; grantedPermissions: string[] }) =>
+    invoke(IPC.invoke.pluginLoadDevConfirm, input),
+  /**
+   * A manifest that asks for more than the current approval comes back as a
+   * `review` instead of a reload, so the page asks before anything is granted.
+   */
+  reloadPlugin: (id: string) =>
+    invoke<{ review?: PluginPermissionReview }>(IPC.invoke.pluginReload, id),
+  confirmReloadPlugin: (input: { id: string; grantedPermissions: string[] }) =>
+    invoke(IPC.invoke.pluginReloadConfirm, input),
   createPluginFromTemplate: (template: string) =>
     invoke<{
       canceled?: boolean;
@@ -660,6 +682,7 @@ export const api = {
       name?: string;
       dir?: string;
       files?: string[];
+      review?: PluginPermissionReview;
     }>(IPC.invoke.pluginCreateFromTemplate, { template }),
   installPluginFromPath: () => invoke(IPC.invoke.pluginInstallFromPath),
   installPluginFromPackage: () => invoke(IPC.invoke.pluginInstallFromPackage),
@@ -734,19 +757,18 @@ export const api = {
        * Why each named source failed, so the market can explain a policy/DNS
        * refusal instead of reporting every source as merely unreachable.
        */
-      failureKinds?: Record<string, "policy" | "unresolved" | "network">;
+      failureKinds?: Record<string, "policy" | "fake-ip" | "unresolved" | "network">;
       /**
-      /**
-       * The host and the guard's own reason behind each failed source. Without
-       * it the panel can say a source was refused but not *what* was refused,
-       * and a policy refusal is a statement about one address. `route` adds
-       * which route the guard judged that address on, so a fake-IP refusal on a
-       * direct route reads apart from one on a proxied route (issue #419,
-       * ADR 0272).
+       * The host, the address it resolved to, and the guard's own reason behind
+       * each failed source. Without them the panel can say a source was refused
+       * but not *what* was refused — and `198.18.0.1` is what tells a user their
+       * proxy is in fake-IP mode. `route` adds which route the guard judged that
+       * address on, so a fake-IP refusal on a direct route reads apart from one
+       * on a proxied route (issue #419, ADR 0272).
        */
       failureDetails?: Record<
         string,
-        { host?: string; reason?: string; addressKind?: string; route?: string }
+        { host?: string; address?: string; reason?: string; addressKind?: string; route?: string }
       >;
     }>(IPC.invoke.skillMarketSearch, { query, sources }),
   /** Fetch one catalog document (frontmatter split off) for preview/install. */

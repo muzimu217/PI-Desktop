@@ -221,7 +221,7 @@ let pluginLauncherWindow: BrowserWindow | null = null;
 let pluginLauncherCreationPromise: Promise<BrowserWindow> | null = null;
 let pluginLauncherAccelerator: string | null = null;
 let pluginLauncherBinding: string | null = null;
-let summonWindowAccelerator: string | null = null;
+let toggleWindowAccelerator: string | null = null;
 const launcherState: LauncherState = {
   get creationPromise() {
     return pluginLauncherCreationPromise;
@@ -235,11 +235,11 @@ const launcherState: LauncherState = {
   set pluginLauncherAccelerator(value) {
     pluginLauncherAccelerator = value;
   },
-  get summonWindowAccelerator() {
-    return summonWindowAccelerator;
+  get toggleWindowAccelerator() {
+    return toggleWindowAccelerator;
   },
-  set summonWindowAccelerator(value) {
-    summonWindowAccelerator = value;
+  set toggleWindowAccelerator(value) {
+    toggleWindowAccelerator = value;
   },
 };
 let windowCreationPromise: Promise<void> | null = null;
@@ -474,10 +474,10 @@ const applyPluginLauncherShortcutForLifecycle = (
 ) => {
   launcherRuntime?.applyPluginLauncherShortcut(keybindings);
 };
-const applySummonWindowShortcutForLifecycle = (
+const applyToggleWindowShortcutForLifecycle = (
   keybindings?: KeybindingOverrides,
 ) => {
-  launcherRuntime?.applySummonWindowShortcut(keybindings);
+  launcherRuntime?.applyToggleWindowShortcut(keybindings);
 };
 const applyCloseBehaviorForLifecycle = (next: CloseBehavior) => {
   if (!closeBehaviorRuntime) {
@@ -928,7 +928,7 @@ applicationLifecycle = createApplicationLifecycle({
   logger,
   refreshReleaseNotes: () => updater.refreshReleaseNotes(),
   applyPluginLauncherShortcut: applyPluginLauncherShortcutForLifecycle,
-  applySummonWindowShortcut: applySummonWindowShortcutForLifecycle,
+  applyToggleWindowShortcut: applyToggleWindowShortcutForLifecycle,
   broadcastPluginPanelEvent,
   getHost: () => host,
 });
@@ -936,6 +936,7 @@ const {
   applyDevelopmentBranding,
   hasVisibleWindow,
   restoreMainWindow,
+  toggleMainWindow,
   updateTrayMenu,
   createTray,
   resetMenuRendererReady,
@@ -982,7 +983,7 @@ const createdLauncher = createLauncher({
   getHost: () => host,
   logger,
   safeOpenExternal,
-  restoreMainWindow,
+  toggleMainWindow,
 });
 launcherRuntime = createdLauncher;
 const {
@@ -990,7 +991,7 @@ const {
   showPluginLauncher,
   togglePluginLauncher,
   applyPluginLauncherShortcut,
-  applySummonWindowShortcut,
+  applyToggleWindowShortcut,
 } = createdLauncher;
 
 /** sessionId → open host turn id, for turn bookkeeping across agent events. */
@@ -1404,7 +1405,7 @@ registerApplicationStartup({
   applyApplicationMenuSettings,
   applyDeveloperMode,
   applyPluginLauncherShortcut,
-  applySummonWindowShortcut,
+  applyToggleWindowShortcut,
   ensureWindow,
   bootHostStatus,
   flushPendingApplicationMenuCommands,
@@ -1459,11 +1460,11 @@ const shutdownState: ShutdownState = {
   set pluginLauncherAccelerator(value) {
     pluginLauncherAccelerator = value;
   },
-  get summonWindowAccelerator() {
-    return summonWindowAccelerator;
+  get toggleWindowAccelerator() {
+    return toggleWindowAccelerator;
   },
-  set summonWindowAccelerator(value) {
-    summonWindowAccelerator = value;
+  set toggleWindowAccelerator(value) {
+    toggleWindowAccelerator = value;
   },
 };
 

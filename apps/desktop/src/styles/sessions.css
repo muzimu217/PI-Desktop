@@ -379,6 +379,11 @@
   color: var(--ds-error);
 }
 
+/* An armed delete item names its second click, so the swap stays obvious. */
+.sidebar-row-menu button.danger.is-armed {
+  background: color-mix(in oklab, var(--ds-error) 14%, transparent);
+}
+
 .sidebar-row-menu button svg,
 .sidebar-popover button svg {
   flex: 0 0 auto;

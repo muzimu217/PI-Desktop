@@ -159,7 +159,7 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
 
 ### Usage statistics (no Settings destination)
 
-D335 / ADR 0173 stands, and ADR 0273 is superseded: no `usage` destination
+D335 / ADR 0173 stands, and the interim re-introduction was withdrawn per the #478 call: no `usage` destination
 ships, and no group is reserved for one. The host-owned aggregation
 (`stats.summary` / `stats.topSessions`, over the durable completed-turn
 history) stays on the Core surface alongside `stats.getTokenUsageHistory`.
@@ -188,6 +188,12 @@ its own UI and cannot import app internals.
     on Windows/Linux; its native global registration follows the same override.
     An unbound launcher disables Electron registration, the Windows host hook,
     and the focused-window fallback
+  - the window-visibility row is one toggle on `Alt + Shift + W`: it hides a
+    visible, focused window to the tray and brings a hidden or minimized window
+    back. It is the only window key — the retired `Cmd/Ctrl + Shift + W` summon
+    row is gone — and it avoids `Cmd/Ctrl + W` because macOS spends that chord
+    on its own close-window command; a stored `closeWindow`/`summonWindow`
+    override is folded into it when the map is read (D438, D439)
 
 ### Model configuration (`agent` tab)
 - **Defaults** card: a compact settings row shows the provider name and exact

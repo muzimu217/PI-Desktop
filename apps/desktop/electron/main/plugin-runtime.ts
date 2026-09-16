@@ -195,6 +195,16 @@ export type PluginPanelRequest = {
   htmlPath: string;
   locale?: string;
   theme?: "light" | "dark";
+  /**
+   * `"panel"` (default) keeps the 46px host drag band and its capsule.
+   * `"widget"` is the transparent floating placement: no band, no capsule, a
+   * whole-window drag map, and a host context menu instead of the capsule.
+   */
+  shape?: "panel" | "widget";
+  /** Floating widget placement only: keep the surface above other windows. */
+  alwaysOnTop?: boolean;
+  /** Overrides the per-shape default: panels are resizable, widgets are not. */
+  resizable?: boolean;
   /** The plugin's egress allowlist; the panel session is confined to it. */
   netDomains?: readonly string[];
   /** Allows the isolated panel to request microphone audio, never camera access. */
@@ -929,7 +939,7 @@ function readDeclaredAccess(pluginPath: string): {
  * through review rather than being reasoned about, because deciding whether one
  * glob covers another is not something to guess at behind the gateway.
  */
-function widenedFsScope(ceiling: PluginFsPolicy, next: PluginFsPolicy): string[] {
+export function widenedFsScope(ceiling: PluginFsPolicy, next: PluginFsPolicy): string[] {
   const added: string[] = [];
   for (const mode of ["read", "write", "delete"] as const) {
     const before = ceiling[mode];
@@ -946,6 +956,30 @@ function widenedFsScope(ceiling: PluginFsPolicy, next: PluginFsPolicy): string[]
     }
   }
   return added;
+}
+
+/**
+ * Manifest and folded access a development plugin directory declares right now,
+ * for the permission review that has to happen before it is loaded. The same
+ * read a reload performs, plus the identity the review UI needs to name it
+ * before its first load.
+ */
+export function readDevPluginDeclaration(pluginPath: string): {
+  manifest: PluginManifest;
+  permissions: string[];
+  fs: PluginFsPolicy;
+} {
+  const manifestPath = join(pluginPath, "manifest.json");
+  if (!existsSync(manifestPath)) {
+    throw new Error("PLUGIN_INVALID: manifest.json missing");
+  }
+  const raw = JSON.parse(readFileSync(manifestPath, "utf8")) as unknown;
+  const validated = validateManifest(raw);
+  if (!validated.ok || !validated.manifest) {
+    throw new Error(`PLUGIN_INVALID: ${validated.error}`);
+  }
+  const access = readDeclaredAccess(pluginPath);
+  return { manifest: validated.manifest, permissions: access.permissions, fs: access.fs };
 }
 
 /**
@@ -1613,6 +1647,18 @@ export class PluginRuntime {
     return this.watcher.isWatching(pluginId);
   }
 
+  /**
+   * The approval a development plugin is loaded under: the permission set and
+   * the file scope the user accepted when they last reviewed it, or null when
+   * the plugin is not watched. Both the hot reload and the manual reload measure
+   * a manifest edit against this record, never against the manifest itself —
+   * the manifest is the request, this is the answer.
+   */
+  devApproval(pluginId: string): { permissions: string[]; fs: PluginFsPolicy } | null {
+    const dev = this.devPlugins.get(pluginId);
+    return dev ? { permissions: [...dev.permissions], fs: dev.fs } : null;
+  }
+
   /** Stop every watch; called on app quit alongside the other subsystems. */
   disposeWatchers(): void {
     this.watcher.disposeAll();
@@ -1696,7 +1742,7 @@ export class PluginRuntime {
       const widened = widenedFsScope(dev.fs, declaredAccess.fs);
       if (added.length || widened.length) {
         throw new Error(
-          `PERMISSION_DENIED: manifest now requests ${[...added, ...widened].join(", ")}; load the plugin again to review`,
+          `PERMISSION_DENIED: manifest now requests ${[...added, ...widened].join(", ")}; reload it from the Plugins page to review`,
         );
       }
       // Grants follow the manifest downwards, never upwards: a permission the
@@ -4438,6 +4484,9 @@ export class PluginRuntime {
                 this.services.getLocale?.(),
                 loaded.manifest.name,
               ),
+            shape: loaded.manifest.ui?.shape,
+            alwaysOnTop: loaded.manifest.ui?.alwaysOnTop,
+            resizable: loaded.manifest.ui?.resizable,
             width: loaded.manifest.ui?.width ?? 480,
             height: loaded.manifest.ui?.height ?? 360,
             htmlPath,

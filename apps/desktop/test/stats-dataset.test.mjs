@@ -589,3 +589,87 @@ test("the weekly bar view keeps empty weeks visible and reads turns", () => {
   // And the daily cells' turn counts reach the bucket (see the dataset test).
   assert.match(page, /tokens, turns \}\) => \(\{ date, tokens, turns \}\)/);
 });
+
+// --- Source contract: the audit's residual gaps (project breakdown, empty
+// --- state, provenance) stay closed. -----------------------------------------
+
+test("project usage slices are descending with shares renormalised to 1", () => {
+  const dataset = buildStatsDataset(
+    summary({
+      projectUsage: [
+        { projectId: 3, projectName: "gamma", tokens: 100, share: 0 },
+        { projectId: 1, projectName: "alpha", tokens: 500, share: 0 },
+        { projectId: null, projectName: null, tokens: 200, share: 0 },
+      ],
+    }),
+    SESSIONS,
+    NOW,
+  );
+  // Descending by tokens, and the host's null project keeps its null id so the
+  // render layer — not the dataset — decides how to label it.
+  assert.deepEqual(
+    dataset.projectUsage.map((project) => project.projectId),
+    [1, null, 3],
+  );
+  assert.equal(dataset.projectUsage[1].projectName, null);
+  const total = dataset.projectUsage.reduce((sum, project) => sum + project.share, 0);
+  assert.ok(Math.abs(total - 1) < 1e-9, `shares renormalise to 1, got ${total}`);
+});
+
+test("project breakdown folds the tail into Other and labels the null project", async () => {
+  const projectSource = await readStatsModule("ProjectUsage.tsx");
+  assert.match(projectSource, /const PROJECT_USAGE_TOP = 8;/);
+  // The tail is folded only when it carries tokens, so an all-zero range does
+  // not grow a mystery "Other 0%" row.
+  assert.match(projectSource, /if \(rest\.length > 0 && otherTokens > 0\)/);
+  assert.match(projectSource, /t\("stats\.projectUsageOther"\)/);
+  assert.match(projectSource, /project\.projectName \?\? t\("stats\.noProject"\)/);
+  assert.match(projectSource, /className="stats-usage-fill"/);
+  // The page renders the card full-width, ahead of the top-sessions list.
+  assert.match(page, /t\("stats\.projectUsage"\)/);
+  assert.match(page, /<ProjectUsage projects=\{dataset\.projectUsage\} \/>/);
+  assert.ok(
+    page.indexOf('t("stats.projectUsage")') < page.indexOf('t("stats.topSessions")'),
+    "the project breakdown renders before the top-sessions list",
+  );
+});
+
+test("a range with no completed turns renders the whole-page empty state", () => {
+  // Keyed on turnCount, not on the sessions list: a project filter can leave
+  // turns behind while the top-session list is empty, and that quieter per-card
+  // row has to survive.
+  assert.match(page, /if \(summary\.cards\.turnCount === 0\) \{/);
+  assert.match(page, /t\("stats\.emptyTitle"\)/);
+  assert.match(page, /t\("stats\.emptyDesc"\)/);
+  assert.match(page, /t\("stats\.emptyAction"\)/);
+  // The CTA uses the same nav entry as the settings rail's back-to-app button.
+  assert.match(page, /const setPage = useAppStore\(\(state\) => state\.setPage\)/);
+  assert.match(page, /setPage\("chat"\)/);
+});
+
+test("the loading posture answers the privacy question", () => {
+  assert.match(page, /className="stats-loading-notes"/);
+  assert.match(page, /t\("stats\.loadingPrivacy"\)/);
+});
+
+test("the provenance footer carries freshness and covered fields", () => {
+  assert.match(page, /formatLastActive\(dataset\.generatedAt, locale\)/);
+  assert.match(page, /t\("stats\.lastUpdated", \{ time: updatedAgo \}\)/);
+  assert.match(page, /t\("stats\.provenanceFields"\)/);
+});
+
+test("the host's null-model bucket is localised at render time only", () => {
+  // The dataset keeps the raw host id, so the CSV/JSON export stays
+  // locale-independent; only the legend, tooltip and sr table translate it.
+  const dataset = buildStatsDataset(summary(), SESSIONS, NOW);
+  assert.ok(dataset.models.every((model) => model.modelId !== "Other models"));
+  assert.match(page, /export const OTHER_MODEL_ID = "other";/);
+  assert.match(page, /modelId === OTHER_MODEL_ID \? t\("stats\.modelUsageOther"\) : modelId/);
+});
+
+test("the donut's accessible name summarises its own shares", () => {
+  assert.match(page, /const ariaLabel =/);
+  assert.match(page, /aria-label=\{ariaLabel\}/);
+  // Not the trend summary: it speaks about days and peaks, not proportions.
+  assert.doesNotMatch(page, /aria-label=\{ariaSummary\}/);
+});

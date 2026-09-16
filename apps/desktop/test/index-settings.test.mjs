@@ -83,3 +83,29 @@ test("settings search and locales carry the index keys", () => {
     assert.match(enLocale, new RegExp(`${leaf}:`));
   }
 });
+
+test("index page surfaces the host's rebuild progress and fast-path metrics", () => {
+  assert.match(page, /className="idx-progress"/);
+  assert.match(page, /className="idx-progress-fill"/);
+  assert.match(page, /t\("index\.progressFiles", \{/);
+  assert.match(page, /t\("index\.progressFallback"\)/);
+  // The host gives no counts: an indeterminate pill, never a fake bar.
+  assert.match(page, /t\("index\.status\.building"\)/);
+  // Host-lifetime counters only ride along on fresh roots.
+  assert.match(page, /root\?\.status === "fresh" \? root\.metrics : undefined/);
+  assert.match(page, /t\("index\.fastPathHitRate"\)/);
+  assert.match(page, /formatMs\(metrics\.p50Ms\)/);
+  assert.match(page, /formatMs\(metrics\.p95Ms\)/);
+});
+
+test("the index page explains itself once and can be dismissed for good", () => {
+  // Once written, the flag keeps the note away for every later render.
+  assert.match(page, /const NUDGE_DISMISSED_KEY = /);
+  assert.match(page, /localStorage\.getItem\(NUDGE_DISMISSED_KEY\) !== "1"/);
+  assert.match(page, /localStorage\.setItem\(NUDGE_DISMISSED_KEY, "1"\)/);
+  assert.match(page, /t\("stats\.nudgeText"\)/);
+  assert.match(page, /t\("stats\.nudgeDismiss"\)/);
+  // The switch left the health card: it is a setting, not telemetry.
+  assert.match(page, /t\("index\.sectionCode"\)/);
+  assert.match(page, /t\("index\.indexSubtitle"\)/);
+});

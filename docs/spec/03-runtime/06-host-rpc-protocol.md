@@ -1120,6 +1120,12 @@ numeric slot; the string is the contract, the number is transport detail.
 | 1016 | SKILL_INVALID | user skill document failed validation |
 | 1017 | SUBAGENT_INVALID | user subagent document failed validation |
 | 1018 | CAPABILITY_INVALID | agent capability root/scope setting failed validation |
+| 1019 | PLUGIN_CANCELLED | the user cancelled a marketplace install while it was downloading |
+| 1020 | PLUGIN_MARKET_NOT_PUBLISHED | the platform has the version and is not offering it yet |
+| 1021 | PLUGIN_MARKET_ARCHIVED | the plugin was withdrawn from the platform |
+| 1022 | PLUGIN_MARKET_NOT_FOUND | the platform does not have that plugin or version |
+| 1023 | PLUGIN_MARKET_RATE_LIMITED | the download endpoint asked the client to wait |
+| 1024 | PLUGIN_MARKET_NO_SOURCE | no distribution target can serve the package |
 | -32029 | HOST_OVERLOADED | RPC dispatcher capacity exhausted |
 | -32601 | — | unknown method |
 | -32700 | — | unparseable request line |

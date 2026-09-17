@@ -128,12 +128,6 @@
   line-height: var(--leading-normal);
 }
 
-.project-create-dialog-name-field:focus-visible {
-  outline: 1.5px solid color-mix(in oklab, var(--ds-accent) 80%, transparent);
-  outline-offset: 2px;
-  box-shadow: none;
-}
-
 .project-create-dialog-name-field::placeholder {
   color: var(--ds-text-muted);
 }
@@ -164,7 +158,8 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  border: 1px solid var(--ds-border-subtle);
+  appearance: none;
+  border: 0;
   border-radius: var(--radius-md);
   background: var(--ds-tile);
   color: var(--ds-text-secondary);
@@ -173,7 +168,6 @@
   line-height: var(--leading-compact-plus);
   transition:
     background var(--motion-duration-fast) var(--motion-ease-out),
-    border-color var(--motion-duration-fast) var(--motion-ease-out),
     color var(--motion-duration-fast) var(--motion-ease-out);
 }
 
@@ -183,17 +177,14 @@
 }
 
 .project-create-dialog-source-option.is-active {
-  border-color: color-mix(in oklab, var(--ds-accent) 55%, transparent);
-  background: color-mix(in oklab, var(--ds-accent) 12%, var(--ds-tile));
+  background: var(--ds-tile-deep);
   color: var(--ds-text-primary);
 }
 
 .project-create-dialog-source-option:focus-visible,
-.project-create-dialog-url-field:focus-visible,
 .project-create-dialog-location:focus-visible {
-  outline: 1.5px solid color-mix(in oklab, var(--ds-accent) 80%, transparent);
-  outline-offset: 2px;
-  box-shadow: none;
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 22%, transparent);
 }
 
 .project-create-dialog-url-field {
@@ -215,6 +206,8 @@
   align-items: center;
   gap: 10px;
   margin-top: 8px;
+  appearance: none;
+  border: 0;
   border-radius: var(--radius-md);
   background: var(--ds-tile);
   padding: 10px 12px;

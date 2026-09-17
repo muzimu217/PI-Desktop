@@ -234,6 +234,12 @@ malformed.
 | `PLUGIN_MARKET_INVALID` | no | the marketplace catalog is malformed or missing required release fields |
 | `PLUGIN_MARKET_UNTRUSTED_HOST` | no | the catalog or package URL is outside the trusted marketplace hosts |
 | `PLUGIN_MARKET_YANKED` | no | the requested release was withdrawn from the catalog |
+| `PLUGIN_MARKET_NOT_PUBLISHED` | no | the platform has the version and is not offering it yet |
+| `PLUGIN_MARKET_ARCHIVED` | no | the plugin was withdrawn from the platform |
+| `PLUGIN_MARKET_NOT_FOUND` | no | the platform does not have that plugin or version |
+| `PLUGIN_MARKET_RATE_LIMITED` | yes | the download endpoint asked the client to wait |
+| `PLUGIN_MARKET_NO_SOURCE` | maybe | no distribution target can serve the package |
+| `PLUGIN_CANCELLED` | no | the user cancelled an install while it was downloading |
 | `MCP_INVALID` | no | a user MCP server definition failed validation |
 | `SKILL_INVALID` | no | a user skill document failed validation |
 | `SUBAGENT_INVALID` | no | a user subagent document failed validation |

@@ -416,6 +416,7 @@ Weights use `--font-weight-*` tokens only (Codex uses variable-font intermediate
 
 | Token | Value | Usage |
 |---|---|---|
+| `space-0.25` | 1px | Hairline row gaps in dense list rhythms (sidebar session rows, settings rail items) |
 | `space-0.5` | 2px | Tight inline gaps |
 | `space-1` | 4px | Icon-text gaps, badge padding |
 | `space-1.5` | 6px | Compact inner padding |
@@ -571,7 +572,7 @@ floating layers where an edge is an elevation cue rather than a partition.
 | Tile | `--ds-tile` (3.5% text mix); hover `--ds-tile-hover` (6%); deep `--ds-tile-deep` (8%) | Panels, list rows, cards, form fields, chips, code blocks, empty states |
 | Raised | `--ds-raised` + `--ds-raised-shadow` | The active pill of a segmented control, a disclosed detail block, a recorder keycap |
 | Dock | `--ds-bg-dock` (the column), `--ds-bg-dock-raised` (its header and viewer strips) | The work-panel column and the bars inside it. Both are tokens, not literals, so a contributed theme can move them (D419) |
-| Settings rail | `--ds-settings-rail-bg` (light `#f4f4f4`, dark `#000000`) | Full-window settings navigation column |
+| Sidebar / settings rail | `--ds-bg-sidebar` (opaque fallback: light `#f3f3f3`, dark `#000000`), `--ds-bg-sidebar-image`, shared macOS glass tint/sheen | One `sidebar-surface` material for both navigation columns; content stays opaque |
 | Settings search | `--ds-settings-field-bg` (light `#ffffff`, dark `#212121`) | Search pill on the settings rail |
 | Active settings item | `--ds-settings-nav-active` (light 12% `#1a1c1f` mixed over white; dark 10% `--gray-0` over transparent) | Selected navigation pill |
 | Inset search | `--ds-field-inset-bg`, `--ds-field-inset-focus-bg` (light `#f3f3f3` / white; dark 5% / 7% primary-text mix over transparent) | Plugin search and Agent capability search, including focus |
@@ -582,6 +583,15 @@ floating layers where an edge is an elevation cue rather than a partition.
 | Tool output | `--ds-tool-row-bg` (light 2% `#1a1c1f`, dark `--ds-tile`) | Tool result and error output blocks in the transcript |
 | Disabled send chip | `--ds-send-disabled-bg`, `--ds-send-disabled-fg` (light `#8e8e90` / `#ffffff`; dark 18% text mix / 70% `--gray-900`) | The composer's disabled send button |
 | Composer placeholder | `--ds-placeholder-ink` (light `#4a4c4f`, dark 42% white) | Input and placeholder ink in both composer states |
+
+Main and settings navigation share the same material, not just matching colors.
+The legacy `--ds-settings-rail-bg` remains readable with the shared built-in
+palette and supplies the sidebar color fallback, including theme overrides.
+An explicit `--ds-bg-sidebar` override takes precedence. This preserves legacy
+color reads and inputs without retaining
+an independent settings-only plate or creating a circular alias. On macOS the
+shared tint derives from that color; on other platforms the shared plate is
+opaque. Background imagery uses `--ds-bg-sidebar-image` for both rails.
 
 The dark composer shell consumes `--ds-bg-elevated-primary` directly; light
 continues to use `--ds-bg-composer`. Switch on-state knobs consume
@@ -857,6 +867,10 @@ model):
   hairline stroke plus the restrained `--elevation-prominent` shadow provides
   separation; the transcript reserves the measured dock height instead of
   painting a full-width gradient veil.
+- In-transcript message-edit uses `--ds-tile-deep` and `--ds-composer-radius`
+  with no outer shadow. The row's paint containment and the transcript
+  scroller would clip a composer lift. Focus uses an inset 2px accent ring
+  so the cue stays inside the plate.
 - Dark elevated shell reads as elevated-primary (`#212121f5` / gray-800 96%)
   on `#181818` with standard elevation-prominent
 - Starter cards use a two-column grid at workstation widths and collapse to
@@ -1217,9 +1231,10 @@ Full component contract and usage rules: [08-component-spec.md §17](08-componen
 |---|---|
 | **Base padding 8px (space-2)** | Default inner padding for list items, form groups |
 | **Message gap 10px** | Between chat message rows — denser WorkBuddy-like transcript |
-| **Section gap 16px (space-4)** | Between distinct UI sections (sidebar sections, settings groups) |
+| **Section gap 16px (space-4)** | Between distinct UI sections (destination pages, settings groups, page-level blocks) |
 | **Panel gap 0px** | Panels touch edge-to-edge with border-subtle separator — no gutters |
 | **Compact list rows 28px height** | Sidebar session items, settings list rows |
+| **Sidebar rhythm 1px / 2px / 8px** | Sidebar lists: 1px between rows, 2px from a group header or section label to its first row, 8px after an expanded project group and between sidebar sections (1px when the preceding group is collapsed) |
 | **Button rows 32px height** | Standard buttons |
 | **Never exceed 24px vertical gap** | Even for "breathing room" — this is a workstation |
 | **Max content width 760px default** | Chat band is user-resizable (min 560px); user plates stay compact |
@@ -1292,7 +1307,7 @@ Full component contract and usage rules: [08-component-spec.md §17](08-componen
   the only counts on the page. It has no hero block, no decorative gradient,
   and no page-level counter run
 - **Settings**: full-page Codex shell per D063/D090/D133/D166 (275px compact
-  eight-destination rail, `#f4f4f4` light, elevated content cards, Back to app);
+  navigation rail sharing the main sidebar material, elevated content cards, Back to app);
   per D092, the content cards fill the pane width available from the current
   window instead of retaining D070's fixed 720px cap — the earlier in-shell
   200px rail and broad grouped directory are superseded

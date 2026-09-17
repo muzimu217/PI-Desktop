@@ -2,7 +2,15 @@
 import type { ActivationScope } from "../activation.js";
 import type { TrustedExtensionDiagnostic } from "../trusted-extensions.js";
 
-export type PluginMarketSource = "official" | "mirror" | "custom";
+/**
+ * Where the marketplace catalog comes from.
+ *
+ * `official` keeps its meaning — the official one — and the official one is the
+ * plugin center, so a settings row written before the center existed keeps
+ * meaning what its author picked instead of needing a migration. `github` and
+ * `mirror` are the two backup channels, and `custom` is a URL the user typed.
+ */
+export type PluginMarketSource = "official" | "github" | "mirror" | "custom";
 
 export type PluginUpdateInfo = {
   version: string;
@@ -326,4 +334,32 @@ export type PluginWorkspaceInfo = {
   projectId?: string;
   /** Every registered folder of that group, primary first. */
   roots?: PluginWorkspaceRoot[];
+};
+
+/** One mirror an install tried, and what it answered. */
+export type PluginInstallMirror = {
+  source: string;
+  url: string;
+  error?: string | null;
+};
+
+/**
+ * What an install is doing, reported while it runs.
+ *
+ * The install is a single request, so without these the interface has nothing
+ * to show between the click and the answer. `error` is set on the report that
+ * ends a failed install; `receivedBytes`/`totalBytes` are a progress pair and
+ * `totalBytes` is 0 when nothing announced a size.
+ */
+export type PluginInstallProgress = {
+  pluginId: string;
+  version: string;
+  phase: "resolve" | "download" | "verify" | "install" | "enable";
+  source?: string | null;
+  attempt?: number;
+  attempts?: number;
+  receivedBytes?: number;
+  totalBytes?: number;
+  tried?: PluginInstallMirror[];
+  error?: string | null;
 };

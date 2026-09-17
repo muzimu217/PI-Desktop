@@ -26,10 +26,9 @@ test("high-traffic chrome uses shared motion tokens on hover fills", () => {
 });
 
 test("empty-home stack gap stays within the 24px workstation ceiling", () => {
-  // Anchor at line start: the cascade also has a
-  // `.chat-surface[data-chat-resizing="true"] .home-stack-inner` rule whose
-  // suffix matches the unanchored pattern first and shadows the gap block.
-  const block = styles.match(/\n\.home-stack-inner\s*\{[^}]+\}/)?.[0] ?? "";
+  // The resizing override also mentions `.home-stack-inner`; pin the
+  // standalone rule so this check does not bind to `transition: none`.
+  const block = styles.match(/^\.home-stack-inner\s*\{[\s\S]*?\}/m)?.[0] ?? "";
   assert.match(block, /gap:\s*(?:1[0-9]px|2[0-4]px)/);
   assert.doesNotMatch(block, /gap:\s*2[5-9]px|gap:\s*[3-9]\dpx/);
 });

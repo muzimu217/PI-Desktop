@@ -1,5 +1,6 @@
 import { Button, cx } from "../../components/ui";
 import { IconCheck, IconShield, IconSparkles, IconTriangleAlert } from "../../components/icons";
+import { PluginInstallDialog } from "../../components/plugins/PluginInstallDialog";
 import { PluginSettingsSheet } from "../../components/plugins/PluginSettingsSheet";
 import { useAppStore } from "../../stores/app-store";
 import {
@@ -23,6 +24,10 @@ export function PluginDialogs({
   setAutoUpdate,
   busyId,
   confirmInstall,
+  installJob,
+  cancelInstallDownload,
+  retryInstall,
+  closeInstallDialog,
   settingsPlugin,
   setSettingsPlugin,
   refreshPlugins,
@@ -154,6 +159,14 @@ export function PluginDialogs({
           </div>
         </div>
     ) : null}
+      {installJob ? (
+        <PluginInstallDialog
+          job={installJob}
+          onCancel={cancelInstallDownload}
+          onRetry={retryInstall}
+          onClose={closeInstallDialog}
+        />
+      ) : null}
       {settingsPlugin ? (
         <PluginSettingsSheet
           plugin={settingsPlugin}

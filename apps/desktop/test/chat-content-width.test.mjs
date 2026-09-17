@@ -22,16 +22,23 @@ test("chat surface mounts dual width handles", () => {
   assert.match(handleSource, /nav\.resizeChatWidth/);
 });
 
-test("chat width handles are invisible at rest and glow on hover or drag", () => {
+test("chat width handles are invisible at rest and show a quiet capsule on hover", () => {
   const handle = styles.match(/\.chat-width-handle::before\s*\{[\s\S]*?\}/)?.[0] ?? "";
   assert.match(handle, /opacity:\s*0/);
+  assert.match(handle, /height:\s*40px/);
+  assert.match(handle, /var\(--ds-text-primary\) 18%/);
+  assert.doesNotMatch(handle, /box-shadow:\s*0 0 12px/);
   assert.match(styles, /\.chat-width-handle:hover::before/);
+  assert.match(
+    styles,
+    /:root\[data-theme="light"\] \.chat-width-handle::before/,
+  );
   assert.match(
     styles,
     /\.chat-surface\[data-chat-resizing="true"\] \.chat-width-handle::before/,
   );
-  assert.match(styles, /box-shadow:\s*0 0 12px 3px/);
 });
+
 
 test("a squeezed pane keeps min\(100%, preferred\) and does not force 640px", () => {
   assert.match(styles, /--chat-content-max-width:\s*760px/);

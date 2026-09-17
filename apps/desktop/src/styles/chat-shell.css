@@ -163,19 +163,24 @@
 }
 
 .route-surface,
-.settings-shell-full {
+.settings-content-enter {
   animation: route-surface-in var(--motion-duration-normal) var(--motion-ease-out)
     both;
 }
 
+/*
+  Do not animate `.settings-content-inner`. Chromium promotes an animated
+  ancestor onto a compositor layer that becomes a containing block for
+  `position: fixed`, so settings dialogs would cover only the content pane.
+  Opacity-only keyframes still leave that layer while `animation-fill-mode:
+  both` is in effect.
+*/
 @keyframes route-surface-in {
   from {
     opacity: 0;
-    transform: translateY(5px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
@@ -382,7 +387,9 @@
 }
 
 
-/* Conversation width handles (D439). Rest: invisible. Hover: glow. Drag: hairline. */
+/* Conversation width handles (D439). Rest: invisible. Hover/drag: a short
+ * capsule, not a full-height glow. Dark uses a faint white ink mix; light
+ * uses a fainter black mix so the same rule does not read as a bright seam. */
 .chat-width-handles {
   position: absolute;
   inset: 0 0 var(--composer-dock-height, 168px);
@@ -414,39 +421,48 @@
 .chat-width-handle::before {
   content: "";
   position: absolute;
-  inset-block: 18%;
+  top: 50%;
   left: 50%;
   width: 2px;
+  height: 40px;
   border-radius: var(--radius-full);
-  background: transparent;
+  background: color-mix(in oklab, var(--ds-text-primary) 18%, transparent);
   box-shadow: none;
   opacity: 0;
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
   transition:
     opacity var(--motion-duration-fast) var(--motion-ease-out),
-    background var(--motion-duration-fast) var(--motion-ease-out),
-    box-shadow var(--motion-duration-fast) var(--motion-ease-out),
-    width var(--motion-duration-fast) var(--motion-ease-out);
+    height var(--motion-duration-fast) var(--motion-ease-out),
+    background var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+:root[data-theme="light"] .chat-width-handle::before {
+  background: color-mix(in oklab, var(--ds-text-primary) 12%, transparent);
 }
 
 .chat-width-handle:hover::before,
 .chat-width-handle:focus-visible::before {
   opacity: 1;
-  width: 2px;
-  background: color-mix(in oklab, var(--ds-focus) 28%, transparent);
-  box-shadow: 0 0 12px 3px color-mix(in oklab, var(--ds-focus) 22%, transparent);
 }
 
 .chat-width-handle:focus-visible {
   outline: none;
 }
 
+.chat-width-handle:focus-visible::before {
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ds-accent) 22%, transparent);
+}
+
 .chat-width-handle.is-resizing::before,
 .chat-surface[data-chat-resizing="true"] .chat-width-handle::before {
   opacity: 1;
-  width: 1px;
-  background: color-mix(in oklab, var(--ds-focus) 55%, transparent);
-  box-shadow: 0 0 16px 4px color-mix(in oklab, var(--ds-focus) 28%, transparent);
+  height: 56px;
+  background: color-mix(in oklab, var(--ds-text-primary) 32%, transparent);
+}
+
+:root[data-theme="light"] .chat-width-handle.is-resizing::before,
+:root[data-theme="light"] .chat-surface[data-chat-resizing="true"] .chat-width-handle::before {
+  background: color-mix(in oklab, var(--ds-text-primary) 20%, transparent);
 }
 
 .chat-surface[data-chat-resizing="true"] .thread-content,
@@ -466,6 +482,7 @@
     transition: none;
   }
 }
+
 
 /* Conversation minimap: packed stack of dashes on the thread's left edge,
  * centered inside the safe span between titlebar and docked composer. Dense

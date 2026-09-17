@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, Menu, session } from "electron";
+import { BrowserWindow, ipcMain, Menu, session, systemPreferences } from "electron";
 import { pathToFileURL } from "node:url";
 import { join, resolve } from "node:path";
 import { catalogs, resolveLocale } from "@pi-desktop/i18n";
@@ -120,6 +120,7 @@ export function applyPluginEgressPolicy(
   });
   // A panel is denied device access by default. The only opt-in is an
   // audio-only media request for a plugin that declared ui.microphone.
+
   ses.setPermissionRequestHandler((_contents, permission, callback, details) => {
     const mediaTypes =
       permission === "media" && "mediaTypes" in details ? details.mediaTypes : undefined;
@@ -127,10 +128,27 @@ export function applyPluginEgressPolicy(
       Array.isArray(mediaTypes) && mediaTypes.length > 0 && mediaTypes.every((type) => type === "audio");
     callback(input.allowMicrophone === true && audioOnly);
   });
-  ses.setPermissionCheckHandler((_contents, permission, _origin, details) =>
-    permission === "media" && input.allowMicrophone === true && details.mediaType === "audio",
-  );
+  ses.setPermissionCheckHandler((_contents, permission, _origin, details) => {
+    if (permission !== "media" || input.allowMicrophone !== true) return false;
+    // Chromium probes with "unknown" (or an empty mediaType) before the
+    // request. Denying that fails getUserMedia even when the following
+    // request is audio-only.
+    return details.mediaType !== "video";
+  });
+
 }
+
+/** macOS TCC: a sandboxed file:// panel often never prompts on its own. */
+async function ensureOsMicrophone(allowMicrophone?: boolean): Promise<void> {
+  if (!allowMicrophone || process.platform !== "darwin") return;
+  try {
+    if (systemPreferences.getMediaAccessStatus("microphone") === "granted") return;
+    await systemPreferences.askForMediaAccess("microphone");
+  } catch {
+    // Headless tests have no TCC surface.
+  }
+}
+
 
 /** Persisted session partition shared by a plugin's panel window and views. */
 export function pluginSessionPartition(pluginId: string): string {
@@ -390,6 +408,8 @@ export class PluginPanelHost {
   async open(request: PluginPanelOpenRequest): Promise<void> {
     const existing = this.windows.get(request.pluginId);
     if (existing && !existing.isDestroyed()) {
+      this.applyEgressPolicy(existing.webContents.session, request);
+      await ensureOsMicrophone(request.allowMicrophone);
       if (existing.isMinimized()) existing.restore();
       existing.show();
       existing.focus();
@@ -399,6 +419,8 @@ export class PluginPanelHost {
     const partition = pluginSessionPartition(request.pluginId);
     const ses = session.fromPartition(partition, { cache: true });
     this.applyEgressPolicy(ses, request);
+    await ensureOsMicrophone(request.allowMicrophone);
+
 
     const widget = request.shape === "widget";
     const minSize = widget ? PLUGIN_PANEL_WIDGET_MIN_SIZE : PLUGIN_PANEL_MIN_SIZE;

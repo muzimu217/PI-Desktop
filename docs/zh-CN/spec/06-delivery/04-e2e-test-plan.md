@@ -1334,12 +1334,12 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 
 #### E2E-024P：切换市场目录来源
 
-- **先决条件**：网络可访问 `cnb.cool`。
-- **步骤**：1) 打开扩展 → 市场。 2) 将「插件市场来源」从 GitHub（官方）切换到镜像（cnb.cool）。 3) 确认同一页面完成目录刷新。 4) 安装一个插件。
-- **预期**：切换后自动触发刷新并报告新的插件数量；来源选择器是唯一的来源状态控件，不显示重复的提供商说明或当前来源状态行；安装从镜像下载安装包并通过 shasum 校验。切回官方可恢复 GitHub 来源。选择自定义地址但留空时回退到官方默认地址，而不是空端点。
-- **链接规格**：`07-plugins/07-plugin-marketplace.md`
+- **先决条件**：网络可访问 `plugins.aiuo.net`、`raw.githubusercontent.com` 与 `cnb.cool`。
+- **步骤**：1) 在全新配置下打开扩展 → 市场，确认来源行显示官方渠道。 2) 依次切换到海外备份、国内备份、填写地址的自定义，再切回官方渠道。 3) 每次切换后确认同一页面完成目录刷新。 4) 先从官方渠道安装一个插件，再从国内备份安装一个。 5) 选择自定义地址但留空。
+- **预期**：全新配置默认停在官方渠道，其目录来自 `plugins.aiuo.net/catalog.json`；四个选项按官方渠道 / 海外备份 / 国内备份 / 自定义的顺序显示；切换后自动触发刷新并报告新的插件数量；来源选择器仍是唯一的来源状态控件，不显示重复的提供商说明或当前来源状态行；官方渠道的安装通过平台 resolve，国内备份的安装仍从镜像下载并通过与以前相同的 shasum 校验，因此两条备份路径逐字节不变；切回某个来源时直接复用其缓存快照而不是删除，也不产生额外往返；已安装记录标明插件来自哪个渠道；选择自定义地址但留空时回退到官方默认地址，而不是空端点。
+- **链接规格**：`07-plugins/07-plugin-marketplace.md` §2
 - **接受**：G（远程市场来源）
-- **状态**：已记录/涵盖 host-core 单元
+- **状态**：已记录 / 涵盖 host-core 单元
 
 #### E2E-024B：带有权限审查的市场安装
 
@@ -5041,6 +5041,8 @@ IPC 请求无法关闭。
 | 验收 | 应用场景 |
 |---|---|
 | C / G / Quality — Plugins navigation | E2E-NAV-plugins-button-goes-back |
+| C / D / Quality — 侧边栏行状态 | E2E-LAYOUT-sidebar-row-states |
+| A / C / Quality — 侧栏材质与设置返回 | E2E-LAYOUT-sidebar-settings |
 | B / F / Security — 提供商复制 | E2E-PROVIDER-copy-config-without-credentials |
 | A — 应用程序启动 | E2E-001、E2E-002、E2E-003、E2E-004、E2E-067、E2E-076、E2E-079、E2E-092、E2E-097、E2E-143、E2E-150、E2E-168、E2E-204、E2E-217 |
 | B——模型配置 | E2E-005、E2E-005G、E2E-006、E2E-007、E2E-038、E2E-050、E2E-052、E2E-055、E2E-066、E2E-080、E2E-082、E2E-151、E2E-005J、E2E-199、E2E-201、E2E-202、E2E-203、E2E-209、E2E-166 |
@@ -7469,6 +7471,84 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
   states). DOM/CDP clicks are not native hit-test proof. Native pointer, drag
   and visual checks remain required; branch runs are exploratory only.
 
+#### E2E-LAYOUT-sidebar-project-group-fold
+
+- **前提条件**：通过宿主预置四个保留的侧边栏项目分组：一个横跨四个日期桶共五个会话，一个只有单个会话，一个没有任何会话，一个带十个已固定会话。未设置 `prefers-reduced-motion`。
+- **步骤**：
+  1. 检查这些分组：主体分层、行数与日期标签数、空状态、每个展开分组贡献给下一个分组的尾部间距，
+     以及非项目列表的预算。
+  2. 用真实指针点击项目目录行（先滚动进视野并确认命中该按钮）折叠多行分组，在约半秒内逐帧读取
+     分组主体的高度、opacity、解析后的 `grid-template-rows`，以及到下一个分组的距离，
+     同时记录该折叠自身的 `transitionrun` / `transitionend`。
+  3. 再次展开，确认打开的几何形态恢复。
+  4. 在同一次运动中先折叠再展开。
+  5. 在模拟 `prefers-reduced-motion: reduce` 的情况下重复折叠。
+  6. 把固定列表滚动到它的最后一行。
+- **预期**：项目分组是一个网格行（`grid-template-rows: 1fr`），在 200ms 的正常时长内动画到
+  `0fr` —— 没有 `max-height` 夹取，也没有 opacity 过渡 —— 因此折叠是一条连续的高度斜坡，
+  不会先出现平台期再瞬间跳变，并且每一帧的 `opacity` 都保持为 1：行是被裁剪的，从不淡出。
+  一次折叠只触发一次过渡，其自身事件报告 200ms 的正常时长。行由内层带 `min-height: 0` 的盒
+  裁剪，1px 行间隙与分组的 2px / 7px 内缩量位于该裁剪层内部的列表上，因此内缩量随行一起移动。
+  展开分组的 7px 内缩量加上滚动容器的 1px 间隙，与下一个分组之间形成 8px 尾部间距；列表中的
+  最后一个分组没有邻居，因此改为校验它自身的内缩量与裁剪层。折叠分组的尾部随行一起消失，
+  其区块等于标题加上 1px 滚动容器间隙，行仍挂载在被裁剪的边缘之外，同时分组处于
+  `aria-hidden` 与 `inert`。中途反转会从它已经到达的那一帧转向，并回到打开高度而不越界；
+  空分组以同样方式折叠其空状态。在减弱动态效果下保留两端状态并去掉位移。固定列表在
+  `min(233px, 30vh)` 内显示八行并可滚动到其余行，独立列表保持其弹性列与 146px 预算。
+  分组的缩进、顺序与工作区状态均不变。
+- **链接规格**：`04-ux/01-ui-ia.md`、`04-ux/07-ui-design-system.md` §6.1 与 §13、
+  `04-ux/08-component-spec.md` §6.2、`08-meta/decisions-log.md`（2026-09-16 侧边栏列表节奏与项目分组折叠）
+- **验收**：品质
+- **里程碑**：Post-M6 desktop shell maintenance
+- **状态**：已自动化（`scripts/e2e-three-column-layout.mjs`，经 `pnpm test:e2e:layout`）：
+  宿主预置分组与固定项、经过命中校验的 CDP 指针点击、在真实折叠上逐帧采样高度与 opacity、
+  读取过渡自身报告的时长、中途反转，以及减弱动态效果模拟。
+  单元覆盖见 `apps/desktop/test/sidebar-collapse-animation.test.mjs` 与
+  `apps/desktop/test/sidebar-pinned-rendering.test.mjs`。采样值是渲染器几何数据，
+  不是人眼视觉验收。
+
+#### E2E-LAYOUT-sidebar-row-states
+
+- **前提条件**：宿主预置项目、置顶和独立会话，存在当前工作区；应用使用隔离的数据与 profile。
+- **步骤**：分别在深浅主题下选中项目会话，悬停项目标题、未选中和已选中会话；
+  检查失焦处理、拖拽目标样式、操作按钮悬停及 Tab/Shift+Tab 焦点；折叠后展开
+  选中会话的分组，切换置顶与独立会话，打开设置再返回；开启减少动态效果，
+  确认项目与会话行的悬停过渡均接近零时长。
+- **预期**：项目与会话共享整行悬停背景、圆角和过渡，标题按钮透明；选中背景
+  只属于会话且优先于悬停。工作区仅通过圆点表达，折叠不会转移选中态。
+  置顶和独立会话样式一致；焦点轮廓、独立操作按钮反馈和拖拽目标优先级保留。
+  失焦释放悬停而不清除选中；设置替换侧栏，返回后恢复会话与工作区上下文。
+  渲染测试另覆盖没有选中会话、切换中的目标和非聊天页状态。
+- **链接规格**：`04-ux/01-ui-ia.md`、`04-ux/08-component-spec.md`、`04-ux/09-interaction-patterns.md` §9.1c
+- **验收**：C、D、品质
+- **里程碑**：Post-M6 desktop shell maintenance
+- **状态**：经 `pnpm test:e2e:layout` 调用 `scripts/e2e/sidebar-row-states.mjs` 自动验证，
+  使用真实 CDP 指针/键盘输入及计算样式断言。失焦/聚焦事件与拖拽类由测试注入，
+  这两项不等同于原生窗口焦点或真实拖拽测试。单元覆盖：
+  `sidebar-navigation.test.mjs`、`sidebar-pinned-rendering.test.mjs`。
+
+#### E2E-LAYOUT-sidebar-settings
+
+- **前提条件**：构建后的桌面应用、隔离宿主与 profile，聊天侧栏可见。
+- **步骤**：在深浅主题及 darwin/win32/linux CSS 分支比较主侧栏与设置导航的颜色、
+  背景图、尺寸和位置，检查祖先透明度及右侧不透明背景；返回时记录挂载、宽度及
+  animationstart。重复快速往返、原本折叠、入场被设置打断和减少动态效果场景，
+  确认真实展开仍有动画。另验证旧主题色、标准侧栏色及背景图覆盖。
+- **预期**：两处导航共用材质，设置导航和外壳不播入场，只有不透明内容区内部动画。
+  macOS 下侧栏祖先透明，右侧内容和顶部条不透明。返回时展开侧栏始终为 275px，
+  无 sidebar-in；原本折叠则保持不显示。真实展开仍有动画与宽度变化；旧主题颜色
+  作为共享回退保留，显式标准 token 优先。
+- **链接规格**：`04-ux/06-settings-ia.md`、`04-ux/07-ui-design-system.md`、
+  `04-ux/08-component-spec.md` §1.4、§1.7
+- **验收**：A、C、品质
+- **里程碑**：Post-M6 desktop shell maintenance
+- **状态**：`pnpm test:e2e:layout` 调用 `scripts/e2e/sidebar-settings.mjs`，使用可信
+  CDP 指针/键盘、挂载时与后续几何采样、动画事件及计算样式。测试启用 CDP 焦点模拟，
+  防止原生窗口被遮挡后 Chromium 冻结动画与悬停输入。平台和主题为渲染层模拟，
+  不等同于原生 Windows/Linux 或系统材质/主题验证。可通过 `PI_DESKTOP_LAYOUT_ARTIFACT_DIR`
+  保存渲染截图。`sidebar-settings-return.test.mjs` 覆盖首次显示、两种中断阶段、
+  隐藏时状态变化和反转；`pnpm test:e2e:theme-surfaces` 在真实 Chromium 验证不透明回退及旧主题覆盖。
+
 #### E2E-AGENT-alt-enter-steers-active-turn：Enter 排队跟进，Alt+Enter 向当前回合补充指令
 
 - **前提条件**：会话已配置模型，能够控制流式回复或工具完成时机；附件场景使用支持图像的模型。
@@ -7680,3 +7760,72 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
   目录、继承值保持 `catalog` 标记）；`packages/shared/src/model-catalog.test.ts` 覆盖
   四条来源规则；`crates/host-core/src/providers/catalog.rs` 覆盖配置往返、无标记记录与
   被丢弃的未知标记。端到端的设置旅程与实际启动窗口断言为草稿。
+#### E2E-PLUGIN-official-channel-resolves-through-the-platform：官方渠道的安装通过平台解析，并从第一个可用镜像安装
+
+- **先决条件**：全新配置停留在官方渠道；`plugins.aiuo.net/catalog.json` 中存在一个插件；平台与两个镜像主机各有请求日志（可用本地存根代替）。
+- **步骤**：1) 打开扩展 → 市场，确认来源行显示官方渠道，且目录来自 `plugins.aiuo.net`。 2) 安装该插件。 3) 抓取平台收到的请求。 4) 检查是哪个镜像提供了安装包。 5) 再安装第二个插件，然后重新安装第一个插件的同一版本。
+- **预期**：每次安装或更新只发出一次 `POST /api/v1/download/resolve`，JSON body 含 `deviceId`、`pluginId`，用户选定版本时含版本号；安装包来自 `downloads` 中第一个可应答的条目，且在解压之前其字节与返回的 `sha256` 和 `sizeBytes` 一致；不可达或失败的镜像被放弃并自动尝试下一个，无需用户操作；重新安装同一版本会发出新的 resolve 调用，而不是复用上一次的应答，因为响应从不缓存；插件通过常规权限审查安装，其记录标明来源为官方渠道。
+- **链接规格**：`07-plugins/07-plugin-marketplace.md` §2、`07-plugins/15-plugin-center.md` §10
+- **验收**：G（远程市场来源）
+- **里程碑**：M6+
+- **状态**：草稿
+
+#### E2E-PLUGIN-mirror-digest-mismatch-falls-through-to-the-next-mirror：字节与摘要不符的镜像在解压前被拒绝
+
+- **先决条件**：一次官方渠道安装，其 `downloads` 至少有两个条目，第一个镜像提供的字节与返回的 `sha256` 不符（旧分发内容，或提供 `pi.todo-0.6.5` 的 CNB 时代字节的存根）；同时可以查看安装缓存与插件目录。
+- **步骤**：1) 启动安装。 2) 观察第一个镜像的下载与摘要校验。 3) 在安装结束前检查安装缓存与插件目录。 4) 让安装继续。 5) 换成一个只在第一个镜像上让声明的 `sizeBytes` 不符的存根重做一遍。
+- **预期**：不符的字节被丢弃，不会被解压或交给安装器，插件目录里不会留下任何内容，拒绝会显示在安装进度里而不是被吞掉；下一个镜像的字节按同一摘要校验，安装从那里完成；大小不符的情形表现完全相同；所有条目都失败时安装以明确的失败结束，而不是留下半安装的插件。
+- **链接规格**：`07-plugins/07-plugin-marketplace.md` §2
+- **验收**：G（远程市场来源）+ 安全性
+- **里程碑**：M6+
+- **状态**：草稿
+
+#### E2E-PLUGIN-platform-unreachable-install-falls-back-to-the-catalog-url：平台不可达时安装回退到目录地址
+
+- **先决条件**：官方目录已成功刷新并缓存；安装期间 `plugins.aiuo.net` 不可达（被阻断的存根，或被拒绝的 DNS/代理线路）。
+- **步骤**：1) 在平台可达时刷新目录，然后让它不可达。 2) 安装一个目录条目里带相对 `url` 的插件。 3) 确认是哪个主机提供了安装包，以及平台是否收到 resolve 请求。 4) 恢复可达后，依次安装平台分别以 `403 NOT_PUBLISHED`、`403 PLUGIN_ARCHIVED`、`404`、`429` 和 `503` 拒绝的版本。
+- **预期**：安装从目录自身的地址解析安装包——`artifactBaseUrl` 加相对 `url`——并在同样的 shasum 校验之后完成；该次安装不会向平台发出 resolve 请求，也不计入统计；resolve 失败的原因会出现在安装日志里而不是被隐藏；平台恢复应答后，各拒绝码各自给出对应的提示——尚未发布不重试、已归档会从安装与更新选择中隐藏该插件、平台没有该版本、限流按 `Retry-After` 等待一次、`503` 报部署问题——并且任何拒绝都不会静默切到别的渠道或别的版本。
+- **链接规格**：`07-plugins/07-plugin-marketplace.md` §2
+- **验收**：G（远程市场来源）
+- **里程碑**：M6+
+- **状态**：草稿
+
+#### E2E-PLUGIN-device-identifier-is-stable-and-never-the-machine-code：设备标识跨启动稳定，且不是机器码原文
+
+- **先决条件**：一个能读到机器标识的主机（Windows `MachineGuid`、macOS 平台 UUID，或 `/etc/machine-id`），一个读不到机器标识的环境，以及为 `POST /api/v1/download/resolve` 记录请求的存根。
+- **步骤**：1) 在同一会话内触发两次安装，比较记录的 `deviceId`。 2) 重启应用后再触发一次安装。 3) 把该值与主机的机器标识原文比较。 4) 在设置、市场页面与已安装插件详情中查找该值。 5) 在读不到机器标识的环境里重复步骤 1 与 2，然后检查应用数据目录。
+- **预期**：同一安装发出的每次 resolve 请求都携带同一个 64 位小写十六进制值，包括重启之后，以及机器标识未变时的应用重装之后；该值既不是机器码原文也不是它的前缀，并等于 `sha256("pi-desktop.device.v1:" + 机器标识)`；该标识从不出现在界面上，也没有任何设置可以显示或重置它；读不到机器标识时，该值是另一个 64 位十六进制字符串，只生成一次并持久化在 `plugins/market/device.json`，之后跨重启一直复用。
+- **链接规格**：`07-plugins/07-plugin-marketplace.md` §2、ADR 0276
+- **验收**：G（远程市场来源）+ 安全性
+- **里程碑**：M6+
+- **状态**：草稿
+
+#### E2E-PLUGIN-install-progress-shows-phases-and-mirror：官方渠道安装显示各阶段与正在尝试的镜像并完成
+
+- **先决条件**：全新配置停留在官方渠道；一个插件的 resolve 应答至少列出两个条目；第一个镜像失败或很慢，以便观察到第二次尝试；渲染进程已订阅 `plugin.installProgress`。
+- **步骤**：1) 从市场详情面板发起一次手动安装。 2) 记录安装期间收到的报告。 3) 安装成功后把指针悬停在对话框上。 4) 安装结束后查看已安装插件。 5) 用一个较大的安装包再次安装，并统计至少一秒窗口内的报告数量。
+- **预期**：对话框按顺序显示各阶段——`resolve`、`download`、`verify`、`install`、`enable`——以及 `mirror n/N · name` 和由 `receivedBytes` / `totalBytes` 得出的确定进度条；每条报告都带 `pluginId` 与 `version`，只有指明镜像的报告才带 `source`，`attempt` 按 1 在 `attempts` 内计数，切换镜像会递增 `attempt` 而不改变 `attempts`；字节报告最多每 200 ms 一条，另有每次阶段变化一条与最终一条；安装以不带 `error` 的状态结束，插件通过常规权限审查后完成安装并启用；成功后对话框约 2 秒自动关闭，悬停时该倒计时暂停；后台自动更新以同样方式安装，但完全不打开对话框。
+- **链接规格**：`07-plugins/07-plugin-marketplace.md` §2、`07-plugins/15-plugin-center.md` §10、ADR 0276 §7
+- **验收**：G（远程市场来源）
+- **里程碑**：M6+
+- **状态**：草稿
+
+#### E2E-PLUGIN-cancel-during-download-installs-nothing：在下载期间取消会停止安装、不留下任何已安装内容，并让对话框静默关闭
+
+- **先决条件**：一次官方渠道安装，其安装包足够大或镜像足够慢，使下载阶段持续一段时间；能够应答 `market.cancelInstall`；同时可以查看插件目录、安装缓存与已安装列表。
+- **步骤**：1) 启动安装并等待进入下载阶段。 2) 按下对话框中的取消操作。 3) 观察对话框并抓取 RPC 应答。 4) 安装结束后检查插件目录、安装缓存与已安装列表。 5) 对同一 id、对一个并未在运行的安装，以及在下载已结束之后，分别再次发出 `market.cancelInstall`。
+- **预期**：对正在运行的安装，取消调用返回 `{ cancelled: true, id }`，安装以 `PLUGIN_CANCELLED`（JSON-RPC 码 1019）失败；对话框不报告错误就关闭；没有任何东西被安装——没有插件目录、没有已安装行、没有已启用的插件——缓存中也不残留任何不完整的安装包；对同一 id 的第二次调用、对并未在运行的安装的调用，以及下载已结束之后的调用都返回 `{ cancelled: false, id }` 且不改变任何状态，因此取消永远不会中断插件目录的写入。
+- **链接规格**：`07-plugins/07-plugin-marketplace.md` §2、ADR 0276 §7
+- **验收**：G（远程市场来源）+ 安全性
+- **里程碑**：M6+
+- **状态**：草稿
+
+#### E2E-PLUGIN-failed-install-lists-tried-mirrors：安装失败时对话框保持打开，并列出尝试过的镜像与复制操作
+
+- **先决条件**：一次官方渠道安装，其所有镜像都失败——例如第一个摘要不符、第二个网络错误；渲染进程已订阅 `plugin.installProgress`，且可以读回剪贴板。
+- **步骤**：1) 启动安装。 2) 让所有镜像失败。 3) 读取最终报告与对话框。 4) 使用复制操作，然后在镜像恢复正常后使用重试操作。
+- **预期**：最终报告带有 `error`，并按尝试顺序为每个镜像提供一条 `tried[]` 记录，各自标明 `source`、`url` 与该镜像给出的错误；对话框保持打开，显示可读的错误与这份列表；复制操作把尝试过的镜像放入剪贴板；重试操作会对同一版本发起一次新的安装，并在镜像正常应答后完成，且不会复用失败尝试的不完整状态；失败的尝试没有安装任何东西。
+- **链接规格**：`07-plugins/07-plugin-marketplace.md` §2、ADR 0276 §7
+- **验收**：G（远程市场来源）
+- **里程碑**：M6+
+- **状态**：草稿

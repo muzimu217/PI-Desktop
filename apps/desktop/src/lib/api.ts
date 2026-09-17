@@ -59,6 +59,7 @@ import type {
   MarketPluginSummary,
   MarketPluginDetail,
   PluginInstallResult,
+  PluginInstallProgress,
   ProjectRecord,
   ProjectGroupRecord,
   ProjectMemory,
@@ -950,6 +951,9 @@ export const api = {
       IPC.invoke.marketApplyUpdates,
       { onlyAuto },
     ),
+  /** Ask the running install to stop. Only a download can be interrupted. */
+  marketCancelInstall: (id: string) =>
+    invoke<{ cancelled: boolean; id: string }>(IPC.invoke.marketCancelInstall, { id }),
   /** Import a pi CLI extension file or directory as a development plugin (spec 16 §3). */
   importPiExtension: () =>
     invoke<
@@ -1228,6 +1232,13 @@ export const api = {
       listener(payload as UpdateState),
     );
   },
+  onPluginInstallProgress: (listener: (event: PluginInstallProgress) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.pluginInstallProgress, (payload) =>
+      listener(payload as PluginInstallProgress),
+    );
+  },
+
   onPluginChanged: (
     listener: (event: { reason?: string; pluginId?: string }) => void,
   ) => {

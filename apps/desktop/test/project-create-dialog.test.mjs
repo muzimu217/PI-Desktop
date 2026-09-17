@@ -134,3 +134,18 @@ test("create project dialog remains usable on narrow screens and reduced motion"
   assert.match(styles, /\.project-create-dialog-location\.is-chosen/);
   assert.match(styles, /\.project-create-dialog-clone-hint \{/);
 });
+
+test("create project dialog stays lineless (D297)", () => {
+  assert.match(styles, /\.project-create-dialog-source-option \{[^}]*border: 0;/);
+  assert.match(
+    styles,
+    /\.project-create-dialog-source-option\.is-active \{[^}]*background: var\(--ds-tile-deep\);/,
+  );
+  assert.doesNotMatch(styles, /border: 1px solid var\(--ds-border-subtle\)/);
+  assert.doesNotMatch(styles, /\.project-create-dialog-name-field:focus-visible/);
+  assert.doesNotMatch(styles, /outline-offset: 2px/);
+  assert.match(
+    styles,
+    /\.project-create-dialog-source-option:focus-visible,[^}]*box-shadow: 0 0 0 2px color-mix\(in oklab, var\(--ds-accent\) 22%, transparent\);/,
+  );
+});

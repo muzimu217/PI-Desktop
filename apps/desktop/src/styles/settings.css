@@ -47,7 +47,6 @@
   width: var(--ds-settings-nav-width);
   flex: 0 0 var(--ds-settings-nav-width);
   /* D297: no right rule; the rail's own tone separates it from the content. */
-  background: var(--ds-settings-rail-bg);
   padding: 0;
   gap: 0;
   overflow: hidden;

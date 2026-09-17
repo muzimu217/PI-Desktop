@@ -592,6 +592,18 @@ This project was created with the models below.
 
 ---
 
+## Star History
+
+<a href="https://star-history.com/#vastsa/PI-Desktop&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=vastsa/PI-Desktop&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=vastsa/PI-Desktop&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=vastsa/PI-Desktop&type=Date" />
+ </picture>
+</a>
+
+---
+
 ## License
 
 PI-Desktop is licensed under the **GNU Lesser General Public License v3.0**.

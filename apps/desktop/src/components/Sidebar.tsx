@@ -1651,9 +1651,10 @@ export function Sidebar({
     return (
       <section
         key={entry.key}
-        className={`sidebar-session-group project-group ${entry.active ? "active" : ""} ${entry.meta.archived ? "archived" : ""} ${dropProjectKey === entry.key ? "is-drop-target" : ""} ${draggingProjectKey === entry.key ? "is-dragging" : ""} ${dropIndicator?.key === entry.key ? (dropIndicator.insertAfter ? "is-drop-after" : "is-drop-before") : ""}`}
+        className={`sidebar-session-group project-group ${entry.meta.archived ? "archived" : ""} ${dropProjectKey === entry.key ? "is-drop-target" : ""} ${draggingProjectKey === entry.key ? "is-dragging" : ""} ${dropIndicator?.key === entry.key ? (dropIndicator.insertAfter ? "is-drop-after" : "is-drop-before") : ""}`}
         aria-labelledby={projectId}
         data-sidebar-project-group={entry.key}
+        data-current-workspace={entry.active ? "true" : undefined}
         onDragOver={(event) => {
           onProjectDropTargetOver(event, entry);
         }}
@@ -1784,10 +1785,15 @@ export function Sidebar({
           className={`sidebar-session-group-body project ${collapsedProject ? "collapsed" : ""}`}
           role="region"
           aria-hidden={collapsedProject}
+          inert={collapsedProject ? true : undefined}
         >
-          {entry.sessions.length > 0 ? renderTimeGroupedSessions(visibleSessions) : (
-            <div className="sidebar-session-empty">{t("nav.noProjectSessions")}</div>
-          )}
+          <div className="sidebar-session-group-clip">
+            <div className="sidebar-session-group-list">
+              {entry.sessions.length > 0 ? renderTimeGroupedSessions(visibleSessions) : (
+                <div className="sidebar-session-empty">{t("nav.noProjectSessions")}</div>
+              )}
+            </div>
+          </div>
         </div>
       </section>
     );
@@ -2057,7 +2063,7 @@ export function Sidebar({
 
   return (
     <aside
-      className={cx("sidebar", className)}
+      className={cx("sidebar", "sidebar-surface", className)}
       data-window-blur={windowFocused ? undefined : "true"}
       onAnimationEnd={onAnimationEnd}
     >

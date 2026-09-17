@@ -1,4 +1,4 @@
-# ADR 0274: Draggable Chat Content Width
+# ADR 0277: Draggable Chat Content Width
 
 - Status: Accepted
 - Date: 2026-09-16
@@ -33,10 +33,12 @@ work-panel squeeze, or a one-off wider reading of a diff.
    from the top of `.chat-surface` down to the composer dock. Both handles
    change the same width (1px pointer → 2px band) so the column stays
    centered. Drag minimum is **560px**, or the available pane if smaller.
-3. Rest: the handles are invisible. Hover/focus: a soft glow. Drag: a 1px
-   hairline plus glow on **both** edges. Double-click resets to 760.
+3. Rest: the handles are invisible. Hover/focus: a short 2×40px capsule mixed
+   from `--ds-text-primary` (18% on dark, 12% on light). Drag: both capsules
+   lengthen to 56px at a slightly stronger mix. Double-click resets to 760.
    Arrow keys step 16px (Shift 32px); Home restores 760; End expands to the
    pane; Escape cancels an in-flight drag.
+
 4. User bubbles stay `min(82%, 600px)`. Assistant, tool, permission, ask,
    review, and turn-outcome rows follow `--chat-prose-max-width`, which
    tracks the band. The collapsed-sidebar 640px ceiling is removed.

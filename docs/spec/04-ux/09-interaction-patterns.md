@@ -1351,8 +1351,17 @@ Project drag/drop follows these patterns:
   the conversation, or activates and toggles the project group, exactly as a
   click on the title does; a no-hover pointer gets the controls revealed so it
   never meets a hidden target.
+- Project headers and conversation rows (project, pinned and standalone) use
+  the same full-row hover surface, radius and transition. The title button is
+  transparent; hover never draws a nested title tile. The selected conversation
+  keeps its selected fill on hover. A current workspace uses only the project
+  dot, not another selected background; folding a selected child or leaving the
+  chat page never promotes its project to a selected navigation item.
+- Keyboard focus keeps its outline independently of selection. The add and
+  overflow buttons retain local hover feedback, and drag-target paint takes
+  precedence over ordinary header hover.
 - Hover paint belongs to the pointer that caused it. When the window loses
-  focus the row and the project title drop their hover background and their
+  focus the row and the project header drop their hover background and their
   revealed actions hide, so nothing is left lit or armed after the window
   returns; moving the pointer over the row again re-arms it.
 - Revealed actions become clickable the moment the row is hovered or focused,

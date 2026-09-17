@@ -768,6 +768,18 @@ PI-Desktop 前后经过大量模型共同参与开发、重构、Review、设计
 
 ---
 
+## Star History
+
+<a href="https://star-history.com/#vastsa/PI-Desktop&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=vastsa/PI-Desktop&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=vastsa/PI-Desktop&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=vastsa/PI-Desktop&type=Date" />
+ </picture>
+</a>
+
+---
+
 ## License
 
 PI-Desktop 使用 **GNU Lesser General Public License v3.0** 开源。

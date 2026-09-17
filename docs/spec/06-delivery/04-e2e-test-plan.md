@@ -2365,10 +2365,10 @@ identify the platform validation still needed.
 
 #### E2E-024P: Switch the marketplace catalog source
 
-- **Preconditions**: Network available to `cnb.cool`.
-- **Steps**: 1) Open Extensions → Marketplace. 2) Switch Marketplace source from GitHub (official) to Mirror (cnb.cool). 3) Confirm the catalog refreshes in the same surface. 4) Install a plugin.
-- **Expected**: Switching triggers a refresh and reports the new plugin count; the source selector remains the only source-status control, with no redundant provider explanation or active-source status line; the install downloads its package from the mirror and passes shasum verification. Switching back to official restores the GitHub source. Choosing Custom URL with an empty value falls back to the official default rather than an empty endpoint.
-- **Specs linked**: `07-plugins/07-plugin-marketplace.md`
+- **Preconditions**: Network available to `plugins.aiuo.net`, `raw.githubusercontent.com`, and `cnb.cool`.
+- **Steps**: 1) Open Extensions → Marketplace on a clean profile and confirm the source line reads Official channel. 2) Switch to GitHub backup, then CNB backup, then Custom with a URL, then back to Official channel. 3) After each switch, confirm the catalog refreshes in the same surface. 4) Install a plugin from the official channel, then one from the CNB backup. 5) Choose Custom URL with an empty value.
+- **Expected**: A fresh profile opens on the official channel, whose catalog comes from `plugins.aiuo.net/catalog.json`; the four choices are labelled Official channel / GitHub backup / CNB backup / Custom in that order; switching triggers a refresh and reports the new plugin count; the source selector remains the only source-status control, with no redundant provider explanation or active-source status line; the official install resolves through the platform while the CNB install downloads from the mirror and passes the same shasum verification as before, so the two backup paths are unchanged; switching back to a source reuses its cached snapshot instead of deleting it and never rounds trips; the installed record names the channel the plugin came from; choosing Custom URL with an empty value falls back to the official default rather than an empty endpoint.
+- **Specs linked**: `07-plugins/07-plugin-marketplace.md` §2
 - **Acceptance**: G (remote marketplace source)
 - **Status**: Documented / host-core unit covered
 
@@ -4320,7 +4320,9 @@ identify the platform validation still needed.
   Copy; after the response settles, the assistant toolbar offers Copy, Fork,
   Regenerate. The user toolbar offers the pager (when variants exist), Copy,
   Edit, Delete. Edit replaces the prompt bubble with a wider composer-matched
-  inline editor plate with Retry and Cancel controls; Escape or Cancel restores the bubble
+  inline editor plate filled with `--ds-tile-deep` (no outer shadow, inset
+  focus ring) so the light plate stays distinct from the white pane without
+  a clipped glow, with Retry and Cancel controls; Escape or Cancel restores the bubble
   unchanged. Retry truncates the transcript from that prompt and streams a new
   answer whether or not the text changed, leaving a `current / total` pager on
   the user turn that restores the original prompt with its full answer tail in
@@ -4401,7 +4403,7 @@ identify the platform validation still needed.
   `min(available, preferred)` if the pane is narrower). It does not jump to
   640px. The transcript, empty-home stack, and Composer share that envelope.
 - **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/07-ui-design-system.md`,
-  `04-ux/08-component-spec.md`, ADR 0274, D439
+  `04-ux/08-component-spec.md`, ADR 0277, D439
 - **Acceptance**: Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (`sidebar-collapse-animation.test.mjs`,
@@ -4412,10 +4414,10 @@ identify the platform validation still needed.
 - **Preconditions**: PI-Desktop is open on chat (empty home or a transcript)
   at a viewport wider than 760px. Reduced motion off.
 - **Steps**: 1) Confirm no divider is visible at rest. 2) Hover the left
-  content edge and confirm a glow, then the right edge. 3) Drag the right
-  handle outward and confirm both edges move, the composer matches, and a
-  hairline is visible while dragging. 4) Open the work panel or expand the
-  sidebar until the pane is narrower than the new preference; the band
+  content edge and confirm a short faint capsule, then the right edge. 3) Drag
+  the right handle outward and confirm both edges move, the composer matches,
+  and both capsules lengthen slightly while dragging. 4) Open the work panel or
+  expand the sidebar until the pane is narrower than the new preference; the band
   compresses without a horizontal scroll. 5) Close the panel / collapse the
   sidebar and confirm the preference returns. 6) Double-click a handle to
   restore 760px. 7) Repeat with Arrow keys on a focused handle.
@@ -4423,7 +4425,7 @@ identify the platform validation still needed.
   User bubbles stay compact. Handles stay keyboard-accessible
   (`role="separator"`). Preference persists as `chatContentMaxWidth`.
 - **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/08-component-spec.md`,
-  ADR 0274, D439
+  ADR 0277, D439
 - **Acceptance**: C (conversation), Quality
 - **Milestone**: M5
 - **Status**: Unit-covered (`chat-content-width.test.mjs`,
@@ -7615,6 +7617,8 @@ identify the platform validation still needed.
 | Acceptance | Scenarios |
 |---|---|
 | C / G / Quality — Plugins navigation | E2E-NAV-plugins-button-goes-back |
+| C / D / Quality — Sidebar row states | E2E-LAYOUT-sidebar-row-states |
+| A / C / Quality — Sidebar material and settings return | E2E-LAYOUT-sidebar-settings |
 | B / F / Security — Provider copy | E2E-PROVIDER-copy-config-without-credentials |
 | A — App startup | E2E-001, E2E-002, E2E-003, E2E-004, E2E-067, E2E-076, E2E-079, E2E-092, E2E-097, E2E-143, E2E-150, E2E-168, E2E-204 |
 | B — Model config | E2E-005, E2E-006, E2E-007, E2E-038, E2E-050, E2E-052, E2E-055, E2E-066, E2E-080, E2E-082, E2E-102c, E2E-102d, E2E-102e, E2E-151, E2E-154, E2E-163, E2E-166, E2E-172, E2E-174, E2E-197, E2E-005G, E2E-005J, E2E-199, E2E-201, E2E-202, E2E-203, E2E-205, E2E-206, E2E-209 |
@@ -8628,6 +8632,17 @@ This test plan spec is accepted when:
 - **Specs linked**: `04-ux/08-component-spec.md` §1.7, §3.4; decisions-log D304 / D348
 - **Milestone**: M6
 - **Status**: Partially automated (`macos-sidebar-vibrancy.test.mjs` source contract); native visual verification Draft
+
+### US-UI-75 Light message-edit plate
+- Open a populated transcript in light and dark themes and choose Edit on a
+  user prompt.
+- Expect the inline editor to be a `--ds-tile-deep` plate at
+  `--ds-composer-radius` with no outer shadow and no hairline stroke. On
+  light theme the 8% ink wash must remain distinct from the `#ffffff` chat
+  surface; the composer glow must not appear or get clipped at the plate
+  edges. Retry and Cancel stay legible in the footer.
+- Focusing the textarea paints an inset 2px accent ring inside the plate;
+  Escape or Cancel restores the bubble.
 
 #### E2E-123: asktool collects multiple answers and returns skipped placeholders
 
@@ -12167,7 +12182,9 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   5. Reopen the dialog, switch to Git repository, and paste a private or
      malformed remote.
 - **Expected**: The dialog swaps the folder list for a repository URL field plus
-  a clone destination row and keeps one project name field; Create stays
+  a clone destination row and keeps one project name field. Source options and
+  fields are filled tiles without strokes; keyboard focus uses the shared
+  accent-tinted ring. Create stays
   disabled until the URL parses and a folder is chosen. Confirming runs
   `git clone` into the chosen folder with the renderer still owning project
   creation: the checkout becomes the primary root and the entered name names the
@@ -12338,6 +12355,127 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   states). DOM clicks and CDP input are not native hit-test proof; native pointer,
   window-drag and visual checks remain required on each platform. Branch runs
   are exploratory and do not satisfy the integrated-main gate.
+
+#### E2E-LAYOUT-sidebar-project-group-fold
+
+- **Preconditions**: Four retained sidebar project groups, seeded through the
+  host: one holding five sessions across four date buckets, one holding a single
+  session, one holding none, and one holding ten pinned sessions.
+  `prefers-reduced-motion` is unset.
+- **Steps**:
+  1. Inspect the groups: body layering, row and date-label counts, the empty
+     state, the tail each expanded group contributes to the next one, and the
+     non-project lists' budgets.
+  2. Collapse the multi-row group with a real pointer click on its directory row —
+     scrolled into view and confirmed to hit that button — and read the group
+     body's height, opacity, resolved `grid-template-rows`, and the distance to
+     the next group on every frame for about half a second, while recording the
+     fold's own `transitionrun` / `transitionend`.
+  3. Expand it again and confirm the open geometry returns.
+  4. Collapse and re-expand it within the same motion.
+  5. Repeat the collapse with `prefers-reduced-motion: reduce` emulated.
+  6. Scroll the pinned list to its last row.
+- **Expected**: A project group is one grid row (`grid-template-rows: 1fr`) that
+  animates to `0fr` over the 200ms normal duration — no `max-height` clamp, no
+  opacity transition — so the fold is a single continuous height ramp with no
+  plateau followed by a snap, and `opacity` stays 1 on every frame: the rows are
+  clipped, never faded. The fold fires one transition and its own event reports
+  the 200ms normal duration. The rows are clipped by an inner `min-height: 0`
+  box, and the 1px row gap plus the group's 2px / 7px inset sit on the list inside
+  that clip, so the inset travels with the rows. An expanded group's 7px inset
+  plus the 1px scroller gap read as an 8px tail to the group below it; the last
+  group in the list has no neighbour, so it is checked against its own inset and
+  clip instead. A folded group's tail leaves with its rows, its section is its
+  header plus the 1px scroller gap, and its rows stay mounted past the clipped
+  edge while the group is `aria-hidden` and `inert`. A reversal mid-flight turns
+  on the frame it reached and settles back on the open height without
+  overshooting, and the empty group folds its empty state the same way. Under
+  reduced motion both endpoints are kept and the travel is dropped. The pinned
+  list holds eight rows inside `min(233px, 30vh)` and scrolls to its remaining
+  rows, and the standalone list keeps its flex column and 146px budget. The group
+  indent, ordering, and workspace state are unchanged.
+- **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/07-ui-design-system.md` §6.1 and
+  §13, `04-ux/08-component-spec.md` §6.2, `08-meta/decisions-log.md`
+  (2026-09-16, sidebar list rhythm and project-group fold)
+- **Acceptance**: Quality
+- **Milestone**: Post-M6 desktop shell maintenance
+- **Status**: Automated (`scripts/e2e-three-column-layout.mjs` via
+  `pnpm test:e2e:layout` — host-seeded groups and pins, a hit-tested CDP pointer
+  click, per-frame height and opacity sampling across the real fold, the
+  transition's own reported duration, mid-flight reversal, and reduced-motion
+  emulation). Unit coverage in
+  `apps/desktop/test/sidebar-collapse-animation.test.mjs` and
+  `apps/desktop/test/sidebar-pinned-rendering.test.mjs`. The sampled values are
+  renderer geometry, not an eyes-on visual pass.
+
+#### E2E-LAYOUT-sidebar-row-states
+
+- **Preconditions**: Host-seeded project, pinned and standalone conversations;
+  a current workspace; built desktop with isolated data and profile directories.
+- **Steps**: In dark and light themes, select a project conversation, hover its
+  project title and an unselected conversation, then hover the selected row.
+  Exercise the window-blur handler, drop-target styling, project action hover
+  and keyboard Tab/Shift+Tab focus. Fold and reopen the selected conversation's
+  group. Select pinned and standalone conversations. Open Settings and return.
+  Enable reduced motion and inspect both row transition durations.
+- **Expected**: Project and conversation hover backgrounds, radii and transitions
+  match. The title button stays transparent. Only a conversation uses selected
+  fill, which wins over hover; workspace identity remains a separate dot with
+  no persistent header fill. Folding never promotes the project to selected.
+  Pinned and standalone rows use the same selected surface. Keyboard focus
+  retains an outline, action buttons retain local feedback, drop-target paint
+  wins over hover, and blur releases hover without clearing selection. Settings
+  replaces sidebar navigation, and returning restores conversation and workspace
+  context without a second selected row. Rendered component tests additionally
+  cover no selected session, a pending destination and non-chat page state.
+- **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/08-component-spec.md`,
+  `04-ux/09-interaction-patterns.md` §9.1c
+- **Acceptance**: C, D, Quality
+- **Milestone**: Post-M6 desktop shell maintenance
+- **Status**: Automated via `pnpm test:e2e:layout` and
+  `scripts/e2e/sidebar-row-states.mjs`: real CDP pointer/keyboard input and
+  computed-style assertions. Window blur/focus events and the drop-target class
+  are injected for those styling checks; this is not a native focus/drag test.
+  Unit coverage: `sidebar-navigation.test.mjs`, `sidebar-pinned-rendering.test.mjs`.
+
+#### E2E-LAYOUT-sidebar-settings
+
+- **Preconditions**: Built desktop, isolated host/profile, visible chat sidebar.
+- **Steps**:
+  1. In dark/light palettes and darwin/win32/linux CSS branches, compare the
+     home sidebar and Settings rail color, image layers, size and position.
+     Inspect transparent ancestors and opaque settings content/titlebar.
+  2. Return through Back to app while tracing sidebar insertion, width and
+     animationstart events. Repeat quick round trips, a previously collapsed
+     sidebar, and settings navigation interrupting an entrance.
+  3. Explicitly reopen a collapsed sidebar, then repeat settings return with
+     reduced motion. Repeat material comparisons with legacy and canonical
+     theme color overrides and a sidebar background image.
+- **Expected**: Both navigation surfaces share one material. Settings navigation
+  and shell have no entrance animation; only a nested content-enter wrapper
+  inside its opaque pane animates, and that motion is opacity-only so it cannot
+  trap `position: fixed` overlays. Settings dialogs cover the full window, including the rail. On macOS
+  all ancestors behind the rail are transparent, while right
+  content and titlebar stay opaque. Returning to an expanded sidebar starts and
+  stays at 275px without sidebar-in events; a collapsed sidebar stays absent.
+  A real reopen still produces sidebar-in and a width ramp. Legacy theme color
+  input remains supported for both rails, and a canonical override wins.
+- **Specs linked**: `04-ux/06-settings-ia.md`, `04-ux/07-ui-design-system.md`,
+  `04-ux/08-component-spec.md` §1.4 and §1.7
+- **Acceptance**: A, C, Quality
+- **Milestone**: Post-M6 desktop shell maintenance
+- **Status**: Automated via `pnpm test:e2e:layout` and
+  `scripts/e2e/sidebar-settings.mjs`, with trusted CDP pointer/keyboard input,
+  mutation-time and subsequent geometry samples, animation events and computed
+  styles. CDP focus emulation keeps the isolated page painting while its native
+  window is occluded; otherwise Chromium can freeze CSS motion and hover input.
+  Platform branches and palettes are renderer emulation, not native
+  Windows/Linux or OS material/theme validation. Optional
+  `PI_DESKTOP_LAYOUT_ARTIFACT_DIR` captures renderer screenshots. State tests in
+  `sidebar-settings-return.test.mjs` cover initial presentation, both interrupted
+  phases, hidden-state changes and reversals. `settings-dialog-overlay.test.mjs`
+  covers the full-window overlay contract. `pnpm test:e2e:theme-surfaces`
+  verifies the opaque fallback and legacy theme override in real Chromium.
 
 #### E2E-AGENT-alt-enter-steers-active-turn: Enter follows up and Alt+Enter steers the active turn
 
@@ -12829,3 +12967,72 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   marked); `packages/shared/src/model-catalog.test.ts` covers the four source rules;
   `crates/host-core/src/providers/catalog.rs` covers the config round trip, the
   unmarked record, and the dropped unknown marker. The end-to-end settings journey
+#### E2E-PLUGIN-official-channel-resolves-through-the-platform: An official-channel install resolves through the platform and installs from the first working mirror
+
+- **Preconditions**: A clean profile on the official channel, a plugin present in `plugins.aiuo.net/catalog.json`, and a request log for the platform and both mirror hosts (a local stub may stand in for each).
+- **Steps**: 1) Open Extensions → Marketplace and confirm the source line reads Official channel and that the catalog came from `plugins.aiuo.net`. 2) Install the plugin. 3) Capture the request the platform received. 4) Inspect which mirror served the package. 5) Install a second plugin, then install the same version of the first one again.
+- **Expected**: Exactly one `POST /api/v1/download/resolve` is sent per install or update, with a JSON body carrying `deviceId`, `pluginId`, and the version when one was picked; the package comes from the first entry in `downloads` that answers, and its bytes match the returned `sha256` and `sizeBytes` before anything is extracted; a mirror that is unreachable or fails is abandoned and the next one is used without user interaction; reinstalling the same version issues a fresh resolve call rather than reusing the earlier answer, because the response is never cached; the installed plugin passes the ordinary permission review and its record names the official channel as its provider.
+- **Specs linked**: `07-plugins/07-plugin-marketplace.md` §2, `07-plugins/15-plugin-center.md` §10
+- **Acceptance**: G (remote marketplace source)
+- **Milestone**: M6+
+- **Status**: Draft
+
+#### E2E-PLUGIN-mirror-digest-mismatch-falls-through-to-the-next-mirror: A mirror whose bytes fail the digest is rejected before extraction
+
+- **Preconditions**: An official-channel install whose `downloads` list has at least two entries, with the first mirror serving bytes that do not match the returned `sha256` (a stale distribution, or a stub that serves the CNB-era bytes for `pi.todo-0.6.5`), plus a view of the install cache and the plugin directory.
+- **Steps**: 1) Start the install. 2) Watch the first mirror's download and the digest check. 3) Inspect the install cache and the plugin directory before the install finishes. 4) Let the install continue. 5) Repeat with a stub whose first mirror fails only the announced `sizeBytes`.
+- **Expected**: The mismatching bytes are discarded without being extracted or handed to the installer, nothing lands in the plugin directory, and the rejection is reported in the install progress instead of being swallowed; the next mirror's bytes are verified against the same digest and the install completes from there; the size-mismatch case behaves identically; when every entry fails, the install ends as a reported failure rather than a partially installed plugin.
+- **Specs linked**: `07-plugins/07-plugin-marketplace.md` §2
+- **Acceptance**: G (remote marketplace source) + Security
+- **Milestone**: M6+
+- **Status**: Draft
+
+#### E2E-PLUGIN-platform-unreachable-install-falls-back-to-the-catalog-url: An install falls back to the catalog URL when the platform cannot be reached
+
+- **Preconditions**: The official catalog is already cached from a successful refresh, and `plugins.aiuo.net` becomes unreachable for the install (a blocked stub, or a refused DNS/proxy route).
+- **Steps**: 1) Refresh the catalog while the platform is reachable, then make it unreachable. 2) Install a plugin whose catalog entry carries a relative `url`. 3) Confirm which host served the package and whether the platform received a resolve request. 4) Restore reachability and install a version the platform refuses in turn with `403 NOT_PUBLISHED`, `403 PLUGIN_ARCHIVED`, `404`, `429`, and `503`.
+- **Expected**: The install resolves the package from the catalog's own URL — `artifactBaseUrl` plus the relative `url` — and completes after the same shasum verification; no resolve request reaches the platform for that install and the fallback install is not counted; the failed resolve call is visible in the install log instead of being hidden; once the platform answers again each refusal produces its own message — not-published with no retry, archived hiding the plugin from install and update selection, not-found, one `Retry-After` wait for the rate limit, and a deployment error for `503` — and no refusal silently switches to another channel or another version.
+- **Specs linked**: `07-plugins/07-plugin-marketplace.md` §2
+- **Acceptance**: G (remote marketplace source)
+- **Milestone**: M6+
+- **Status**: Draft
+
+#### E2E-PLUGIN-device-identifier-is-stable-and-never-the-machine-code: The device identifier is stable across launches and is not the raw machine code
+
+- **Preconditions**: A host whose machine identifier is readable (Windows `MachineGuid`, the macOS platform UUID, or `/etc/machine-id`), a second environment where it is not readable, and a request-logging stub for `POST /api/v1/download/resolve`.
+- **Steps**: 1) Trigger two installs in one session and compare the recorded `deviceId` values. 2) Restart the app and trigger a third install. 3) Compare the value with the raw machine identifier of the host. 4) Search the settings, the Marketplace surface, and the installed-plugin detail view for the value. 5) Repeat steps 1 and 2 where no machine identifier is readable, then inspect the application data directory.
+- **Expected**: Every resolve request from one installation carries the same 64-character lowercase hex value, including after a restart and after an app reinstall while the machine identifier is unchanged; the value is neither the machine code nor a prefix of it, and it equals `sha256("pi-desktop.device.v1:" + <machine identifier>)`; the identifier never appears in the UI and no setting can reveal or reset it; in the unreadable case the value is a different 64-hex string that is generated once and persisted under `plugins/market/device.json`, then repeated across restarts.
+- **Specs linked**: `07-plugins/07-plugin-marketplace.md` §2, ADR 0276
+- **Acceptance**: G (remote marketplace source) + Security
+- **Milestone**: M6+
+- **Status**: Draft
+
+#### E2E-PLUGIN-install-progress-shows-phases-and-mirror: An official-channel install reports its phases and the mirror it is using, then completes
+
+- **Preconditions**: A clean profile on the official channel, a plugin whose resolve answer lists at least two entries, a first mirror that fails or is slow so a second attempt is observable, and a renderer subscribed to `plugin.installProgress`.
+- **Steps**: 1) Start a manual install from the marketplace detail sheet. 2) Record the reports that arrive while it runs. 3) Hover the dialog after the install succeeds. 4) Look at the installed plugin once the install ends. 5) Install again with a large package and count the reports over a window of at least one second.
+- **Expected**: The dialog shows the phases in order — `resolve`, `download`, `verify`, `install`, `enable` — with `mirror n/N · name` and a determinate bar from `receivedBytes` / `totalBytes`; every report carries `pluginId` and `version`, only the report that names a mirror carries `source`, and `attempt` counts 1-based within `attempts` while a mirror switch increments `attempt` without changing `attempts`; byte reports arrive at most once per 200 ms, with one extra report per phase change and one terminal report; the install ends with no `error` and the plugin is installed and enabled after the ordinary permission review; the dialog closes about two seconds after success, that countdown pauses while it is hovered, and a background auto-update installs the same way without opening the dialog at all.
+- **Specs linked**: `07-plugins/07-plugin-marketplace.md` §2, `07-plugins/15-plugin-center.md` §10, ADR 0276 §7
+- **Acceptance**: G (remote marketplace source)
+- **Milestone**: M6+
+- **Status**: Draft
+
+#### E2E-PLUGIN-cancel-during-download-installs-nothing: Cancelling during the download stops the install, leaves nothing installed, and closes the dialog without an error
+
+- **Preconditions**: An official-channel install of a package large enough or a mirror slow enough that the download phase lasts, a way to answer `market.cancelInstall`, and a view of the plugin directory, the install cache, and the Installed list.
+- **Steps**: 1) Start the install and wait for the download phase. 2) Press the cancel action in the dialog. 3) Watch the dialog and capture the RPC answer. 4) Inspect the plugin directory, the install cache, and the Installed list after the install ends. 5) Send `market.cancelInstall` again for the same id, for an install that is not running, and once after the download has finished.
+- **Expected**: The cancel call answers `{ cancelled: true, id }` for the running install, and the install fails with `PLUGIN_CANCELLED` (JSON-RPC code 1019); the dialog closes without reporting an error; nothing is installed — no plugin directory, no installed row, no enabled plugin — and no partial package survives in the cache; the second call for the same id, the call for an install that is not running, and a call after the download finished answer `{ cancelled: false, id }` and change nothing, so a cancel can never interrupt the write of the plugin directory.
+- **Specs linked**: `07-plugins/07-plugin-marketplace.md` §2, ADR 0276 §7
+- **Acceptance**: G (remote marketplace source) + Security
+- **Milestone**: M6+
+- **Status**: Draft
+
+#### E2E-PLUGIN-failed-install-lists-tried-mirrors: A failed install keeps the dialog open and lists the mirrors it tried with a copy action
+
+- **Preconditions**: An official-channel install whose every mirror fails — for example a digest mismatch on the first and a network error on the second — with a renderer subscribed to `plugin.installProgress` and a clipboard readback.
+- **Steps**: 1) Start the install. 2) Let every mirror fail. 3) Read the terminal report and the dialog. 4) Use the copy action, then the retry action once the mirrors serve valid bytes again.
+- **Expected**: The terminal report carries `error` and a `tried[]` entry per mirror in the order they were tried, each naming its `source`, `url`, and the error that mirror answered; the dialog stays open and shows the readable error plus that list; the copy action puts the tried mirrors on the clipboard; the retry action starts a new install of the same version and completes it when the mirrors answer, without reusing the failed attempt's partial state; nothing was installed by the failed attempt.
+- **Specs linked**: `07-plugins/07-plugin-marketplace.md` §2, ADR 0276 §7
+- **Acceptance**: G (remote marketplace source)
+- **Milestone**: M6+
+- **Status**: Draft

@@ -286,6 +286,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
  | 0265 | [排队队列的优先区块与行内操作](/adr/0265-turn-queue-priority-block-and-row-actions) | 已接受待实现（修订 ADR 0213 / 0118） |
  | 0267 | [插件标签跟随应用语言](/adr/0267-plugin-labels-follow-the-app-language) | 已接受（修订 ADR 0160；ADR 0182） |
  | 0272 | [按请求实际会走的线路判定公网地址](/adr/0272-connection-time-public-network-route) | 已接受待实现（修订 ADR 0243；issue #419 / PR #473） |
+| 0276 | [官方插件渠道与备份渠道](/adr/0276-official-plugin-channel-and-backup-channels) | 已接受待实现（修订 ADR 0102；D442） |
 
 ## 什么时候看 ADR
 

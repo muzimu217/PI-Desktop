@@ -184,7 +184,7 @@ destination, chat as the home surface, tools and permissions inline.
   toolbar places sorting before new-session creation. Both headings keep quiet
   glyph actions and also accept a right-click create menu on the heading or empty
   list chrome so section creation stays discoverable
-  without extra chrome. Its list shows at most five compact rows (140px) before
+  without extra chrome. Its list shows at most five compact rows (146px) before
   scrolling internally, so standalone work stays visible without displacing
   project navigation. The following `Projects` heading exposes the
   folder-picker action; retained project groups use the remaining height and
@@ -192,8 +192,12 @@ destination, chat as the home surface, tools and permissions inline.
 - **Identity**: each project group is keyed by a host-owned logical group id;
   each root path remains canonical and is never inferred from an ambiguous
   folder basename. Legacy single-folder projects are compatibility groups.
-- **Header**: project name, active state, disclosure, new-task action, and an
-  overflow menu. The directory title is one full-row disclosure target;
+- **Header**: project name, current-workspace dot, disclosure, new-task action,
+  and an overflow menu. Workspace context is not navigation selection: project
+  headers have no persistent selected background, including when no conversation
+  is selected. Only the current conversation on the chat page receives selected
+  row paint. Project and conversation rows share full-row hover feedback; the
+  project title itself stays transparent. The directory title is one full-row disclosure target;
   collapse/expand affects only child visibility, and adjacent groups form one
   dense tree rather than detached cards. Hovering or focusing the project title
   reveals the full project path. Pressing the title and moving 8px reorders

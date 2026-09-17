@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../../stores/app-store";
 import { api } from "../../lib/api";
@@ -25,6 +25,16 @@ import {
   versionInstallable,
   versionWithdrawn,
 } from "./model";
+import {
+  canCancelInstall,
+  isInstallCancelled,
+  newInstallJob,
+  nextInstallSample,
+  withInstallProgress,
+  type InstallSample,
+  type PluginInstallJob,
+  type PluginInstallRequest,
+} from "./install-progress";
 
 export function usePluginsPage() {
   const { t, i18n } = useTranslation();
@@ -46,6 +56,14 @@ export function usePluginsPage() {
   const [market, setMarket] = useState<MarketPluginSummary[]>([]);
   const [marketLoading, setMarketLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [installJob, setInstallJob] = useState<PluginInstallJob | null>(null);
+  /**
+   * The job, and the reading a transfer speed is measured against, are mirrored
+   * in refs: the progress subscription and the request's own answer must both
+   * see the install as it is now, not as it was when it started.
+   */
+  const installJobRef = useRef<PluginInstallJob | null>(null);
+  const installSampleRef = useRef<InstallSample | null>(null);
   const [reloadingId, setReloadingId] = useState<string | null>(null);
   const [pendingInstall, setPendingInstall] = useState<{
     id: string;
@@ -72,6 +90,28 @@ export function usePluginsPage() {
   const [services, setServices] = useState<PluginServiceStatus[]>([]);
   const [selectedVersion, setSelectedVersion] = useState("");
   const [settingsPlugin, setSettingsPlugin] = useState<PluginSummary | null>(null);
+
+  /**
+   * The install dialog is the top layer while it is open: the permission review
+   * behind it and the detail sheet below that both leave Escape to it.
+   */
+  const installDialogOpen = installJob !== null;
+
+  /** Apply a change to the open install; reports whether a dialog was there. */
+  const updateInstallJob = (update: (job: PluginInstallJob) => PluginInstallJob): boolean => {
+    const current = installJobRef.current;
+    if (!current) return false;
+    const next = update(current);
+    installJobRef.current = next;
+    setInstallJob(next);
+    return true;
+  };
+
+  const closeInstallDialog = () => {
+    installJobRef.current = null;
+    installSampleRef.current = null;
+    setInstallJob(null);
+  };
 
   const refreshMarket = async (q = query, opts?: { refreshRemote?: boolean }) => {
     setMarketLoading(true);
@@ -180,15 +220,16 @@ export function usePluginsPage() {
   }, [locale]);
 
   // Escape closes the detail sheet, but only while it owns the top layer: the
-  // permission dialog in front of it handles its own dismissal.
+  // permission dialog and the install dialog in front of it handle their own
+  // dismissal.
   useEffect(() => {
-    if (!selectedId || pendingInstall) return;
+    if (!selectedId || pendingInstall || installDialogOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") closeDetail();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [selectedId, pendingInstall]);
+  }, [selectedId, pendingInstall, installDialogOpen]);
 
   useEffect(() => {
     if (!pendingInstall) return;
@@ -198,6 +239,28 @@ export function usePluginsPage() {
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [pendingInstall]);
+
+  // An install reports itself while it runs: the phase, the mirror it is trying
+  // and the bytes that have arrived. Reports for another plugin are ignored, and
+  // the request's own answer still decides how the install ends.
+  useEffect(() => {
+    return api.onPluginInstallProgress((event) => {
+      const job = installJobRef.current;
+      if (!job || job.request.id !== event.pluginId) return;
+      // A cancellation is the user's own action, not a failure to report: the
+      // dialog leaves quietly instead of showing it as an error.
+      if (event.error && isInstallCancelled(event.error)) {
+        closeInstallDialog();
+        return;
+      }
+      const sample = nextInstallSample(installSampleRef.current, event, Date.now());
+      installSampleRef.current = sample;
+      const next = withInstallProgress(job, event, sample);
+      installJobRef.current = next;
+      setInstallJob(next);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Service state changes arrive as pluginChanged events, so the list stays
   // truthful while the supervisor restarts a crashed worker.
@@ -472,29 +535,93 @@ export function usePluginsPage() {
     setRowMenu(null);
   };
 
-  const confirmInstall = async () => {
-    if (!pendingInstall) return;
-    setBusyId(pendingInstall.id);
+  /**
+   * Run one install: the request the review approved, or the same request again
+   * after a failure. The dialog opens before the request is sent, so a slow
+   * first step is visible, and the request's own answer is what ends it.
+   */
+  const runInstall = async (request: PluginInstallRequest) => {
+    installSampleRef.current = null;
+    const job = newInstallJob(request);
+    installJobRef.current = job;
+    setInstallJob(job);
+    setBusyId(request.id);
     try {
       await api.marketInstall({
-        id: pendingInstall.id,
-        version: pendingInstall.version,
+        id: request.id,
+        version: request.version,
         enable: true,
-        autoUpdate,
-        grantedPermissions: pendingInstall.permissions,
+        autoUpdate: request.autoUpdate,
+        grantedPermissions: request.grantedPermissions,
       });
       await refreshPlugins();
       await refreshMarket();
-      if (selectedId === pendingInstall.id) await openDetail(pendingInstall.id);
-      showToast(t("plugins.installed", { name: pendingInstall.name }), {
+      if (selectedId === request.id) await openDetail(request.id);
+      showToast(t("plugins.installed", { name: request.name }), {
         variant: "success",
       });
-      setPendingInstall(null);
+      updateInstallJob((current) => ({
+        ...current,
+        status: "success",
+        phase: "enable",
+        speed: 0,
+        error: null,
+      }));
     } catch (e) {
-      showToast(e instanceof Error ? e.message : String(e), { variant: "error" });
+      const message = e instanceof Error ? e.message : String(e);
+      if (isInstallCancelled(e)) {
+        // The user stopped it: the dialog leaves quietly, without an error.
+        closeInstallDialog();
+        return;
+      }
+      const shown = updateInstallJob((current) => ({
+        ...current,
+        status: "failed",
+        speed: 0,
+        error: message,
+      }));
+      // The dialog was dismissed while the install ran, so the failure has to
+      // be reported where the user is looking.
+      if (!shown) showToast(message, { variant: "error" });
     } finally {
       setBusyId(null);
     }
+  };
+
+  const confirmInstall = async () => {
+    if (!pendingInstall) return;
+    const request: PluginInstallRequest = {
+      id: pendingInstall.id,
+      name: pendingInstall.name,
+      version: pendingInstall.version,
+      autoUpdate,
+      grantedPermissions: pendingInstall.permissions,
+    };
+    // The review is answered, so it steps aside for the install it approved.
+    setPendingInstall(null);
+    await runInstall(request);
+  };
+
+  /** Ask the host to stop the running download, at most once. */
+  const cancelInstallDownload = async () => {
+    const job = installJobRef.current;
+    if (!job || !canCancelInstall(job)) return;
+    updateInstallJob((current) => ({ ...current, cancelling: true }));
+    try {
+      const res = await api.marketCancelInstall(job.request.id);
+      // Nothing was running: the install is past its last safe stop, so the
+      // dialog keeps watching it instead of pretending it stopped.
+      if (!res.cancelled) updateInstallJob((current) => ({ ...current, cancelling: false }));
+    } catch (e) {
+      updateInstallJob((current) => ({ ...current, cancelling: false }));
+      showToast(e instanceof Error ? e.message : String(e), { variant: "error" });
+    }
+  };
+
+  const retryInstall = async () => {
+    const job = installJobRef.current;
+    if (!job || job.status === "running") return;
+    await runInstall(job.request);
   };
 
   const overflowActions = [
@@ -592,6 +719,10 @@ export function usePluginsPage() {
     applyAutoUpdates,
     queueInstall,
     confirmInstall,
+    installJob,
+    cancelInstallDownload,
+    retryInstall,
+    closeInstallDialog,
     overflowActions,
     installTarget,
     installedDetail,

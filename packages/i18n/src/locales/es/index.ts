@@ -1664,7 +1664,8 @@ sklm: {
       "bus.publish": "Puede enviar mensajes sobre los temas que declaró.",
       "bus.subscribe": "Puede recibir mensajes sobre los temas que declaró.",
       "browser.cdp": "Puede navegar por el navegador del panel de trabajo, leer la página, ejecutar JavaScript y enviar comandos de Chrome DevTools incluidos en la lista permitida. Las cookies y los métodos de almacenamiento están bloqueados.",
-      "usage.read": "Muestra contadores de uso agregados — totales de tokens, rachas de actividad y las sesiones más activas. Nunca incluye el contenido de los mensajes."
+      "usage.read":
+        "Enumera los datos de uso de los turnos completados (contadores de tokens por turno, paginados). No incluye el contenido de los mensajes.",
     }
   },
   "extensions": {

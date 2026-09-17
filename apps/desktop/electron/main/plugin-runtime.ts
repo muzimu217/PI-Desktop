@@ -434,10 +434,9 @@ export type PluginHostServices = {
   project?: {
     create: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
   };
-  /** Read-only usage aggregates served by host-core's stats domain. */
+  /** Read-only completed-turn facts served by host-core's usage domain. */
   usage?: {
-    summary: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
-    topSessions: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
+    listTurns: (pluginId: string, input: Record<string, unknown>) => Promise<unknown>;
   };
 };
 
@@ -518,8 +517,7 @@ const HOST_API_ALLOWLIST = new Set([
   "session.importBatch",
   "session.rename",
   "session.delete",
-  "usage.summary",
-  "usage.topSessions",
+  "usage.listTurns",
   "agent.complete",
   "keyboard.registerGlobalShortcut",
   "keyboard.unregisterGlobalShortcut",
@@ -900,7 +898,6 @@ function normalizePluginSessionInput(
  * the scan (spec 07-plugins/03 §usage).
  */
 const PLUGIN_USAGE_MAX_RANGE_DAYS = 365;
-const PLUGIN_USAGE_MAX_LIMIT = 50;
 
 /** Absent/null keeps the host default; anything else must be an integer. */
 function pluginUsageProjectId(value: Record<string, unknown>): number | undefined {
@@ -912,72 +909,56 @@ function pluginUsageProjectId(value: Record<string, unknown>): number | undefine
   return raw;
 }
 
-function normalizePluginUsageSummaryInput(input: unknown): Record<string, unknown> {
+const PLUGIN_USAGE_MAX_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
+
+/**
+ * Mirrors the host-side validation for `usage.listTurns`: absent fields stay
+ * absent (the host applies the 30-day default window and 200-row page), and
+ * anything out of range is rejected here so a plugin sees a plain
+ * INVALID_PARAMS instead of a host round-trip.
+ */
+function normalizePluginUsageListTurnsInput(input: unknown): Record<string, unknown> {
   if (input === undefined || input === null) return {};
   if (typeof input !== "object" || Array.isArray(input)) {
     throw apiError("INVALID_PARAMS", "usage input must be an object");
   }
   const value = input as Record<string, unknown>;
   const normalized: Record<string, unknown> = {};
-  if (value.rangeDays !== undefined && value.rangeDays !== null) {
-    const days = value.rangeDays;
-    if (
-      typeof days !== "number" ||
-      !Number.isInteger(days) ||
-      days < 1 ||
-      days > PLUGIN_USAGE_MAX_RANGE_DAYS
-    ) {
-      throw apiError(
-        "INVALID_PARAMS",
-        `rangeDays must be an integer between 1 and ${PLUGIN_USAGE_MAX_RANGE_DAYS}`,
-      );
+  const intField = (key: string): number | undefined => {
+    const raw = value[key];
+    if (raw === undefined || raw === null) return undefined;
+    if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 0) {
+      throw apiError("INVALID_PARAMS", `${key} must be a non-negative integer`);
     }
-    normalized.rangeDays = days;
+    normalized[key] = raw;
+    return raw;
+  };
+  const fromMs = intField("fromMs");
+  const toMs = intField("toMs");
+  if (fromMs !== undefined && toMs !== undefined && toMs - fromMs > PLUGIN_USAGE_MAX_WINDOW_MS) {
+    throw apiError("INVALID_PARAMS", "usage window must span at most 365 days");
+  }
+  if (value.sessionId !== undefined && value.sessionId !== null) {
+    if (typeof value.sessionId !== "string" || !value.sessionId.trim()) {
+      throw apiError("INVALID_PARAMS", "sessionId must be a non-empty string");
+    }
+    normalized.sessionId = value.sessionId;
   }
   const projectId = pluginUsageProjectId(value);
   if (projectId !== undefined) normalized.projectId = projectId;
-  return normalized;
-}
-
-function normalizePluginUsageTopSessionsInput(input: unknown): Record<string, unknown> {
-  if (input === undefined || input === null) return {};
-  if (typeof input !== "object" || Array.isArray(input)) {
-    throw apiError("INVALID_PARAMS", "usage input must be an object");
-  }
-  const value = input as Record<string, unknown>;
-  const normalized: Record<string, unknown> = {};
-  if (value.rangeDays !== undefined && value.rangeDays !== null) {
-    const days = value.rangeDays;
-    if (
-      typeof days !== "number" ||
-      !Number.isInteger(days) ||
-      days < 1 ||
-      days > PLUGIN_USAGE_MAX_RANGE_DAYS
-    ) {
-      throw apiError(
-        "INVALID_PARAMS",
-        `rangeDays must be an integer between 1 and ${PLUGIN_USAGE_MAX_RANGE_DAYS}`,
-      );
+  if (value.cursor !== undefined && value.cursor !== null) {
+    if (typeof value.cursor !== "string" || !value.cursor.trim()) {
+      throw apiError("INVALID_PARAMS", "cursor must be a non-empty string");
     }
-    normalized.rangeDays = days;
+    normalized.cursor = value.cursor;
   }
   if (value.limit !== undefined && value.limit !== null) {
     const limit = value.limit;
-    if (
-      typeof limit !== "number" ||
-      !Number.isInteger(limit) ||
-      limit < 1 ||
-      limit > PLUGIN_USAGE_MAX_LIMIT
-    ) {
-      throw apiError(
-        "INVALID_PARAMS",
-        `limit must be an integer between 1 and ${PLUGIN_USAGE_MAX_LIMIT}`,
-      );
+    if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 500) {
+      throw apiError("INVALID_PARAMS", "limit must be an integer between 1 and 500");
     }
     normalized.limit = limit;
   }
-  const projectId = pluginUsageProjectId(value);
-  if (projectId !== undefined) normalized.projectId = projectId;
   return normalized;
 }
 
@@ -2688,23 +2669,16 @@ export class PluginRuntime {
         }
         return this.services.session.delete(loaded.manifest.id, input);
       }
-      case "usage.summary": {
-        // Read-only aggregates over completed turns (spec 07-plugins/03 §usage):
-        // no message body, no write path, one permission for both methods.
+      case "usage.listTurns": {
+        // Read-only completed-turn facts (spec 07-plugins/03 §usage): flat
+        // counters and identifiers, no message body, no write path. Every
+        // dashboard shape stays the plugin's own computation.
         this.assertPermission(loaded, "usage.read");
-        const input = normalizePluginUsageSummaryInput(args[0]);
-        if (!this.services.usage?.summary) {
-          throw apiError("UNSUPPORTED", "host api not available: usage.summary");
+        const input = normalizePluginUsageListTurnsInput(args[0]);
+        if (!this.services.usage?.listTurns) {
+          throw apiError("UNSUPPORTED", "host api not available: usage.listTurns");
         }
-        return this.services.usage.summary(loaded.manifest.id, input);
-      }
-      case "usage.topSessions": {
-        this.assertPermission(loaded, "usage.read");
-        const input = normalizePluginUsageTopSessionsInput(args[0]);
-        if (!this.services.usage?.topSessions) {
-          throw apiError("UNSUPPORTED", "host api not available: usage.topSessions");
-        }
-        return this.services.usage.topSessions(loaded.manifest.id, input);
+        return this.services.usage.listTurns(loaded.manifest.id, input);
       }
       case "agent.complete": {
         return this.runAgentComplete(loaded, (args[0] ?? {}) as PluginCompleteInput);

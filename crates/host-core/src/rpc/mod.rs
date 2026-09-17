@@ -5,6 +5,7 @@ use std::thread;
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
+use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::sync::{mpsc, oneshot, Mutex, Semaphore};
@@ -514,40 +515,214 @@ fn stats_limit_param(params: &Value) -> i64 {
         .clamp(1, 50)
 }
 
-/// Plugin usage range selector. Wider than the renderer's 7/30 stats tabs:
-/// `stats::summary` scans a fixed 365-day window anyway, so any whole-day
-/// range up to a year is safe. Bounds mirror the Electron main-process side;
-/// a missing or null value keeps the 30-day default.
-fn plugin_usage_range_days_param(params: &Value) -> Result<i64, JsonRpcError> {
-    match params.get("rangeDays") {
-        None => Ok(30),
-        Some(value) if value.is_null() => Ok(30),
+/// Cursor for `plugin.usage.listTurns`: opaque base64 of `v1:{ended_at}:{id}`
+/// where `{ended_at}:{id}` is the last row of the previous page. The keyset
+/// condition `(ended_at > last) OR (ended_at = last AND id > last)` needs both
+/// halves to keep the ASC scan stable across pages.
+pub(crate) struct PluginUsageCursor {
+    ended_at: i64,
+    id: String,
+}
+
+fn plugin_usage_cursor_encode(ended_at: i64, id: &str) -> String {
+    B64.encode(format!("v1:{ended_at}:{id}"))
+}
+
+fn plugin_usage_cursor_decode(raw: &str) -> Result<PluginUsageCursor, JsonRpcError> {
+    let decoded = B64
+        .decode(raw)
+        .ok()
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .and_then(|text| {
+            let rest = text.strip_prefix("v1:")?;
+            let (ended, id) = rest.split_once(':')?;
+            let ended = ended.parse::<i64>().ok()?;
+            if id.is_empty() {
+                return None;
+            }
+            Some(PluginUsageCursor {
+                ended_at: ended,
+                id: id.to_string(),
+            })
+        });
+    decoded.ok_or_else(|| rpc_err(1002, "cursor is invalid", "INVALID_PARAMS"))
+}
+
+/// Completed-turn page for `plugin.usage.listTurns`. Keyset-paginated by
+/// `(ended_at, id)` ascending so pagination is stable under inserts; only
+/// counters and titles travel, never a message body.
+pub(crate) struct PluginUsageTurnQuery<'a> {
+    pub from_ms: i64,
+    pub to_ms: i64,
+    pub session_id: Option<&'a str>,
+    pub project_id: Option<i64>,
+    pub cursor: Option<PluginUsageCursor>,
+    pub limit: i64,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginUsageTurn {
+    pub turn_id: String,
+    pub session_id: String,
+    pub session_title: Option<String>,
+    pub project_id: Option<i64>,
+    pub provider_id: Option<String>,
+    pub model_id: Option<String>,
+    pub started_at: i64,
+    pub ended_at: i64,
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub cache_write_tokens: i64,
+    pub reasoning_tokens: i64,
+}
+
+/// Keyset scan over completed turns of non-deleted sessions, ordered by
+/// `ended_at ASC, id ASC`. Fetches `limit + 1` rows to learn `has_more`
+/// without a separate COUNT, then trims to exactly `limit` rows.
+pub(crate) fn plugin_usage_list_turns(
+    db: &crate::db::Database,
+    query: &PluginUsageTurnQuery<'_>,
+) -> anyhow::Result<(Vec<PluginUsageTurn>, bool)> {
+    use rusqlite::params;
+    let mut statement = db.conn().prepare(
+        "SELECT t.id, t.session_id, s.title, s.project_id, t.provider_id, t.model_id,
+                t.started_at, t.ended_at, t.input_tokens, t.output_tokens, t.usage_json
+         FROM turns t JOIN sessions s ON s.id = t.session_id
+         WHERE s.deleted_at IS NULL
+           AND t.status = 'completed' AND t.ended_at IS NOT NULL
+           AND (?1 IS NULL OR t.ended_at > ?1 OR (t.ended_at = ?1 AND t.id > ?2))
+           AND t.ended_at >= ?3 AND t.ended_at <= ?4
+           AND (?5 IS NULL OR t.session_id = ?5)
+           AND (?6 IS NULL OR s.project_id = ?6)
+         ORDER BY t.ended_at ASC, t.id ASC
+         LIMIT ?7",
+    )?;
+    let cursor_last = query.cursor.as_ref().map(|c| c.ended_at);
+    let cursor_id = query.cursor.as_ref().map(|c| c.id.as_str());
+    let fetch = query.limit + 1;
+    let rows = statement.query_map(
+        params![
+            cursor_last,
+            cursor_id,
+            query.from_ms,
+            query.to_ms,
+            query.session_id,
+            query.project_id,
+            fetch,
+        ],
+        |row| {
+            let usage_json: Option<String> = row.get(10)?;
+            let parsed = usage_json
+                .as_deref()
+                .and_then(|json| serde_json::from_str::<Value>(json).ok());
+            let token = |key: &str| {
+                parsed
+                    .as_ref()
+                    .and_then(|u| u.get(key))
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0)
+            };
+            Ok(PluginUsageTurn {
+                turn_id: row.get(0)?,
+                session_id: row.get(1)?,
+                session_title: row.get(2)?,
+                project_id: row.get(3)?,
+                provider_id: row.get(4)?,
+                model_id: row.get(5)?,
+                started_at: row.get(6)?,
+                ended_at: row.get(7)?,
+                input_tokens: row.get::<_, Option<i64>>(8)?.unwrap_or(0),
+                output_tokens: row.get::<_, Option<i64>>(9)?.unwrap_or(0),
+                cache_read_tokens: token("cacheReadTokens"),
+                cache_write_tokens: token("cacheWriteTokens"),
+                reasoning_tokens: token("reasoningTokens"),
+            })
+        },
+    )?;
+    let mut turns: Vec<PluginUsageTurn> = rows
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|e| anyhow::Error::from(e))?;
+    let has_more = turns.len() > query.limit as usize;
+    if has_more {
+        turns.truncate(query.limit as usize);
+    }
+    Ok((turns, has_more))
+}
+
+/// Plugin usage time window. Absent/null bounds fall back to the last 30 days
+/// ending now; an explicit pair may span at most 365 days and must be ordered.
+fn plugin_usage_window_params(
+    params: &Value,
+) -> Result<(i64, i64), JsonRpcError> {
+    let to_ms = match params.get("toMs") {
+        None => std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or_default(),
+        Some(value) => {
+            let ms = value
+                .as_i64()
+                .filter(|ms| *ms >= 0)
+                .ok_or_else(|| {
+                    rpc_err(1002, "toMs must be a non-negative integer", "INVALID_PARAMS")
+                })?;
+            ms
+        }
+    };
+    let from_ms = match params.get("fromMs") {
+        None => to_ms - 30 * 24 * 3600 * 1000,
+        Some(value) if value.is_null() => to_ms - 30 * 24 * 3600 * 1000,
+        Some(value) => value
+            .as_i64()
+            .filter(|ms| *ms >= 0)
+            .ok_or_else(|| {
+                rpc_err(1002, "fromMs must be a non-negative integer", "INVALID_PARAMS")
+            })?,
+    };
+    if to_ms < from_ms {
+        return Err(rpc_err(1002, "toMs must be >= fromMs", "INVALID_PARAMS"));
+    }
+    if to_ms - from_ms > 365 * 24 * 3600 * 1000 {
+        return Err(rpc_err(
+            1002,
+            "time window must span at most 365 days",
+            "INVALID_PARAMS",
+        ));
+    }
+    Ok((from_ms, to_ms))
+}
+
+/// Plugin usage page size. Unlike the renderer's clamp-on-read
+/// `stats.topSessions`, the plugin domain rejects: main process validates the
+/// same window, so a mismatch here is a caller bug worth surfacing.
+fn plugin_usage_limit_param(params: &Value) -> Result<i64, JsonRpcError> {
+    match params.get("limit") {
+        None => Ok(200),
+        Some(value) if value.is_null() => Ok(200),
         Some(value) => match value.as_i64() {
-            Some(days @ 1..=365) => Ok(days),
+            Some(limit @ 1..=500) => Ok(limit),
             _ => Err(rpc_err(
                 1002,
-                "rangeDays must be an integer between 1 and 365",
+                "limit must be an integer between 1 and 500",
                 "INVALID_PARAMS",
             )),
         },
     }
 }
 
-/// Plugin usage top-sessions row count. Unlike the renderer's clamp-on-read
-/// `stats.topSessions`, the plugin domain rejects: main process validates the
-/// same window, so a mismatch here is a caller bug worth surfacing.
-fn plugin_usage_limit_param(params: &Value) -> Result<i64, JsonRpcError> {
-    match params.get("limit") {
-        None => Ok(10),
-        Some(value) if value.is_null() => Ok(10),
-        Some(value) => match value.as_i64() {
-            Some(limit @ 1..=50) => Ok(limit),
-            _ => Err(rpc_err(
-                1002,
-                "limit must be an integer between 1 and 50",
-                "INVALID_PARAMS",
-            )),
-        },
+/// Optional session filter; absent/null means "every session". The session id
+/// is a string filter, never a permission grant: the permission was checked in
+/// Electron main and this only narrows the facts the host already owns.
+fn plugin_usage_session_id_param(params: &Value) -> Result<Option<String>, JsonRpcError> {
+    match params.get("sessionId") {
+        None => Ok(None),
+        Some(value) if value.is_null() => Ok(None),
+        Some(value) => value
+            .as_str()
+            .map(|s| Some(s.to_string()))
+            .ok_or_else(|| rpc_err(1002, "sessionId must be a string", "INVALID_PARAMS")),
     }
 }
 
@@ -2806,49 +2981,63 @@ async fn handle_request(
             plugin_sessions::delete(&st.db, plugin_id, &params).map_err(plugin_session_rpc_err)
         }
 
-        // Plugin usage is a read-only aggregate domain: the same completed-turn
-        // scan the renderer's stats tabs use, served to plugins that hold
+        // Plugin usage is a read-only facts domain: a keyset page of completed
+        // turns from non-deleted sessions, served to plugins that hold
         // `usage.read` (checked in Electron main before dispatch). The payload
-        // carries counters, shares, and session titles — never a message body —
-        // and Electron main remains the only caller that can supply pluginId.
-        "plugin.usage.summary" => {
+        // carries counters and titles — never a message body — and Electron
+        // main remains the only caller that can supply pluginId.
+        "plugin.usage.listTurns" => {
             let plugin_id = params
                 .get("pluginId")
                 .and_then(Value::as_str)
                 .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
-            let range_days = plugin_usage_range_days_param(&params)?;
-            let project_id = plugin_usage_project_id_param(&params)?;
-            let st = state.lock().await;
-            let summary = crate::stats::summary(&st.db, range_days, project_id)
-                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-            tracing::debug!(
-                method = "plugin.usage.summary",
-                plugin_id,
-                range_days,
-                "plugin usage rpc served"
-            );
-            serde_json::to_value(&summary).map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))
-        }
-        "plugin.usage.topSessions" => {
-            let plugin_id = params
-                .get("pluginId")
-                .and_then(Value::as_str)
-                .ok_or_else(|| rpc_err(1002, "pluginId required", "INVALID_PARAMS"))?;
-            let range_days = plugin_usage_range_days_param(&params)?;
+            let (from_ms, to_ms) = plugin_usage_window_params(&params)?;
+            let session_id = plugin_usage_session_id_param(&params)?;
             let project_id = plugin_usage_project_id_param(&params)?;
             let limit = plugin_usage_limit_param(&params)?;
+            let cursor = match params.get("cursor") {
+                None => None,
+                Some(value) if value.is_null() => None,
+                Some(Value::String(raw)) if raw.is_empty() => None,
+                Some(Value::String(raw)) => Some(plugin_usage_cursor_decode(raw)?),
+                Some(_) => {
+                    return Err(rpc_err(
+                        1002,
+                        "cursor must be a string",
+                        "INVALID_PARAMS",
+                    ));
+                }
+            };
             let st = state.lock().await;
-            let sessions = crate::stats::top_sessions(&st.db, range_days, project_id, limit)
-                .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            let (turns, has_more) = crate::rpc::plugin_usage_list_turns(
+                &st.db,
+                &PluginUsageTurnQuery {
+                    from_ms,
+                    to_ms,
+                    session_id: session_id.as_deref(),
+                    project_id,
+                    cursor,
+                    limit,
+                },
+            )
+            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+            let next_cursor = if has_more {
+                let last = turns.last().expect("has_more implies a full page");
+                Value::from(plugin_usage_cursor_encode(last.ended_at, &last.turn_id))
+            } else {
+                Value::Null
+            };
             tracing::debug!(
-                method = "plugin.usage.topSessions",
+                method = "plugin.usage.listTurns",
                 plugin_id,
-                range_days,
-                limit,
-                count = sessions.len(),
+                count = turns.len(),
+                has_more,
                 "plugin usage rpc served"
             );
-            Ok(json!({ "sessions": sessions }))
+            Ok(json!({
+                "turns": turns,
+                "nextCursor": next_cursor,
+            }))
         }
 
         "session.beginTurn" => {
@@ -5872,102 +6061,212 @@ mod tests {
         let state = Arc::new(Mutex::new(app_state));
         let (tx, _rx) = mpsc::unbounded_channel();
 
-        // Two sessions with completed turns: s2 out-earns s1 so the ranking is
-        // observable, and one s2 turn sits 10 days back so the range selector
-        // demonstrably bounds the aggregate.
+        // Three completed turns across two sessions: t2 carries all three
+        // usage_json token kinds, t1 carries none (zeros), and t4 belongs to a
+        // soft-deleted session so it must never appear. Different ended_at
+        // values make the ASC ordering and the cursor page observable.
         let now = chrono::Utc::now().timestamp_millis();
-        let day = |back: i64| now - back * 24 * 3600 * 1000;
         {
             let st = state.lock().await;
             let conn = st.db.conn();
-            for (id, title) in [("s1", "Small"), ("s2", "Big")] {
+            for (project_id, path, name) in
+                [(1, "/tmp/p1", "P1"), (2, "/tmp/p2", "P2")]
+            {
                 conn.execute(
-                    "INSERT INTO sessions (id, title, created_at, updated_at) VALUES (?1, ?2, ?3, ?3)",
-                    rusqlite::params![id, title, now],
+                    "INSERT INTO projects (id, path, name, created_at, last_opened_at) VALUES (?1, ?2, ?3, ?4, ?4)",
+                    rusqlite::params![project_id, path, name, now],
                 )
                 .unwrap();
             }
-            let turn = |id: &str, session: &str, started: i64, input: i64, output: i64| {
+            for (id, title, project) in [
+                ("s1", "Small", 1),
+                ("s2", "Big", 2),
+                ("s3", "Trashed", 1),
+            ] {
                 conn.execute(
-                    "INSERT INTO turns (id, session_id, status, input_tokens, output_tokens, started_at, ended_at)
-                     VALUES (?1, ?2, 'completed', ?3, ?4, ?5, ?6)",
-                    rusqlite::params![id, session, input, output, started, started + 1_000],
+                    "INSERT INTO sessions (id, title, project_id, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?4)",
+                    rusqlite::params![id, title, project, now],
+                )
+                .unwrap();
+            }
+            conn.execute(
+                "UPDATE sessions SET deleted_at = ?1 WHERE id = 's3'",
+                rusqlite::params![now],
+            )
+            .unwrap();
+            // (id, session, ended, input, output, usage_json)
+            let turn = |id: &str, session: &str, ended: i64, usage: Option<&str>| {
+                conn.execute(
+                    "INSERT INTO turns (id, session_id, status, provider_id, model_id, input_tokens, output_tokens, usage_json, started_at, ended_at)
+                     VALUES (?1, ?2, 'completed', 'prov', 'model-a', ?3, ?4, ?5, ?6, ?7)",
+                    rusqlite::params![id, session, 100, 200, usage, ended - 1_000, ended],
                 )
                 .unwrap();
             };
-            turn("t1", "s1", day(0), 1_000, 1_000);
-            turn("t2", "s2", day(1), 5_000, 5_000);
-            turn("t3", "s2", day(10), 9_000, 9_000);
+            turn("t1", "s1", now - 3_000, None);
+            turn(
+                "t2",
+                "s2",
+                now - 2_000,
+                Some(
+                    serde_json::json!({
+                        "cacheReadTokens": 300,
+                        "cacheWriteTokens": 400,
+                        "reasoningTokens": 500
+                    })
+                    .to_string(),
+                )
+                .as_deref(),
+            );
+            turn("t3", "s2", now - 1_000, Some(r#"{"cacheReadTokens":"bad"}"#));
+            turn("t4", "s3", now - 500, None);
         }
 
+        const METHOD: &str = "plugin.usage.listTurns";
+
         // Missing pluginId is a client error, same as the session domain.
-        let missing = handle_request(
-            state.clone(),
-            "plugin.usage.summary",
-            json!({ "rangeDays": 7 }),
-            tx.clone(),
-        )
-        .await
-        .unwrap_err();
+        let missing = handle_request(state.clone(), METHOD, json!({}), tx.clone())
+            .await
+            .unwrap_err();
         assert_eq!(missing.code, 1002);
         assert_eq!(missing.data.unwrap()["errorCode"], "INVALID_PARAMS");
 
-        // The aggregate counts only the requested window: today + yesterday,
-        // excluding the 10-day-old turn.
-        let summary = handle_request(
+        // Default window covers every turn; ordering is ended_at ASC and the
+        // soft-deleted session's turn is absent.
+        let page = handle_request(
             state.clone(),
-            "plugin.usage.summary",
-            json!({ "pluginId": "plugin.one", "rangeDays": 7 }),
-            tx.clone(),
-        )
-        .await
-        .unwrap();
-        assert_eq!(summary["cards"]["turnCount"], 2);
-        assert_eq!(summary["cards"]["totalTokens"], 12_000);
-        assert_eq!(summary["cards"]["sessionCount"], 2);
-        // No message body ever travels with the aggregate: counters only.
-        assert!(summary.get("messages").is_none());
-        assert!(summary.get("dailyTotals").is_some());
-
-        let top = handle_request(
-            state.clone(),
-            "plugin.usage.topSessions",
-            json!({ "pluginId": "plugin.one", "rangeDays": 30, "limit": 1 }),
-            tx.clone(),
-        )
-        .await
-        .unwrap();
-        let sessions = top["sessions"].as_array().unwrap();
-        assert_eq!(sessions.len(), 1);
-        assert_eq!(sessions[0]["sessionId"], "s2");
-        assert_eq!(sessions[0]["title"], "Big");
-        assert_eq!(sessions[0]["tokens"], 28_000);
-        assert_eq!(sessions[0]["turnCount"], 2);
-
-        // Main-process-side bounds are mirrored: an out-of-window range or
-        // limit is a client error, not a silent clamp.
-        for (method, bad) in [
-            ("plugin.usage.summary", json!({ "pluginId": "p", "rangeDays": 366 })),
-            ("plugin.usage.summary", json!({ "pluginId": "p", "rangeDays": "7" })),
-            ("plugin.usage.topSessions", json!({ "pluginId": "p", "limit": 0 })),
-            ("plugin.usage.topSessions", json!({ "pluginId": "p", "limit": 51 })),
-        ] {
-            let error = handle_request(state.clone(), method, bad.clone(), tx.clone())
-                .await
-                .unwrap_err();
-            assert_eq!(error.data.unwrap()["errorCode"], "INVALID_PARAMS", "{bad}");
-        }
-        // A missing rangeDays defaults to 30 days rather than erroring.
-        let defaulted = handle_request(
-            state.clone(),
-            "plugin.usage.summary",
+            METHOD,
             json!({ "pluginId": "plugin.one" }),
             tx.clone(),
         )
         .await
         .unwrap();
-        assert_eq!(defaulted["cards"]["turnCount"], 3);
-        assert_eq!(defaulted["cards"]["totalTokens"], 30_000);
+        let turns = page["turns"].as_array().unwrap();
+        assert_eq!(turns.len(), 3, "t4 belongs to a trashed session");
+        assert_eq!(turns[0]["turnId"], "t1");
+        assert_eq!(turns[1]["turnId"], "t2");
+        assert_eq!(turns[2]["turnId"], "t3");
+        assert!(page["nextCursor"].is_null(), "no more rows, no cursor");
+        // Row shape: counters and titles only, camelCase, no message fields.
+        assert_eq!(turns[0]["sessionTitle"], "Small");
+        assert_eq!(turns[1]["sessionTitle"], "Big");
+        assert_eq!(turns[1]["sessionId"], "s2");
+        assert_eq!(turns[1]["projectId"], 2);
+        assert_eq!(turns[1]["providerId"], "prov");
+        assert_eq!(turns[1]["modelId"], "model-a");
+        assert_eq!(turns[1]["inputTokens"], 100);
+        assert_eq!(turns[1]["outputTokens"], 200);
+        assert_eq!(turns[1]["cacheReadTokens"], 300);
+        assert_eq!(turns[1]["cacheWriteTokens"], 400);
+        assert_eq!(turns[1]["reasoningTokens"], 500);
+        // Missing usage_json yields zeros; a malformed one also yields zeros.
+        assert_eq!(turns[0]["cacheReadTokens"], 0);
+        assert_eq!(turns[0]["reasoningTokens"], 0);
+        assert_eq!(turns[2]["cacheReadTokens"], 0);
+        assert!(turns[0].get("content").is_none());
+        assert!(turns[0].get("messages").is_none());
+
+        // limit truncates and the returned cursor fetches exactly the rest.
+        let page1 = handle_request(
+            state.clone(),
+            METHOD,
+            json!({ "pluginId": "plugin.one", "limit": 2 }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(page1["turns"].as_array().unwrap().len(), 2);
+        let cursor1 = page1["nextCursor"].as_str().unwrap();
+        let page2 = handle_request(
+            state.clone(),
+            METHOD,
+            json!({ "pluginId": "plugin.one", "limit": 2, "cursor": cursor1 }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let rest = page2["turns"].as_array().unwrap();
+        assert_eq!(rest.len(), 1, "exactly the remaining row");
+        assert_eq!(rest[0]["turnId"], "t3");
+        assert!(page2["nextCursor"].is_null());
+
+        // Filtering: sessionId and projectId narrow the facts.
+        let only_s2 = handle_request(
+            state.clone(),
+            METHOD,
+            json!({ "pluginId": "plugin.one", "sessionId": "s2" }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let s2_turns = only_s2["turns"].as_array().unwrap();
+        assert_eq!(s2_turns.len(), 2);
+        assert!(s2_turns.iter().all(|t| t["sessionId"] == "s2"));
+
+        let only_p1 = handle_request(
+            state.clone(),
+            METHOD,
+            json!({ "pluginId": "plugin.one", "projectId": 1 }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let p1_turns = only_p1["turns"].as_array().unwrap();
+        assert_eq!(p1_turns.len(), 1);
+        assert_eq!(p1_turns[0]["sessionId"], "s1");
+
+        // Explicit bounds exclude out-of-window turns.
+        let windowed = handle_request(
+            state.clone(),
+            METHOD,
+            json!({ "pluginId": "plugin.one", "fromMs": now - 1_500, "toMs": now }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        let w = windowed["turns"].as_array().unwrap();
+        assert_eq!(w.len(), 1, "only t3 ended inside the window");
+        assert_eq!(w[0]["turnId"], "t3");
+
+        // Client errors the host must reject: bad cursor, bad limit, bad
+        // window, wrong types.
+        for bad in [
+            json!({ "pluginId": "p", "cursor": "not-a-cursor" }),
+            json!({ "pluginId": "p", "limit": 0 }),
+            json!({ "pluginId": "p", "limit": 501 }),
+            json!({ "pluginId": "p", "limit": "ten" }),
+            json!({ "pluginId": "p", "fromMs": -1 }),
+            json!({ "pluginId": "p", "toMs": "now" }),
+            json!({ "pluginId": "p", "fromMs": now, "toMs": now - 1_000 }),
+            json!({
+                "pluginId": "p",
+                "fromMs": now - 366 * 24 * 3600 * 1000,
+                "toMs": now
+            }),
+            json!({ "pluginId": "p", "sessionId": 7 }),
+            json!({ "pluginId": "p", "projectId": "seven" }),
+        ] {
+            let error = handle_request(state.clone(), METHOD, bad.clone(), tx.clone())
+                .await
+                .unwrap_err();
+            assert_eq!(error.code, 1002, "{bad}");
+            assert_eq!(error.data.unwrap()["errorCode"], "INVALID_PARAMS", "{bad}");
+        }
+
+        // The 365-day window edge is accepted, just over is not.
+        let edge = handle_request(
+            state.clone(),
+            METHOD,
+            json!({
+                "pluginId": "plugin.one",
+                "fromMs": now - 365 * 24 * 3600 * 1000,
+                "toMs": now
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(edge["turns"].as_array().unwrap().len(), 3);
     }
 
     fn available_test_shell_id() -> Option<String> {

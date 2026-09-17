@@ -371,49 +371,40 @@ P2/P3（会话创建、消息变更、任意重新绑定、provider/model 绑定
 
 ### 用量（需要 `usage.read`）
 
-对未删除会话的已完成 turns 做只读聚合，由宿主的 stats 域计算——与仪表盘使用
-的是同一套引擎。返回内容只包含计数、占比和会话标题，绝不包含消息正文，也不提供
-任何写路径。`rangeDays` 是 1 到 365 的整天窗口（默认 30）；`projectId` 可选，
-用于把所有聚合限定到某一个持久项目。
+面向用户仍可见的未删除会话，提供只读的**已完成回合事实行**。宿主只提供
+每个 turn 一行的扁平事实——计数与标识符；绝不包含消息正文、转录投影或任何
+写路径。**刻意不提供仪表盘形状**：连续天数、热力图、分模型占比、高消耗
+排名都是插件在这些事实行之上自己的计算——日后调整指标口径也不会变成
+SDK 的破坏性变更。
 
 ```ts
-pi.usage.summary(input?: {
-  rangeDays?: number // 1..=365 整天；默认 30
+pi.usage.listTurns(input?: {
+  fromMs?: number      // 含端点的窗口起点（epoch ms）；默认 toMs - 30 天
+  toMs?: number        // 含端点的窗口终点（epoch ms）；默认当前时间
   projectId?: number | null
+  sessionId?: string
+  cursor?: string      // 上一次 nextCursor 返回的不透明分页游标
+  limit?: number       // 1..=500 行；默认 200
 }): Promise<{
-  range: { startMs: number; endMs: number }
-  scope: { projectId: number | null }
-  cards: {
-    totalTokens: number; peakDayTokens: number; peakDayDate: string | null
-    longestChatMs: number; currentStreakDays: number; longestStreakDays: number
-    sessionCount: number; turnCount: number
-  }
-  diagnostics: {
-    cacheLeverage: number; cacheReadTokens: number
-    largeContextTurnShare: number; top5SessionShare: number
-  }
-  dailyTotals: Array<{ date: string; tokens: number }>
-  dailyByModel: Array<{ date: string; modelId: string; tokens: number }>
-  modelUsage: Array<{ modelId: string; tokens: number; share: number }>
-  projectUsage: Array<{ projectId: number | null; projectName: string | null; tokens: number; share: number }>
-  heatmap: Array<{ date: string; tokens: number; turns: number }> // 始终是完整的 365 天窗口
-  generatedAt: number
+  turns: Array<{
+    turnId: string; sessionId: string; sessionTitle: string | null
+    projectId: number | null; providerId: string | null; modelId: string | null
+    startedAt: number; endedAt: number
+    inputTokens: number; outputTokens: number
+    cacheReadTokens: number; cacheWriteTokens: number; reasoningTokens: number
+  }>
+  nextCursor: string | null
 }>
-
-pi.usage.topSessions(input?: {
-  rangeDays?: number // 1..=365 整天；默认 30
-  limit?: number     // 1..=50 行；默认 10
-  projectId?: number | null
-}): Promise<{ sessions: Array<{
-  sessionId: string; title: string | null
-  tokens: number; turnCount: number; lastActiveMs: number
-}> }>
 ```
 
-两个方法都是纯聚合读数：不含消息文本、不含转录投影，也没有任何会话变更路径。
-用户删除的会话会从聚合中消失。越界的 `rangeDays` / `limit` 或非整数的
-`projectId` 会在 Electron main 侧返回 `INVALID_PARAMS`，宿主 RPC 边界会按
-同样的界限再次校验。
+语义：
+
+- 只列出未删除会话的已完成 turn。用户删除的会话会从列表中消失。
+- 行按 `endedAt` 升序 + keyset 游标排列，窗口填充时翻页依然稳定；仪表盘
+  展示的排名是插件自己的排序，不是宿主的。
+- 窗口跨度至多 365 天；`limit` 为 1..=500（默认 200）。Electron 侧先校验，
+  宿主 RPC 边界按同样界限再次校验。
+- `usage_json` 缺失或畸形时 cache/reasoning 计数记 0——绝不返回残缺行。
 
 ### 会话协作（需要 `desktop.control`）
 

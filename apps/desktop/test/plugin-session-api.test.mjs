@@ -312,19 +312,15 @@ test("plugin session read, update, and delete permissions are independent", asyn
   ]);
 });
 
-test("plugin usage aggregates require usage.read and forward the plugin id", async (t) => {
+test("plugin usage listTurns requires usage.read and forwards the plugin id", async (t) => {
   const calls = [];
   const runtime = new PluginRuntime({
     hostEntry: hostProcessEntry,
     spawnProcess: forkPluginProcess,
     usage: {
-      summary: async (pluginId, input) => {
-        calls.push(["summary", pluginId, input]);
-        return { cards: { totalTokens: 12_000 } };
-      },
-      topSessions: async (pluginId, input) => {
-        calls.push(["topSessions", pluginId, input]);
-        return { sessions: [] };
+      listTurns: async (pluginId, input) => {
+        calls.push(["listTurns", pluginId, input]);
+        return { turns: [{ turnId: "t2", inputTokens: 100 }], nextCursor: null };
       },
     },
   });
@@ -341,13 +337,14 @@ test("plugin usage aggregates require usage.read and forward the plugin id", asy
             id: "read-usage",
             title: "Read usage",
             run: async () => {
-              const summary = await pi.usage.summary({ rangeDays: 7 });
-              await pi.ui.showToast("tokens:" + summary.cards.totalTokens);
-              await pi.usage.topSessions({ limit: 5, projectId: 3 });
+              const page = await pi.usage.listTurns({ fromMs: 1, toMs: 2, limit: 7 });
+              await pi.ui.showToast("rows:" + page.turns.length);
+              await pi.usage.listTurns({ limit: 5, projectId: 3, sessionId: "s2", cursor: "abc" });
               for (const [name, call] of [
-                ["badRange", () => pi.usage.summary({ rangeDays: 366 })],
-                ["badLimit", () => pi.usage.topSessions({ limit: 0 })],
-                ["badProject", () => pi.usage.summary({ projectId: "seven" })]
+                ["badWindow", () => pi.usage.listTurns({ fromMs: 0, toMs: 1 + 365 * 86400000 })],
+                ["badLimit", () => pi.usage.listTurns({ limit: 0 })],
+                ["badProject", () => pi.usage.listTurns({ projectId: "seven" })],
+                ["badFrom", () => pi.usage.listTurns({ fromMs: -1 })]
               ]) {
                 try { await call(); }
                 catch (error) { await pi.ui.showToast(name + ":" + error.code); }
@@ -362,25 +359,25 @@ test("plugin usage aggregates require usage.read and forward the plugin id", asy
   await runCommand(runtime, "read-usage");
   // Authorized calls forward with the plugin id and only the normalized fields.
   assert.deepEqual(calls, [
-    ["summary", "demo.usage", { rangeDays: 7 }],
-    ["topSessions", "demo.usage", { limit: 5, projectId: 3 }],
+    ["listTurns", "demo.usage", { fromMs: 1, toMs: 2, limit: 7 }],
+    ["listTurns", "demo.usage", { limit: 5, projectId: 3, sessionId: "s2", cursor: "abc" }],
   ]);
   assert.deepEqual(runtime.drainToasts(), [
-    "tokens:12000",
-    "badRange:INVALID_PARAMS",
+    "rows:1",
+    "badWindow:INVALID_PARAMS",
     "badLimit:INVALID_PARAMS",
     "badProject:INVALID_PARAMS",
+    "badFrom:INVALID_PARAMS",
   ]);
 });
 
-test("plugin usage aggregates are refused without the usage.read permission", async (t) => {
+test("plugin usage listTurns is refused without the usage.read permission", async (t) => {
   const calls = [];
   const runtime = new PluginRuntime({
     hostEntry: hostProcessEntry,
     spawnProcess: forkPluginProcess,
     usage: {
-      summary: async () => calls.push("summary"),
-      topSessions: async () => calls.push("topSessions"),
+      listTurns: async () => calls.push("listTurns"),
     },
   });
   t.after(async () => {
@@ -396,10 +393,8 @@ test("plugin usage aggregates are refused without the usage.read permission", as
             id: "peek",
             title: "Peek",
             run: async () => {
-              try { await pi.usage.summary(); }
-              catch (error) { await pi.ui.showToast("summary:" + error.code); }
-              try { await pi.usage.topSessions(); }
-              catch (error) { await pi.ui.showToast("top:" + error.code); }
+              try { await pi.usage.listTurns(); }
+              catch (error) { await pi.ui.showToast("listTurns:" + error.code); }
             }
           });
         }
@@ -409,6 +404,5 @@ test("plugin usage aggregates are refused without the usage.read permission", as
   await runtime.loadFromPath(dir, ["session.read.own"]);
   await runCommand(runtime, "peek");
   assert.deepEqual(calls, []);
-  assert.deepEqual(runtime.drainToasts(), ["summary:PERMISSION_DENIED", "top:PERMISSION_DENIED"]);
+  assert.deepEqual(runtime.drainToasts(), ["listTurns:PERMISSION_DENIED"]);
 });
-

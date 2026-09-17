@@ -453,52 +453,45 @@ this contract.
 
 ### usage (requires `usage.read`)
 
-Read-only aggregates over the completed turns of non-deleted sessions,
-computed by the host's stats domain — the same engine the dashboard uses.
-The payload carries counters, shares, and session titles; it never carries a
-message body, and there is no write path. `rangeDays` is a whole-day window
-between 1 and 365 (default 30); `projectId` optionally scopes every aggregate
-to one durable project.
+Read-only completed-turn facts for the non-deleted sessions the user can
+still see. The host serves one flat fact row per turn — counters and
+identifiers only; no message body, no transcript projection, and no write
+path. Deliberately **no dashboard shape**: streaks, heatmaps, per-model
+shares, and top-session rankings are the plugin's own computation on top of
+these rows, so changing a metric definition later is never a breaking SDK
+change.
 
 ```ts
-pi.usage.summary(input?: {
-  rangeDays?: number // 1..=365 whole days; default 30
+pi.usage.listTurns(input?: {
+  fromMs?: number      // inclusive window start, epoch ms; default toMs - 30 days
+  toMs?: number        // inclusive window end, epoch ms; default now
   projectId?: number | null
+  sessionId?: string
+  cursor?: string      // opaque page cursor from the previous nextCursor
+  limit?: number       // 1..=500 rows; default 200
 }): Promise<{
-  range: { startMs: number; endMs: number }
-  scope: { projectId: number | null }
-  cards: {
-    totalTokens: number; peakDayTokens: number; peakDayDate: string | null
-    longestChatMs: number; currentStreakDays: number; longestStreakDays: number
-    sessionCount: number; turnCount: number
-  }
-  diagnostics: {
-    cacheLeverage: number; cacheReadTokens: number
-    largeContextTurnShare: number; top5SessionShare: number
-  }
-  dailyTotals: Array<{ date: string; tokens: number }>
-  dailyByModel: Array<{ date: string; modelId: string; tokens: number }>
-  modelUsage: Array<{ modelId: string; tokens: number; share: number }>
-  projectUsage: Array<{ projectId: number | null; projectName: string | null; tokens: number; share: number }>
-  heatmap: Array<{ date: string; tokens: number; turns: number }> // always the full 365-day window
-  generatedAt: number
+  turns: Array<{
+    turnId: string; sessionId: string; sessionTitle: string | null
+    projectId: number | null; providerId: string | null; modelId: string | null
+    startedAt: number; endedAt: number
+    inputTokens: number; outputTokens: number
+    cacheReadTokens: number; cacheWriteTokens: number; reasoningTokens: number
+  }>
+  nextCursor: string | null
 }>
-
-pi.usage.topSessions(input?: {
-  rangeDays?: number // 1..=365 whole days; default 30
-  limit?: number     // 1..=50 rows; default 10
-  projectId?: number | null
-}): Promise<{ sessions: Array<{
-  sessionId: string; title: string | null
-  tokens: number; turnCount: number; lastActiveMs: number
-}> }>
 ```
 
-Both methods are aggregation-only reads: no message text, no transcript
-projection, and no session mutation path. Sessions the user deleted leave the
-aggregates. An out-of-window `rangeDays` / `limit` or a non-integer
-`projectId` fails with `INVALID_PARAMS` in Electron main, and the host RPC
-boundary re-checks the same bounds.
+Semantics:
+
+- Only completed turns of non-deleted sessions are listed. A session the
+  user deleted leaves the listing.
+- Rows are ordered by `endedAt` ascending with a keyset cursor, so paging is
+  stable while the window fills; the ranking a dashboard shows is its own
+  sort, not the host's.
+- The window spans at most 365 days; `limit` is 1..=500 (default 200). The
+  Electron side validates first, and the host RPC re-checks the same bounds.
+- A missing or malformed `usage_json` yields zero cache/reasoning counters —
+  never a partial row.
 
 ### session collaboration (requires `desktop.control`)
 

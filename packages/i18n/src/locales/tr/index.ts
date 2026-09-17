@@ -1695,7 +1695,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       "browser.cdp":
         "Çalışma paneli tarayıcısında gezebilir, sayfayı okuyabilir, JavaScript çalıştırabilir ve izin listesindeki Chrome DevTools komutlarını gönderebilir. Çerez ve depolama yöntemleri engellenir.",
       "usage.read":
-        "Toplu kullanım sayaçlarını gösterir — token toplamları, etkinlik serileri ve en yoğun oturumlar. Mesaj içeriğini asla içermez.",
+        "Tamamlanan turların kullanım verilerini sayfalı olarak listeler (tur başına token sayaçları). Mesaj içeriği dahil değildir.",
     },
   },
   /**

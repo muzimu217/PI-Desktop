@@ -1695,7 +1695,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       "browser.cdp":
         "Can navigate the work-panel browser, read the page, run JavaScript, and send allowlisted Chrome DevTools commands. Cookie and storage methods are blocked.",
       "usage.read":
-        "Shows aggregate usage counters — token totals, activity streaks, and the busiest sessions. It never includes message content.",
+        "Lists usage facts for completed turns (paginated per-turn token counters). No message content is included.",
     },
   },
   /**

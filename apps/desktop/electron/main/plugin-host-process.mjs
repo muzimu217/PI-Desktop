@@ -319,8 +319,7 @@ function buildApi() {
     // owns the permission check and parameter bounds; the host returns
     // aggregate counters only, so no message body crosses this bridge.
     usage: {
-      summary: (input) => call("usage.summary", [input ?? {}]),
-      topSessions: (input) => call("usage.topSessions", [input ?? {}]),
+      listTurns: (input) => call("usage.listTurns", [input ?? {}]),
     },
     /**
      * Resident background workers (spec 07 §3). Registration is local: the

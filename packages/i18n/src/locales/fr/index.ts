@@ -1664,7 +1664,8 @@ sklm: {
       "bus.publish": "Peut envoyer des messages sur les sujets qu'il a déclarés.",
       "bus.subscribe": "Peut recevoir des messages sur les sujets qu'il a déclarés.",
       "browser.cdp": "Peut naviguer dans le navigateur du panneau de travail, lire la page, exécuter JavaScript et envoyer des commandes Chrome DevTools sur liste autorisée. Les cookies et les méthodes de stockage sont bloqués.",
-      "usage.read": "Affiche des compteurs d'utilisation agrégés — totaux de jetons, séries d'activité et sessions les plus actives. N'inclut jamais le contenu des messages."
+      "usage.read":
+        "Liste les données d'utilisation des tours terminés (compteurs de tokens par tour, paginés). Aucun contenu de message n'est inclus.",
     }
   },
   "extensions": {

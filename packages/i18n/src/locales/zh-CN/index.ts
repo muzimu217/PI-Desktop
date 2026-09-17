@@ -1668,7 +1668,7 @@ sklm: {
       "browser.cdp":
         "可导航工作面板浏览器、读取页面、运行 JavaScript，并发送白名单内的 Chrome DevTools 命令。Cookie 与存储相关方法会被拒绝。",
       "usage.read":
-        "查看汇总的用量数据——tokens 总量、活跃天数和高频会话。不包含任何消息内容。",
+        "分页列出已完成回合的用量事实（每回合的 token 计数）。不包含任何消息内容。",
     },
   },
   extensions: {

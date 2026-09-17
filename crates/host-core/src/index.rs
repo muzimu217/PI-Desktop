@@ -25,10 +25,12 @@ use metrics::{BuildProgress, IndexMetrics, WorkspaceIndexMetrics};
 pub const MAX_FILES: usize = 50_000;
 pub const MAX_FILE_BYTES: u64 = 1024 * 1024;
 pub const MAX_INDEXED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
-// v2 stores the whole *visible* file set, not just the ingested subset: the
-// `files` table gained `content_indexed`. The index is a rebuildable cache, so
-// `open` quarantines a v1 database and re-crawls rather than migrating.
-const INDEX_SCHEMA_VERSION: i64 = 2;
+// v2 stored the whole *visible* file set, not just the ingested subset: the
+// `files` table gained `content_indexed`. v3 moved the FTS side to a
+// contentless table (rowid-mapped to `files`), dropping the duplicated body
+// bytes from the database. The index is a rebuildable cache, so `open`
+// quarantines an older database and re-crawls rather than migrating.
+const INDEX_SCHEMA_VERSION: i64 = 3;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -467,12 +469,18 @@ impl IndexStore {
                 return Ok(0);
             };
             transaction.execute(
-                "DELETE FROM file_content_fts WHERE root_id = ?1",
+                // The FTS rows are rowid-mapped to `files`, so they must go
+                // while the files rows are still there to name them.
+                "DELETE FROM file_content_fts WHERE rowid IN \
+                 (SELECT rowid FROM files WHERE root_id = ?1)",
                 [&root_id],
             )?;
             transaction.execute("DELETE FROM indexed_roots WHERE root_id = ?1", [&root_id])?
         } else {
-            transaction.execute("DELETE FROM file_content_fts", [])?;
+            transaction.execute(
+                "INSERT INTO file_content_fts(file_content_fts) VALUES ('delete-all')",
+                [],
+            )?;
             transaction.execute("DELETE FROM indexed_roots", [])?
         };
         transaction.commit()?;
@@ -629,10 +637,9 @@ fn scan_root(
 /// from the crawler into SQLite — nothing accumulates the bodies in memory.
 /// A per-file writer over one open rebuild transaction. Files stream
 /// straight from the crawler into SQLite — nothing accumulates the bodies in
-/// memory. The two INSERT statements are prepared from the connection before
-/// the transaction opens (SQLite transactions are connection-scoped, so
-/// stepping them inside is equivalent and keeps the writer free of
-/// self-referential borrows).
+/// memory. The contentless FTS table is rowid-mapped to `files`: old FTS rows
+/// are removed by that mapping *before* the files rows they point at go, and
+/// each body insert lands under the files rowid just created.
 struct RootWriter<'conn> {
     insert_file: rusqlite::Statement<'conn>,
     insert_fts: rusqlite::Statement<'conn>,
@@ -645,12 +652,18 @@ impl<'conn> RootWriter<'conn> {
             "INSERT INTO files (root_id, rel_path, size, mtime_ms, content_indexed) VALUES (?1, ?2, ?3, ?4, ?5)",
         )?;
         let insert_fts = connection.prepare(
-            "INSERT INTO file_content_fts (root_id, rel_path, body) VALUES (?1, ?2, ?3)",
+            "INSERT INTO file_content_fts (rowid, body) VALUES (?1, ?2)",
         )?;
         let transaction = connection.unchecked_transaction()?;
         // Old rows go first: the FTS hit set must never outlive the files
-        // rows it points into.
-        transaction.execute("DELETE FROM file_content_fts WHERE root_id = ?1", [root_id])?;
+        // rows it points into. The contentless table has no root_id column,
+        // so its rows are named through the files mapping while it still
+        // exists.
+        transaction.execute(
+            "DELETE FROM file_content_fts WHERE rowid IN \
+             (SELECT rowid FROM files WHERE root_id = ?1)",
+            [root_id],
+        )?;
         transaction.execute("DELETE FROM files WHERE root_id = ?1", [root_id])?;
         Ok(Self {
             insert_file,
@@ -668,10 +681,14 @@ impl<'conn> RootWriter<'conn> {
             if file.body.is_some() { 1_i64 } else { 0_i64 }
         ])?;
         // Only ingested files reach the full-text table, so an FTS hit always
-        // implies a readable body behind it.
+        // implies a readable body behind it. The contentless table stores no
+        // values, just the inverted index keyed by the files rowid created a
+        // statement ago.
         if let Some(body) = &file.body {
-            self.insert_fts
-                .execute(params![root_id, file.rel_path, body])?;
+            self.insert_fts.execute(params![
+                self.transaction.last_insert_rowid(),
+                body
+            ])?;
         }
         Ok(())
     }

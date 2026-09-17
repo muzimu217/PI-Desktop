@@ -151,11 +151,9 @@ fn select_candidates_inner(
     let mut statement = connection.prepare(
         "SELECT f.rel_path, f.size, f.mtime_ms
          FROM file_content_fts
-         JOIN files AS f
-           ON f.root_id = file_content_fts.root_id
-          AND f.rel_path = file_content_fts.rel_path
-         WHERE file_content_fts.root_id = ?1
-           AND file_content_fts MATCH ?2
+         JOIN files AS f ON f.rowid = file_content_fts.rowid
+         WHERE file_content_fts MATCH ?2
+           AND f.root_id = ?1
          ORDER BY f.mtime_ms DESC, f.rel_path ASC
          LIMIT ?3",
     )?;

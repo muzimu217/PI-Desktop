@@ -66,10 +66,10 @@ pub const SCHEMA: &str = r#"
         PRIMARY KEY (root_id, rel_path)
     );
     CREATE VIRTUAL TABLE IF NOT EXISTS file_content_fts USING fts5(
-        root_id UNINDEXED,
-        rel_path UNINDEXED,
         body,
-        tokenize = 'trigram'
+        tokenize = 'trigram',
+        content = '',
+        contentless_delete = 1
     );
 "#;
 

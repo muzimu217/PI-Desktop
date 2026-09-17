@@ -1987,6 +1987,10 @@ async fn handle_request(
             {
                 gate_default_command_shell_setting(&st)?;
             }
+            // Captured before `stored` is consumed by the merge below: the
+            // boost-enable check compares the incoming switch against the
+            // stored one.
+            let boost_was_on = index_grep_boost_enabled(stored.as_ref());
             let settings = normalize_settings_value(merge_settings_value(stored, params));
             st.db
                 .set_setting("app", &settings)
@@ -2006,6 +2010,35 @@ async fn handle_request(
                 }
             }
             crate::network_proxy::apply_from_settings(Some(&settings));
+            // Turning the Grep boost on must arm the index for the workspace
+            // the user is looking at; otherwise the boost only takes effect
+            // after the next workspace switch or a manual Build, and the
+            // switch's lifetime is disjoint from its only consumer.
+            if index_grep_boost_enabled(Some(&settings)) && !boost_was_on {
+                if let Some(workspace) = st.workspace.get() {
+                    let index = st.index.clone();
+                    let root = PathBuf::from(workspace.path);
+                    drop(st);
+                    match index.ensure_index(&root) {
+                        Ok(crate::index::EnsureOutcome::Triggered) => {
+                            tokio::task::spawn_blocking(move || {
+                                if let Err(error) =
+                                    index.rebuild(&root, crate::index::IndexLimits::default())
+                                {
+                                    tracing::warn!(
+                                        error = %error,
+                                        "boost-enable index build failed"
+                                    );
+                                }
+                            });
+                        }
+                        Ok(_) => {}
+                        Err(error) => {
+                            tracing::warn!(error = %error, "boost-enable ensure failed");
+                        }
+                    }
+                }
+            }
             Ok(json!({ "ok": true }))
         }
 

@@ -9,10 +9,12 @@
 use anyhow::Result;
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use super::{
-    normalize_rel_path, normalize_root, root_id, IndexStatus, IndexStore, RootUpdate, MAX_FILES,
+    normalize_rel_path, normalize_root, root_id, BuildProgress, IndexStatus, IndexStore,
+    RootUpdate, MAX_FILES,
 };
 
 /// Minimum spacing between same-path auto refreshes of a workspace index.
@@ -148,7 +150,10 @@ impl IndexStore {
         // registration lives until process exit — the cheaper side of the
         // ambiguity, since the alternative is a permanently spinning health
         // card.
-        self.building_roots.lock().unwrap().insert(root_id.clone());
+        self.building_roots
+            .lock()
+            .unwrap()
+            .insert(root_id.clone(), Arc::new(BuildProgress::default()));
         self.set_root_status(
             &root_id,
             &root,
@@ -268,7 +273,7 @@ mod tests {
             .building_roots
             .lock()
             .unwrap()
-            .contains(&root_id(&normalize_root(root.path()))));
+            .contains_key(&root_id(&normalize_root(root.path()))));
         assert_eq!(
             store.status(Some(root.path())).unwrap()[0].status,
             "building"

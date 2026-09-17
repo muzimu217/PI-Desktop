@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -143,12 +143,12 @@ pub struct IndexStore {
     /// Fast-path counters shared by every clone of this store (see
     /// [`metrics::IndexMetrics`]). In-memory only.
     metrics: Arc<IndexMetrics>,
-    /// Live crawl counters for the root currently being rebuilt.
-    progress: Arc<BuildProgress>,
-    /// Roots with a build running in *this* process. A `building` row in the
-    /// store without a matching entry here is crash residue from a previous
-    /// host process, and may be re-armed instead of answered InProgress.
-    building_roots: Arc<Mutex<HashSet<String>>>,
+    /// Roots with a build running in *this* process, each with its own live
+    /// crawl counters. A `building` row in the store without a matching entry
+    /// here is crash residue from a previous host process, and may be
+    /// re-armed instead of answered InProgress; an entry whose root already
+    /// has one means a second build must wait, not interleave.
+    building_roots: Arc<Mutex<HashMap<String, Arc<BuildProgress>>>>,
     /// Root → last same-path auto refresh, so an unchanged workspace still
     /// gets a periodic re-walk while the Grep boost stays on.
     last_refresh: Arc<Mutex<HashMap<String, Instant>>>,
@@ -160,7 +160,7 @@ pub struct IndexStore {
 
 /// Removes a root from [`IndexStore::building_roots`] when the build call
 /// ends, whatever the outcome.
-struct BuildingGuard<'a>(&'a Mutex<HashSet<String>>, String);
+struct BuildingGuard<'a>(&'a Mutex<HashMap<String, Arc<BuildProgress>>>, String);
 
 impl Drop for BuildingGuard<'_> {
     fn drop(&mut self) {
@@ -178,8 +178,7 @@ impl IndexStore {
         let store = Self {
             path,
             metrics: Arc::new(IndexMetrics::default()),
-            progress: Arc::new(BuildProgress::default()),
-            building_roots: Arc::new(Mutex::new(HashSet::new())),
+            building_roots: Arc::new(Mutex::new(HashMap::new())),
             last_refresh: Arc::new(Mutex::new(HashMap::new())),
             disabled: false,
         };
@@ -200,8 +199,7 @@ impl IndexStore {
         Self {
             path: PathBuf::new(),
             metrics: Arc::new(IndexMetrics::default()),
-            progress: Arc::new(BuildProgress::default()),
-            building_roots: Arc::new(Mutex::new(HashSet::new())),
+            building_roots: Arc::new(Mutex::new(HashMap::new())),
             last_refresh: Arc::new(Mutex::new(HashMap::new())),
             disabled: true,
         }
@@ -241,13 +239,16 @@ impl IndexStore {
             })
         })?;
         let mut statuses = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+        let building = self.building_roots.lock().unwrap().clone();
         for status in &mut statuses {
             if status.status == IndexStatus::Building.as_str() {
-                let (files_done, files_total) = self.progress.snapshot();
-                status.progress = Some(RootProgress {
-                    files_done,
-                    files_total,
-                });
+                if let Some(progress) = building.get(&status.root_id) {
+                    let (files_done, files_total) = progress.snapshot();
+                    status.progress = Some(RootProgress {
+                        files_done,
+                        files_total,
+                    });
+                }
             }
             status.metrics = Some(self.metrics.snapshot());
         }
@@ -260,10 +261,28 @@ impl IndexStore {
             anyhow::bail!("workspace root does not exist: {}", root.display());
         }
         let root_id = root_id(&root);
-        // Mark the build as live in this process for the whole call — the
-        // guard also covers early returns — so a `building` row that outlives
-        // the process is recognizable as crash residue, not a running build.
-        self.building_roots.lock().unwrap().insert(root_id.clone());
+        // Register the build (with its own progress counters) before the row
+        // flips, and hold the registration for the whole call — the guard
+        // also covers early returns — so a `building` row that outlives the
+        // process is recognizable as crash residue, not a running build.
+        // A root already registered by an earlier call in this process (the
+        // auto-refresh probe registers ahead of spawning this rebuild) keeps
+        // that registration and its progress — probe and rebuild are the same
+        // logical build. A genuinely concurrent second rebuild sees the root
+        // already registered *and its guard held* only via ensure_index's
+        // InProgress answer; direct double-entry adopts the existing counters
+        // rather than interleaving a second crawl's totals into the card.
+        let progress = {
+            let mut roots = self.building_roots.lock().unwrap();
+            match roots.get(&root_id) {
+                Some(existing) => existing.clone(),
+                None => {
+                    let progress = Arc::new(BuildProgress::default());
+                    roots.insert(root_id.clone(), progress.clone());
+                    progress
+                }
+            }
+        };
         let _guard = BuildingGuard(&self.building_roots, root_id.clone());
         // Seed the progress denominator from the previous visible set (or 0 on
         // a first build). The crawler advances `done` as it visits files.
@@ -275,7 +294,8 @@ impl IndexStore {
                 |row| row.get(0),
             )
             .unwrap_or(0);
-        self.progress.reset(previous_files.max(0) as u64);
+        progress.reset(previous_files.max(0) as u64);
+        let scan = scan_root(&root, limits, Some(&progress));
         self.set_root_status(
             &root_id,
             &root,
@@ -288,7 +308,6 @@ impl IndexStore {
             },
         )?;
 
-        let scan = scan_root(&root, limits, Some(&self.progress));
         let connection = self.connection()?;
         match scan {
             Ok(result) => {
@@ -360,7 +379,7 @@ impl IndexStore {
             anyhow::bail!("workspace root does not exist: {}", root.display());
         }
         let root_id = root_id(&root);
-        let building_in_process = self.building_roots.lock().unwrap().contains(&root_id);
+        let building_in_process = self.building_roots.lock().unwrap().contains_key(&root_id);
         match self.status(Some(&root))?.into_iter().next() {
             Some(status) if status.status == IndexStatus::Fresh.as_str() => {
                 Ok(EnsureOutcome::Fresh)
@@ -375,6 +394,28 @@ impl IndexStore {
                 Ok(EnsureOutcome::InProgress)
             }
             _ => {
+                // Register before the row flips, so the health card sees a
+                // progress block as soon as the root reports `building`. The
+                // total is seeded from the previous visible set — the same
+                // figure the spawned rebuild will use — so the card never
+                // shows 0/0. The spawned rebuild adopts this registration
+                // instead of creating a second one; a concurrent caller sees
+                // the in-process entry and answers InProgress.
+                let previous_files: i64 = self
+                    .connection()?
+                    .query_row(
+                        "SELECT COUNT(*) FROM files WHERE root_id = ?1",
+                        [&root_id],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(0);
+                let progress = Arc::new(BuildProgress::default());
+                progress.reset(previous_files.max(0) as u64);
+                self.building_roots
+                    .lock()
+                    .unwrap()
+                    .entry(root_id.clone())
+                    .or_insert(progress);
                 self.set_root_status(
                     &root_id,
                     &root,
@@ -784,11 +825,10 @@ mod tests {
                 },
             )
             .unwrap();
-        rebuilding
-            .building_roots
-            .lock()
-            .unwrap()
-            .insert(root_id(&normalize_root(root.path())));
+        rebuilding.building_roots.lock().unwrap().insert(
+            root_id(&normalize_root(root.path())),
+            Arc::new(BuildProgress::default()),
+        );
         assert!(matches!(
             rebuilding.ensure_index(root.path()).unwrap(),
             EnsureOutcome::InProgress,

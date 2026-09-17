@@ -660,7 +660,7 @@ CREATE UNIQUE INDEX idx_session_collaboration_receipt
 ```sql
 CREATE TABLE messages (
   mid          INTEGER PRIMARY KEY,             -- stable rowid: FTS anchor, VACUUM-safe
-  id           TEXT NOT NULL UNIQUE,            -- caller-facing uuid (optimistic UI)
+  id           TEXT NOT NULL UNIQUE,            -- 调用方 uuid（乐观 UI）；撞车的供应商 toolCallId 改写为 {sessionId}:{id}（D444）
   session_id   TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   turn_id      TEXT REFERENCES turns(id) ON DELETE SET NULL,
   seq          INTEGER NOT NULL,                -- per-session ordinal
@@ -1285,4 +1285,6 @@ UI投影损失
 终态助手替换索引中的流式助手。更新仅涉及该转录行和搜索文本，保留顺序、所属回合及
 其他所有行。迟到的部分快照和重复终态快照不能覆盖已落定结果。恢复时在原位置应用
 最新检查点。如果主机调用尚未完成时出现更新的追加快照，outbox 同样保留该快照。
-无需存储架构迁移。
+若 `messages.id` 已属于另一会话，主机在写 JSONL 之前改写为 `{sessionId}:{id}`；
+重放原始 id 对该改写行无操作。outbox 把 `UNIQUE constraint failed: messages.id`
+当作确认并继续排空（D444）。无需存储架构迁移。

@@ -24,6 +24,7 @@ import { fetchSkillMarketDocument, searchSkillMarket } from "../skill-market-cat
 import { registerWindowIpc } from "./window-ipc";
 import { createComposerTemplateLoader, registerWorkspaceIpc } from "./workspace-ipc";
 import { registerComposerIpc } from "./composer-ipc";
+import { registerSpeechIpc } from "./speech-ipc";
 import type { IpcRegistrar } from "./types";
 
 export type RegisterIpcDependencies = {
@@ -71,6 +72,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     persistenceOutbox,
     logger,
     plugins,
+    speech,
     sessionCapabilityContext,
     enrichSession,
     acquireSessionOperation,
@@ -381,6 +383,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     getPluginPanelTheme,
   });
 
+  registerSpeechIpc({ registrar, speech });
 
   registerMarketIpc({
     registrar,

@@ -87,6 +87,7 @@
   工具栏上下文环及其弹层是以剩余容量还是已用容量为引导数值；默认为剩余。
   该阈值决定纯文本粘贴何时转为会话临时文件，默认值为 600 个字符，
   接受 1 至 1,000,000 的整数。
+- **语音**卡：默认转写/朗读绑定（`AppSettings.speech`）。未配置时 Composer 对应入口禁用。Whisper / TTS 不进聊天模型列表。见 `20-speech.md`。
 - **默认项**卡中的**命令 Shell**行：主机发现的本机 PowerShell 5.1、PowerShell 7、
   cmd、Git Bash 和 ID 为 `windows-powershell`、`windows-pwsh`、`cmd`、`git-bash`
   的 Bash 和

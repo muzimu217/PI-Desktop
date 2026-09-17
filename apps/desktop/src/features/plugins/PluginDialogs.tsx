@@ -237,6 +237,7 @@ export function PluginDialogs({
             <div className="plugins-modal-actions">
               <Button
                 variant="secondary"
+                data-action="cancel"
                 disabled={creating}
                 onClick={() => setTemplatePick(null)}
               >

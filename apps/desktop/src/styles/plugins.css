@@ -1241,7 +1241,8 @@
 .plugins-sheet-layer {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  /* z-dialog: the sheet is a dialog surface, so it stays under leaf popups. */
+  z-index: 40;
   display: flex;
   justify-content: flex-end;
 }
@@ -1295,11 +1296,10 @@
   app-region: no-drag;
 }
 
-/* The route surface keeps a transform after its entry animation, so this
-   fixed layer stacks inside it and the opaque titlebar band still paints over
-   the top of the sheet. Reserve the band on every platform: on macOS it would
-   otherwise clip the title row, and on Windows/Linux the conversation pane owns
-   the band's top-right 120px — exactly where the close button lands. */
+/* The sheet keeps `--ds-toolbar-height` at the top on every platform: on
+   Windows/Linux the renderer-drawn window controls own that corner at
+   z-index 200 and stay above any overlay; on macOS the same reserve keeps
+   the title row out of the native traffic-light cluster. */
 .plugins-sheet {
   padding-top: var(--ds-toolbar-height);
 }
@@ -1735,7 +1735,8 @@
 .plugins-modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 80;
+  /* z-dialog: leaf popups (z-index 60) and toasts (50) stay above the veil. */
+  z-index: 40;
   display: flex;
   align-items: center;
   justify-content: center;

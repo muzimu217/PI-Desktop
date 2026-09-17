@@ -2944,3 +2944,40 @@
   color: var(--ds-text-muted);
   font-size: var(--text-xs);
 }
+
+/* One disclosure owns the process; tools retain their own detail controls. */
+.turn-process {
+  width: 100%;
+  margin: 0 0 8px;
+  min-width: 0;
+}
+
+.turn-process.open > .tool-activity-header > .tool-activity-caret {
+  transform: rotate(90deg);
+}
+
+.turn-process-body {
+  position: relative;
+  padding-left: 18px;
+}
+
+.turn-process-body[hidden] {
+  display: none;
+}
+
+.turn-process-body > .assistant-turn-fragment {
+  color: var(--ds-text-secondary);
+  margin-block: 8px;
+}
+
+.thinking-compact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-block: 6px;
+}
+
+.turn-process-error {
+  display: inline-flex;
+  color: var(--ds-error);
+}

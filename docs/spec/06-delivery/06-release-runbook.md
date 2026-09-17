@@ -206,8 +206,7 @@ changing the package scripts or release artifacts.
 DMG/ZIP artifacts unsigned by default. Tag pushes and manual runs with
 `sign_macos` omitted or set to `false` disable identity discovery, do not receive
 signing or notarization secrets, and skip macOS stapling and signature
-verification. The unsigned pack still adhoc-signs the outer app so the
-codesign identifier equals `net.aiuo.pi-desktop` (issue #524). To explicitly sign a run, manually dispatch the workflow for the
+verification. To explicitly sign a run, manually dispatch the workflow for the
 target tag with `sign_macos: true`. The local `scripts/release-macos.sh` command
 remains the explicit signed lane.
 

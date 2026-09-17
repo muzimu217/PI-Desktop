@@ -316,6 +316,7 @@ combined model × reasoning selection (§11).
 
 - Every control is keyboard-reachable with Tab
 - Composer stop control has `aria-label="Stop generating"`
+- Composer transcribe / speak controls are icon buttons with `aria-label` from `chat.transcribe` / `chat.speak`. They stay disabled until the matching speech role is configured.
 - The topbar does not render a separate running-state indicator; the Composer
   submit control and transcript working feedback remain the running-state cues.
 
@@ -785,6 +786,31 @@ reading surface of the workstation.
   so the last message sits ~16px above the box and is never overlapped even as
   the draft grows. `.jump-latest-btn` and `.minimap-rail` anchor to the same
   variable so they stay just above the composer.
+
+### Turn process and thinking display
+
+Each assistant-turn entry has one process disclosure containing reasoning,
+tools and intermediate assistant text in transcript order. Its trailing answer
+streams outside the disclosure. Later activity moves a provisional answer into
+the process without altering the stored message. Assistant errors and trailing
+aborted partial replies stay visible. Compaction and user/system boundaries are
+unchanged.
+
+Completed process areas start collapsed; detailed mode opens the active process.
+Manual choices and search reveals own the disclosure until unmount. Failed tools
+open an unclaimed active process and keep their invocation-level error presentation.
+The header shows elapsed time and the visible process step count. Its thinking
+label applies only while the latest activity is streaming reasoning without answer
+text; streamed answers use the processing label. Delegation
+cards and individual tool details remain available inside the process.
+
+`thinkingDisplayMode` defaults to `detailed`. In `compact`, reasoning text and
+excerpts are absent, active reasoning has a status indicator, and completed
+thinking rows disappear. Tools and intermediate text remain accessible; a
+thinking-only completed process has no empty header. The setting also applies
+to nested thinking rows and updates mounted history. It never removes stored
+reasoning or changes model thinking configuration. See
+[ADR turn-process-and-thinking-display](../../adr/turn-process-and-thinking-display.md).
 
 ### 4.4 States
 
@@ -2460,11 +2486,17 @@ reasoning-level control.
   `.tool-spinner` and localized `Enhancing…` label while running, and remains
   a one-shot draft rewrite action. Inline file-reference chips, including
   pasted image chips, do not disable this action and remain in the draft.
-- MainPane and the chat surface keep a 450px hard minimum so the composer toolbar
-  retains a usable single-row layout. The left and right control groups do not
-  shrink; mode and permission labels stay on one line and ellipsize within their
-  chips, so a sidebar or work-panel resize cannot vertically split, squeeze, or
-  overlap toolbar content.
+- MainPane and the chat surface keep a 450px hard minimum. The composer toolbar
+  remains a single, non-wrapping row as its container narrows: the mode and
+  permission labels stay on one line and ellipsize within their chips, while
+  the combined model × reasoning trigger progressively gives up detail. At
+  560px it hides the reasoning level label, at 480px it tightens the model label
+  cap, and at the 450px floor it becomes a 32px icon-only trigger. The trigger's
+  menu and accessible name retain the complete model/reasoning selection. The
+  context inspector hides its percentage at the floor and the enhancement
+  loading state becomes icon-only, preserving the action hit targets without
+  clipping or overlapping toolbar content. Home and thread-docked composers
+  use the same responsive rules.
 - The combined chip opens one anchored menu above itself. The menu starts with
   only Model and Reasoning level entries, each showing its current value and a
   chevron. Selecting an entry replaces the menu contents in place with a back

@@ -53,9 +53,18 @@ type PluginAppearance = {
 ```
 
 Panels read the same value through the bridge channel `app.getAppearance` and
-receive live updates on the `appearance:changed` event (below). On hosts older
-than the channel, the call rejects with `UNSUPPORTED`; panels should fall back
-to the OS preference and their own in-panel choice.
+receive live updates on the `appearance:changed` event (below). Plugin processes
+receive the same event on `pi.events`. On hosts older than the channel, the call
+rejects with `UNSUPPORTED`; panels should fall back to the OS preference and
+their own in-panel choice.
+
+`app.getLocale` is the same language tag as `getAppearance().locale`. Plugin-owned
+UI (panels, views, widgets, settings destinations, toasts, runtime command titles)
+localizes from this value. The host does not grow `{ en, "zh-CN" }` maps on more
+contribution fields; generated `contributes.settings` titles stay plain strings
+(ADR 0280). Host-owned identity (`manifest.i18n`) and already-shipped chrome
+labels (`ui.title`, view titles, destinations) keep their existing contracts
+(ADR 0267, ADR 0082).
 
 `app.setTheme` (requires `ui.theme`, ADR 0260) applies the app theme
 preference the Settings picker writes. It accepts a built-in preference or a
@@ -98,11 +107,14 @@ pi.plugin.getDataPath(): Promise<string> // plugin-private directory
 The installed Plugins page renders every `contributes.settings` field and
 persists edits in the plugin's private settings file. Supported generated
 controls are `string`, `number`, `boolean`, `select`, `json`, and `shortcut`.
-Shortcut settings are plugin-local: they invoke the declared `command` only
-while the PI-Desktop app window is focused and while the plugin's activation
-scope matches the current project. They are never registered as OS-global
-shortcuts in this release. The host emits `plugin:settingsChanged` after a
-user edit so a plugin can refresh in-memory configuration.
+Generated `title` / `description` / `enum[].label` are author-language strings;
+the host does not resolve locale maps on them. A plugin that needs a localized
+settings surface ships `settingsDestinations` and reads `pi.app.getLocale`
+(ADR 0280). Shortcut settings are plugin-local: they invoke the declared
+`command` only while the PI-Desktop app window is focused and while the plugin's
+activation scope matches the current project. They are never registered as
+OS-global shortcuts in this release. The host emits `plugin:settingsChanged`
+after a user edit so a plugin can refresh in-memory configuration.
 
 ### commands
 ```ts
@@ -116,7 +128,23 @@ pi.commands.register(def: {
 pi.commands.unregister(id: string): Promise<void>
 ```
 
+### speech (`speech.adapter.register`)
+```ts
+pi.speech.registerAdapter(adapter: {
+  protocol: string
+  label: string
+  roles: Array<"transcribe" | "synthesize">
+  handle: (input) => Promise<{ kind: "text"; text: string } | { kind: "audio"; mimeType: string; data: string } | { kind: "http"; call: SpeechHttpCall }>
+}): Promise<void>
+pi.speech.unregisterAdapter(protocol: string): Promise<void>
+```
+
+The handle stays in the plugin process. Built-in protocol ids `openai_audio`
+and `openai_chat_audio` are reserved. HTTP plans are executed by the host with
+the bound provider key and must stay on that origin.
+
 ### ui
+
 ```ts
 pi.ui.openPanel(options?: { title?: string }): Promise<void>
 pi.ui.closePanel(): Promise<void>
@@ -866,6 +894,9 @@ Delivered today:
   first push.
 - `plugin:settingsChanged` is delivered after edits from the generated Plugins
   settings UI.
+- `appearance:changed` — payload is `PluginAppearance`, sent whenever the app
+  palette or language changes, so a plugin process can relabel live the same way
+  an open panel does (ADR 0280).
 - `session:modelChanged` — `{ sessionId, modelKey, thinkingLevel }`, sent after
   a successful `session.configure` that changes provider, model, or thinking
   level.
@@ -892,8 +923,6 @@ A throwing handler is logged and does not affect other listeners or the plugin.
 
 Planned events:
 - `session:activated`
-- `app:themeChanged` — for now, panels follow the palette live through the
-  panel event `appearance:changed`; the plugin-process event remains planned.
 
 ## 6. Panel bridge API
 
@@ -1044,6 +1073,7 @@ The desktop plugin runtime now implements the MVP host API surface used by local
   `fs.writeText` / `fs.glob` / `fs.list` / `fs.remove` / `fs.requestDirectory`,
   bounded by `manifest.fs` (ADR 0088)
 - `agent.registerTool` / `unregisterTool` / `agent.complete`
+- `speech.registerAdapter` / `unregisterAdapter` (`speech.adapter.register`)
 - `models.list`, `session.getLlmContext`
 - `clipboard.*`, `shell.openExternal`, `net.fetch`
 - `browser.*` (guest CDP; `browser.cdp`)

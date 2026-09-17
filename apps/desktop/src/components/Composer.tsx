@@ -436,7 +436,6 @@ export function Composer({
     submit,
   } = submitController;
 
-
   const composerAc = useComposerAutocomplete({
     value,
     cursor,

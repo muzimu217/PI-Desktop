@@ -596,7 +596,7 @@ PI-Desktop 在此基础上增加了：
 
 PI-Desktop 目前仍处于 Early Preview，并在高频迭代。
 
-当前 **0.14.x** 已包含：
+当前 **0.15.x** 已包含：
 
 - Desktop Shell
 - Streaming Agent Runtime

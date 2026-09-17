@@ -162,7 +162,11 @@ export type PluginManifest = {
   activationEvents?: string[];
 };
 
-/** A plugin-provided label. Shell UI may add locales; plugins still ship en + zh-CN. */
+/**
+ * Host-owned chrome labels (`ui.title`, views, destinations, session sources).
+ * Do not use this for plugin-owned copy; read `pi.app.getLocale` instead
+ * (ADR 0280). Shell UI may add locales; plugins still ship en + zh-CN.
+ */
 export type PluginLocalizedString = {
   en: string;
   "zh-CN": string;
@@ -333,7 +337,9 @@ export type PluginSettingOption = {
 
 export type PluginSettingContrib = {
   key: string;
+  /** Author-language label for the generated sheet. Not a locale map (ADR 0280). */
   title: string;
+  /** Author-language help text for the generated sheet. */
   description?: string;
   type: PluginSettingType;
   default?: unknown;
@@ -584,6 +590,42 @@ export type PluginCommand = {
   keywords?: string[];
   category?: string;
   run: () => Promise<void> | void;
+};
+
+export type PluginSpeechRole = "transcribe" | "synthesize";
+
+export type PluginSpeechHandleInput = {
+  protocol: string;
+  role: PluginSpeechRole;
+  modelId: string;
+  voice?: string;
+  format?: string;
+  extra?: Record<string, string>;
+  text?: string;
+  language?: string;
+  audio?: { mimeType: string; data: string };
+};
+
+export type PluginSpeechHandleResult =
+  | { kind: "text"; text: string }
+  | { kind: "audio"; mimeType: string; data: string }
+  | {
+      kind: "http";
+      call: {
+        url: string;
+        method?: "GET" | "POST";
+        headers?: Record<string, string>;
+        body?: unknown;
+        parse: "bytes" | "json-text" | "json-path" | "openai-transcription" | "openai-chat-audio";
+        jsonPath?: string;
+      };
+    };
+
+export type PluginSpeechAdapter = {
+  protocol: string;
+  label: string;
+  roles: PluginSpeechRole[];
+  handle: (input: PluginSpeechHandleInput) => Promise<PluginSpeechHandleResult> | PluginSpeechHandleResult;
 };
 
 export type PluginTool = {
@@ -896,6 +938,7 @@ export type PluginThemeSummary = {
 export type PluginHostApi = {
   app: {
     getVersion: () => Promise<string>;
+    /** Active app language. Plugin-owned UI localizes from this (ADR 0280). */
     getLocale: () => Promise<string>;
     getAppearance: () => Promise<PluginAppearance>;
     /**
@@ -921,6 +964,10 @@ export type PluginHostApi = {
   commands: {
     register: (command: PluginCommand) => Promise<void>;
     unregister: (id: string) => Promise<void>;
+  };
+  speech: {
+    registerAdapter: (adapter: PluginSpeechAdapter) => Promise<void>;
+    unregisterAdapter: (protocol: string) => Promise<void>;
   };
   ui: {
     openPanel: (opts?: { title?: string }) => Promise<void>;
@@ -1169,6 +1216,7 @@ export const PLUGIN_PERMISSIONS = [
   // what a service may use with no page open.
   "audio.capture.background",
   "audio.playback.background",
+  "speech.adapter.register",
   "keyboard.globalShortcut",
   "net.websocket",
 ] as const;

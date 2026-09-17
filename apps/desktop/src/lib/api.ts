@@ -12,6 +12,11 @@ import type {
   AgentPromptResponse,
   PromptEnhancementRequest,
   PromptEnhancementResponse,
+  SpeechStatus,
+  SpeechSynthesizeRequest,
+  SpeechSynthesizeResult,
+  SpeechTranscribeRequest,
+  SpeechTranscribeResult,
   SessionSummarizeTitleRequest,
   SessionSummarizeTitleResponse,
   AgentStopResponse,
@@ -111,6 +116,7 @@ import {
   resolveFontScale,
   normalizeChatContentMaxWidth,
   validateNetworkProxy,
+  validateSpeechSettings,
 } from "@pi-desktop/shared";
 
 export type ImportSource = "claude-code" | "opencode" | "codex" | "pi";
@@ -221,6 +227,15 @@ export function normalizeSettings(settings: AppSettings): AppSettings {
 }
 
 export function validateSettingsWrite(settings: AppSettings): AppSettings {
+  if (
+    settings.thinkingDisplayMode !== undefined &&
+    settings.thinkingDisplayMode !== "detailed" &&
+    settings.thinkingDisplayMode !== "compact"
+  ) {
+    throw Object.assign(new Error("thinkingDisplayMode is invalid"), {
+      errorCode: "INVALID_PARAMS",
+    });
+  }
   const value = settings as AppSettings & {
     defaultCommandShell?: unknown;
     largePasteThreshold?: unknown;
@@ -269,6 +284,11 @@ export function validateSettingsWrite(settings: AppSettings): AppSettings {
       });
     }
     value.networkProxy = proxy.value;
+  }
+  if (Object.prototype.hasOwnProperty.call(value, "speech")) {
+    (value as AppSettings).speech = validateSpeechSettings(
+      (value as { speech?: unknown }).speech,
+    );
   }
   return settings;
 }
@@ -622,6 +642,11 @@ export const api = {
     invoke<AgentPromptResponse>(IPC.invoke.agentPrompt, req),
   enhancePrompt: (req: PromptEnhancementRequest) =>
     invoke<PromptEnhancementResponse>(IPC.invoke.promptEnhance, req),
+  speechStatus: () => invoke<SpeechStatus>(IPC.invoke.speechGetStatus),
+  speechTranscribe: (req: SpeechTranscribeRequest) =>
+    invoke<{ text: string }>(IPC.invoke.speechTranscribe, req),
+  speechSynthesize: (req: SpeechSynthesizeRequest) =>
+    invoke<SpeechSynthesizeResult>(IPC.invoke.speechSynthesize, req),
   compact: (req: AgentCompactRequest) =>
     invoke<AgentCompactResponse>(IPC.invoke.agentCompact, req),
   abort: (sessionId: string) =>

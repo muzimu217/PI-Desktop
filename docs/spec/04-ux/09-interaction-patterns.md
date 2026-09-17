@@ -764,17 +764,19 @@ may be retained while exactly one workspace supplies the visible shell context.
 
 - Tool activity starts as a lightweight collapsed row; failed calls open
   automatically so the error remains local to its invocation.
-- Consecutive tool activity is wrapped in one processing group. Its header
-  updates elapsed time once per second while active, freezes after the next
-  transcript message, and exposes the number of contained steps. The latest
-  action remains in the activity rows or dedicated runtime indicator; no
-  additional status capsule is rendered.
-- While the turn is active, the latest processing group opens automatically so
-  its activity list is visible, but tool-call details remain collapsed by
-  default. The latest thinking row opens automatically while it streams. When
-  the activity settles, only automatic thinking disclosures close. A click or
-  keyboard activation on a group, row, or collapse rail makes that disclosure
-  user-owned; stream updates and completion never override it.
+- One assistant turn has one process disclosure containing thinking, tool calls
+  and intermediate progress text. The trailing answer streams outside it;
+  later activity moves that text into the process. The header updates elapsed
+  time once per second while active and shows the visible step count.
+- Detailed mode opens the active process and retains the latest thinking row's
+  automatic disclosure. Completed process areas collapse unless a click,
+  keyboard activation or search reveal has taken ownership. Tool details keep
+  their individual controls. Failed tool calls open an unclaimed active process so
+  their errors stay visible.
+- Compact thinking mode shows only a status indicator while reasoning streams;
+  when answer text starts or reasoning ends, the thought row disappears. Tools
+  and progress text remain accessible, and a completed thinking-only process
+  leaves no header. Neither mode changes stored reasoning.
 - A failed row is invocation-local truth and remains visible immediately. The
   containing group reports processing duration only and settles as processed,
   even when a later call recovers. Terminal turn failure is derived only from

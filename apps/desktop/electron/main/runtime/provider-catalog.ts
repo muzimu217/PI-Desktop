@@ -6,6 +6,7 @@ import {
   modelIdsMatch,
   resolveBindingContextWindow,
   validateNetworkProxy,
+  validateSpeechSettings,
   type CommandShellId,
   type ModelBinding,
   type ThinkingLevel,
@@ -209,6 +210,11 @@ export function createProviderCatalogRuntime({
         });
       }
       value.networkProxy = proxy.value;
+    }
+    if (Object.prototype.hasOwnProperty.call(value, "speech")) {
+      (value as T & { speech?: unknown }).speech = validateSpeechSettings(
+        (value as { speech?: unknown }).speech,
+      );
     }
     return settings;
   };

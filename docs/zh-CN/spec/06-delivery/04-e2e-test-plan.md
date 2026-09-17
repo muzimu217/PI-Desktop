@@ -483,6 +483,17 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 - **里程碑**：M2
 - **状态**：草案
 
+#### E2E-SESSION-outbox-duplicate-id-does-not-drop-history
+
+- **先决条件**：两个会话的工具行把同一个 `toolCallId` 当作 `messages.id`（例如 `call_421522`）。第一个会话已经持久化该 id。第二个会话随后又跑了若干回合，助手/工具行排在这条碰撞追加之后。
+- **步骤**：1) 在会话 A 完成一条 id 为 `call_421522` 的工具调用。2) 在会话 B 使用同一供应商工具 id，再继续聊几轮。3) 退出并重新打开。4) 打开两个会话。
+- **预期**：会话 A 仍有原来的工具行。会话 B 重新打开后仍有后续回合；碰撞的工具行存成 `{sessionB}:{call_421522}`（或等价改写 id）。持久化 outbox 为空，没有停在 `UNIQUE constraint failed: messages.id`。任一会话都没有丢掉更晚的助手/工具行。
+- **链接规格**：`03-runtime/04-data-storage.md`、`03-runtime/06-host-rpc-protocol.md`、ADR 0041、D444
+- **接受**：F（持久化）
+- **里程碑**：M2
+- **状态**：单位已覆盖（`append_message_remaps_ids_owned_by_another_session`、`persistence-outbox.test.mjs`）；桌面旅程待补
+
+
 #### E2E-173：展开中的实时委托运行过程跟随最新输出
 
 - **先决条件**：一个绑定项目的 Agent 会话，提供商流被模拟为一个仍在运行的
@@ -1376,6 +1387,16 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 - **链接规格**：`07-plugins/01-plugin-system.md`、`07-plugins/03-plugin-api.md`、`07-plugins/04-plugin-security.md`、`07-plugins/12-plugin-ipc-and-host-services.md`
 - **验收**：G（隔离面板）
 - **状态**：已记录
+
+#### E2E-024AA：插件自有界面跟随宿主语言
+
+- **先决条件**：已加载带面板或设置入口的插件，且插件进程订阅了 `pi.events.on("appearance:changed")`。
+- **步骤**：1) 调用 `pi.app.getLocale` / `app.getAppearance`，确认语言标签与设置中的语言一致。2) 插件保持加载时切换应用语言。3) 确认生成式 `contributes.settings` 标题仍是作者语言。4) 确认插件进程与打开的面板收到带新 `locale` 的 `appearance:changed` 并自行重标文案。
+- **预期**：宿主只发布语言。插件自有文案无需重载即可更新。生成式设置面板不解析 `{ en, "zh-CN" }`。宿主拥有的身份文案仍走 `manifest.i18n`（ADR 0267）。
+- **链接规格**：`07-plugins/03-plugin-api.md`、`07-plugins/02-plugin-manifest-schema.md`、`04-ux/02-i18n-english-first.md`、ADR 0280
+- **验收**：G（插件 i18n）
+- **状态**：部分自动化（`apps/desktop/test/plugin-settings.test.mjs`、`plugin-work-panel-views.test.mjs`）；UI 走查已记录
+
 
 #### E2E-024E：高风险插件 API 需要拨款
 
@@ -3616,16 +3637,6 @@ IPC 请求无法关闭。
 - **里程碑**：M6+
 - **状态**：工作流脚本/单元已覆盖；每次发布仍需在干净机器上验证（适用变更合入前需在具备条件的环境中运行 E2E）
 
-#### E2E-196d：未签名 macOS 包的代码签名标识与 Bundle ID 一致
-
-- **先决条件**：默认未签名 macOS 打包（`CSC_IDENTITY_AUTO_DISCOVERY=false`）已生成至少一个原生架构的 `PI-Desktop.app`。
-- **步骤**：1) 读取 `Contents/Info.plist` 中的 `CFBundleIdentifier`。2) 对应用包运行 `codesign -dv --verbose=4`。3) 确认 Identifier 不是 `Electron`。4) 在窗口失焦时完成一轮会请求原生任务通知的对话。
-- **预期**：`CFBundleIdentifier` 与 codesign `Identifier` 均为 `net.aiuo.pi-desktop`；Info.plist 已绑定；系统设置 → 通知中出现该应用，且不要求 `com.apple.private.usernotifications.bundle-identifiers`。Developer ID 包保留其证书并使用同一 Identifier。
-- **关联规格**：`06-delivery/06-release-runbook.md`、ADR 0278、issue #524
-- **验收**：质量
-- **里程碑**：M6+
-- **状态**：由 `macos-codesign-identity.test.mjs` 自动化；原生通知送达仍需发布环境验证
-
 #### E2E-212：GitHub Release 启动 CNB 镜像流水线
 
 - **前提条件**：`vastsa/PI-Desktop` 已配置仓库密钥 `CNB_MIRROR_TOKEN`；
@@ -5122,6 +5133,7 @@ IPC 请求无法关闭。
 
 | 验收 | 应用场景 |
 |---|---|
+| A / C — Unicode stdio 成帧 | E2E-RPC-unicode-separators |
 | C / G / Quality — Plugins navigation | E2E-NAV-plugins-button-goes-back |
 | C / D / Quality — 侧边栏行状态 | E2E-LAYOUT-sidebar-row-states |
 | A / C / Quality — 侧栏材质与设置返回 | E2E-LAYOUT-sidebar-settings |
@@ -5134,7 +5146,7 @@ IPC 请求无法关闭。
 | E——工具和权限 | E2E-008a、E2E-014、E2E-015、E2E-016、E2E-017、E2E-018、E2E-019、E2E-024I、E2E-024K、E2E-040、E2E-049、E2E-074、E2E-093、E2E-097、 E2E-099、E2E-100、E2E-101、E2E-102、E2E-103、E2E-105、E2E-106、E2E-107、E2E-111、E2E-112、E2E-113、E2E-114、E2E-115、E2E-116、 E2E-119、E2E-121、E2E-122、E2E-123、E2E-142、E2E-145、E2E-147、E2E-PLUGIN-imported-pi-package-skills、E2E-166 |
 | F——坚持 | E2E-020、E2E-021、E2E-036、E2E-037、E2E-038、E2E-040、E2E-042、E2E-047、E2E-048、E2E-051、E2E-054、E2E-056、E2E-061、E2E-062、 E2E-064、E2E-066、E2E-068、E2E-071、E2E-072、E2E-073、E2E-082、E2E-084、E2E-096、E2E-098、E2E-102、E2E-102b、E2E-103、E2E-代理-001、 E2E-061a、E2E-073a、E2E-104、E2E-106、E2E-107、E2E-108、E2E-109、E2E-110、E2E-112、E2E-118、E2E-119、E2E-120、E2E-121、E2E-123、E2E-142、E2E-146、E2E-148、E2E-151、E2E-171、E2E-005J |
 | F——持久化（项目排序） | E2E-253 |
-| G——插件 | E2E-022、E2E-022A、E2E-022B、E2E-022C、E2E-023、E2E-024、E2E-024B、E2E-024C、E2E-024D、E2E-024E、E2E-024W、E2E-024F、E2E-024G、E2E-024H、 E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M、E2E-024N、E2E-024O、E2E-024P、E2E-025、E2E-026、E2E-105、E2E-117、E2E-120、E2E-122、E2E-123、E2E-148、E2E-153、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency、E2E-PLUGIN-global-shortcut-owns-only-its-own-command、E2E-PLUGIN-permission-gate-for-real-time-capabilities、E2E-PLUGIN-background-audio-and-realtime-connection |
+| G——插件 | E2E-022、E2E-022A、E2E-022B、E2E-022C、E2E-023、E2E-024、E2E-024B、E2E-024C、E2E-024D、E2E-024AA、E2E-024E、E2E-024W、E2E-024F、E2E-024G、E2E-024H、 E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M、E2E-024N、E2E-024O、E2E-024P、E2E-025、E2E-026、E2E-105、E2E-117、E2E-120、E2E-122、E2E-123、E2E-148、E2E-153、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency、E2E-PLUGIN-global-shortcut-owns-only-its-own-command、E2E-PLUGIN-permission-gate-for-real-time-capabilities、E2E-PLUGIN-background-audio-and-realtime-connection |
 | H——诊断 | E2E-027、E2E-031、E2E-034、E2E-042、E2E-096、E2E-098、E2E-104、E2E-107、E2E-108、E2E-109、E2E-110、E2E-113、E2E-115、E2E-116、 E2E-118、E2E-121、E2E-146、E2E-194、E2E-195 |
 | 安全性 | E2E-028、E2E-029、E2E-030、E2E-024J、E2E-024K、E2E-024M、E2E-049、E2E-068、E2E-086、E2E-105、E2E-106、E2E-107、E2E-108、E2E-109、 E2E-110、E2E-112、E2E-113、E2E-115、E2E-116、E2E-117、E2E-119、E2E-121、E2E-122、E2E-123、E2E-142、E2E-148、E2E-151、E2E-153 |
 | 品质 | E2E-032、E2E-033、E2E-039、E2E-043、E2E-044、E2E-045、E2E-046、E2E-047、E2E-048、E2E-048A、E2E-049、E2E-050、E2E-053、E2E-055、 E2E-056、E2E-057、E2E-058、E2E-059、E2E-060、E2E-061、E2E-062、E2E-063、E2E-064、E2E-065、E2E-066、E2E-067、E2E-068、E2E-069、 E2E-070、E2E-071、E2E-072、E2E-073、E2E-074、E2E-075、E2E-076、E2E-077、E2E-078、E2E-079、E2E-080、E2E-081、E2E-082、E2E-083、 E2E-084、E2E-085、E2E-086、E2E-092、E2E-093、E2E-094、E2E-095、E2E-096、E2E-097、E2E-098、E2E-099、E2E-100、E2E-101、E2E-102、 E2E-102a、E2E-102b、E2E-103、E2E-AGENTS-001、E2E-024N、E2E-024O、E2E-059a、E2E-060b、E2E-060c、E2E-060d、E2E-061a、E2E-073a、E2E-111、 E2E-114、E2E-117、E2E-118、E2E-119、E2E-120、E2E-122、E2E-123、E2E-142、E2E-143、E2E-144、E2E-145、E2E-146、E2E-147、E2E-148、E2E-150、E2E-151、E2E-153、E2E-194、E2E-195、E2E-199、E2E-200、E2E-201、E2E-202、E2E-203、E2E-204、E2E-209、E2E-210、E2E-250、E2E-PLUGIN-imported-pi-package-skills、E2E-SUBAGENT-resume-a-settled-delegation |
@@ -7516,6 +7528,7 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
   Automated by `pnpm test:e2e:layout` using real route components and DOM/CDP
   interaction. This is renderer evidence, not native Windows/Linux hit-test proof.
 - **预期**：原生窗口宽度全程不变。MainChat 永不低于 360px —— 包含拖动过程中以及 `sidebar-out` 仍占位弹性空间期间。工作面板有效上限为客户端宽度减去 360px 下限与展开的左栏宽度，且无固定像素上限。预算耗尽时展开的左栏立即收起，面板之后仍可继续增长。手动重开优先占用右栏宽度；能保住当前 MainChat 则保持，否则落在 370px 的重开目标。关闭面板只恢复由布局机制收起的左栏。分隔线的 ARIA 最小/最大值遵循同一动态预算。
+- **在运行中的应用里实测的浮层覆盖**：在 Plugins 路由上打开一个插件模态框；模态遮罩是标题栏带内工作面板开关处的命中首选；标题栏带不是命中首选，因此不会绘制在模态遮罩之上；关闭模态框后路由保持干净。这四项命中由 `pnpm test:e2e:layout` 断言，属于渲染器 DOM/CDP 证据，不是原生命中测试证明。
 - **链接规格**：`04-ux/01-ui-ia.md`、`04-ux/07-ui-design-system.md` §10、`04-ux/08-component-spec.md` §1 与 §5、`04-ux/09-interaction-patterns.md` §8、ADR 0238
 - **验收**：F（持久化）、品质
 - **里程碑**：M6 之后的桌面外壳维护
@@ -7911,3 +7924,14 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 - **验收**：G（远程市场来源）
 - **里程碑**：M6+
 - **状态**：草稿
+
+### E2E-RPC-unicode-separators
+
+- **前置条件**：已构建 host-core、shared 与 agent-runtime；隔离的临时数据目录；仅回环的 fixture provider。不使用真实凭证。
+- **步骤**：追加一条含 U+2028/U+2029、中文、emoji 以及转义 CR/LF 的用户消息；读取、重启 host 后再读。通过 AgentSidecar 发送 Unicode 提示；经 parent host proxy 恢复历史；流式返回并持久化 Unicode 回复。发送一条含相同字符的未知方法，再发健康检查。
+- **预期**：文本在持久化与所有 stdio 方向上保持不变。请求在 RPC 超时前完成；错误回复之后的请求仍可用。无需迁移现有会话。
+- **自动化**：`pnpm test:e2e:rpc-unicode`；`packages/shared/src/ndjson.test.ts` 额外覆盖每个 UTF-8 切分位置、连续帧、CRLF、EOF 与销毁。
+- **规格**：03-runtime/06-host-rpc-protocol §2。
+- **验收**：A（运行时），C（会话）。
+- **里程碑**：M6+。
+- **状态**：已自动化；针对 task/PR 集成候选运行。

@@ -185,7 +185,7 @@ GitHub Release 工作流程启动所有本机平台运行程序，无需
 
 **macOS 默认发布策略：** GitHub Release 工作流程默认生成未签名的 macOS
 DMG/ZIP。标签推送以及 `sign_macos` 未填写或设为 `false` 的手动运行都会关闭
-身份发现，不接收签名或公证密钥，并跳过 macOS 装订和签名验证。未签名打包仍会对外层应用做 adhoc 签名，使 codesign Identifier 等于 `net.aiuo.pi-desktop`（issue #524）。如需明确签名，
+身份发现，不接收签名或公证密钥，并跳过 macOS 装订和签名验证。如需明确签名，
 请针对目标标签手动运行工作流程并设置 `sign_macos: true`。本地
 `scripts/release-macos.sh` 仍是明确的签名通道。
 

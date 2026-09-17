@@ -1,6 +1,6 @@
 {
   "name": "@pi-desktop/desktop",
-  "version": "0.14.9",
+  "version": "0.15.0",
   "desktopName": "pi-desktop.desktop",
   "private": true,
   "description": "PI-Desktop Electron application",
@@ -74,7 +74,6 @@
   },
   "build": {
     "appId": "net.aiuo.pi-desktop",
-    "afterPack": "./scripts/after-pack.mjs",
     "productName": "PI-Desktop",
     "directories": {
       "output": "release"

@@ -2,7 +2,7 @@ export const PROTOCOL_VERSION = 11 as const;
 export const SCHEMA_VERSION = 16 as const;
 export const APP_ID = "net.aiuo.pi-desktop";
 export const APP_NAME = "PI-Desktop";
-export const APP_VERSION = "0.14.9";
+export const APP_VERSION = "0.15.0";
 
 export const APP_MENU_COMMANDS = [
   "newTask",
@@ -71,6 +71,9 @@ export const IPC = {
     agentPrompt: "pi-desktop/agent/prompt",
     agentSteer: "pi-desktop/agent/steer",
     promptEnhance: "pi-desktop/prompt/enhance",
+    speechTranscribe: "pi-desktop/speech/transcribe",
+    speechSynthesize: "pi-desktop/speech/synthesize",
+    speechGetStatus: "pi-desktop/speech/getStatus",
     agentCompact: "pi-desktop/agent/compact",
     agentAbort: "pi-desktop/agent/abort",
     agentStop: "pi-desktop/agent/stop",

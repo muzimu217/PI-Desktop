@@ -70,6 +70,7 @@ import {
   type PluginServiceStatus,
   type PluginSettingDefinition,
   type PluginWorkspaceInfo,
+  BUILTIN_SPEECH_PROTOCOL_IDS,
 } from "@pi-desktop/shared";
 import {
   previewFile,
@@ -284,8 +285,9 @@ export type PluginHostServices = {
   /**
    * The appearance the host is currently showing (palette, language, active
    * plugin theme). Panels and plugin processes read it through `app.getAppearance`;
-   * the host broadcasts `appearance:changed` to open panels and docked views
-   * when it changes. Workspace switches push `workspace:changed` the same way.
+   * the host broadcasts `appearance:changed` to open panels, docked views, and
+   * loaded plugin processes when it changes (ADR 0280). Workspace switches push
+   * `workspace:changed` the same way.
    */
   getAppearance?: () => PluginAppearance;
   /**
@@ -1110,9 +1112,65 @@ const spawnUtilityProcess: PluginProcessSpawner = async ({ pluginId, entry }) =>
   };
 };
 
+const SPEECH_HTTP_PARSE = new Set([
+  "bytes",
+  "json-text",
+  "json-path",
+  "openai-transcription",
+  "openai-chat-audio",
+]);
+
+function parseSpeechAdapterReply(value: unknown): {
+  kind: "text" | "audio" | "http";
+  text?: string;
+  mimeType?: string;
+  data?: string;
+  call?: Record<string, unknown>;
+} {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw apiError("INVALID_ARGUMENT", "speech adapter reply is invalid");
+  }
+  const record = value as Record<string, unknown>;
+  if (record.kind === "text") {
+    const text = typeof record.text === "string" ? record.text.trim() : "";
+    if (!text) throw apiError("PROVIDER_ERROR", "speech adapter returned empty text");
+    return { kind: "text", text };
+  }
+  if (record.kind === "audio") {
+    const data = typeof record.data === "string" ? record.data.trim() : "";
+    const mimeType =
+      typeof record.mimeType === "string" && record.mimeType.trim()
+        ? record.mimeType.trim()
+        : "application/octet-stream";
+    if (!data) throw apiError("PROVIDER_ERROR", "speech adapter returned empty audio");
+    return { kind: "audio", mimeType, data };
+  }
+  if (record.kind === "http") {
+    const call = record.call;
+    if (!call || typeof call !== "object" || Array.isArray(call)) {
+      throw apiError("INVALID_ARGUMENT", "speech adapter http call is invalid");
+    }
+    const spec = call as Record<string, unknown>;
+    if (typeof spec.url !== "string" || !spec.url.trim()) {
+      throw apiError("INVALID_ARGUMENT", "speech adapter http call is invalid");
+    }
+    if (typeof spec.parse !== "string" || !SPEECH_HTTP_PARSE.has(spec.parse)) {
+      throw apiError("INVALID_ARGUMENT", "speech adapter http parse is invalid");
+    }
+    return { kind: "http", call: spec };
+  }
+  throw apiError("INVALID_ARGUMENT", "speech adapter reply kind is invalid");
+}
+
 export class PluginRuntime {
   private commands = new Map<string, RegisteredCommand>();
   private tools = new Map<string, RegisteredPluginTool>();
+  private speechAdapters = new Map<string, {
+    protocol: string;
+    label: string;
+    roles: Array<"transcribe" | "synthesize">;
+    pluginId: string;
+  }>();
   private skills = new Map<string, RegisteredPluginSkill>();
   private agentExtensions = new Map<string, RegisteredAgentExtension>();
   private themes = new Map<string, RegisteredPluginTheme>();
@@ -1214,6 +1272,44 @@ export class PluginRuntime {
 
   getTools(): RegisteredPluginTool[] {
     return [...this.tools.values()];
+  }
+
+  getSpeechAdapter(protocol: string) {
+    return this.speechAdapters.get(protocol);
+  }
+
+  listSpeechAdapters() {
+    return [...this.speechAdapters.values()].map((entry) => ({
+      id: entry.protocol,
+      label: entry.label,
+      roles: [...entry.roles],
+      source: "plugin" as const,
+      pluginId: entry.pluginId,
+    }));
+  }
+
+  async runSpeechAdapter(
+    job: { binding: { protocol: string } } & Record<string, unknown>,
+    payload: Record<string, unknown>,
+  ) {
+    const adapter = this.speechAdapters.get(String(job.binding.protocol));
+    if (!adapter) {
+      throw apiError("SPEECH_PROTOCOL_UNSUPPORTED", `unknown speech protocol: ${job.binding.protocol}`);
+    }
+    const loaded = this.loaded.get(adapter.pluginId);
+    if (!loaded?.child || loaded.disposing) {
+      throw apiError("NOT_FOUND", `plugin not loaded: ${adapter.pluginId}`);
+    }
+    const reply = await this.sendToChild(
+      loaded,
+      {
+        t: "call",
+        method: "speech.handle",
+        payload: { protocol: adapter.protocol, ...payload, role: (job as { role?: string }).role },
+      },
+      60_000,
+    );
+    return parseSpeechAdapterReply(reply);
   }
 
   /** ExtensionAPI modules from loaded plugins holding `agent.extension`. */
@@ -1321,7 +1417,7 @@ export class PluginRuntime {
     return this.loaded.get(pluginId);
   }
 
-  /** Return the manifest-backed settings view for the installed-plugin UI. */
+  /** Manifest settings as the installed-plugin sheet reads them. Titles stay the author's language; plugin-owned UI localizes via `app.getLocale` / `appearance:changed` (ADR 0280). */
   async getPluginSettings(pluginId: string): Promise<PluginSettingDefinition[]> {
     const loaded = this.loaded.get(pluginId);
     if (!loaded) throw apiError("NOT_FOUND", `plugin not loaded: ${pluginId}`);
@@ -2353,6 +2449,51 @@ export class PluginRuntime {
         this.tools.delete(pluginToolName(pluginId, String(args[0] ?? "")));
         return { ok: true };
       }
+      case "speech.registerAdapter": {
+        this.assertPermission(loaded, "speech.adapter.register");
+        const descriptor = (args[0] ?? {}) as {
+          protocol?: string;
+          label?: string;
+          roles?: unknown;
+        };
+        const protocol = String(descriptor.protocol ?? "").trim();
+        if (!/^[a-z][a-z0-9._-]{0,63}$/.test(protocol)) {
+          throw apiError("INVALID_ARGUMENT", "speech protocol is invalid");
+        }
+        if ((BUILTIN_SPEECH_PROTOCOL_IDS as readonly string[]).includes(protocol)) {
+          throw apiError("CONFLICT", "speech protocol is reserved");
+        }
+        const existing = this.speechAdapters.get(protocol);
+        if (existing && existing.pluginId !== pluginId) {
+          throw apiError("CONFLICT", `speech protocol in use: ${protocol}`);
+        }
+        const roles = Array.isArray(descriptor.roles)
+          ? descriptor.roles.filter((role): role is "transcribe" | "synthesize" =>
+              role === "transcribe" || role === "synthesize",
+            )
+          : [];
+        if (roles.length === 0) throw apiError("INVALID_ARGUMENT", "speech roles are required");
+        this.speechAdapters.set(protocol, {
+          protocol,
+          label: String(descriptor.label ?? protocol),
+          roles: [...new Set(roles)],
+          pluginId,
+        });
+        this.services.audit?.({
+          pluginId,
+          api: "speech.registerAdapter",
+          ok: true,
+          ts: Date.now(),
+          protocol,
+        });
+        return { ok: true };
+      }
+      case "speech.unregisterAdapter": {
+        const protocol = String(args[0] ?? "").trim();
+        const existing = this.speechAdapters.get(protocol);
+        if (existing?.pluginId === pluginId) this.speechAdapters.delete(protocol);
+        return { ok: true };
+      }
       case "models.list": {
         this.assertPermission(loaded, "models.list");
         const models = (await this.services.listModels?.()) ?? [];
@@ -2749,6 +2890,9 @@ export class PluginRuntime {
     }
     for (const [name, tool] of this.tools) {
       if (tool.pluginId === pluginId) this.tools.delete(name);
+    }
+    for (const [protocol, adapter] of this.speechAdapters) {
+      if (adapter.pluginId === pluginId) this.speechAdapters.delete(protocol);
     }
     for (const [id, skill] of this.skills) {
       if (skill.pluginId === pluginId) this.skills.delete(id);

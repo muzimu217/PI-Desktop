@@ -128,6 +128,11 @@ Rules:
 4. The block is display metadata. A malformed one (not an object of locale →
    object) fails manifest validation; unknown locales and unknown fields inside
    an entry are ignored.
+5. The block is identity only (`name`, `description`, `safetyNotes`). Plugin-owned
+   copy — panels, views, widgets, generated settings, toasts, runtime command
+   titles — is not translated here. The host publishes the active language
+   (`pi.app.getLocale`, `appearance:changed`); the plugin localizes itself
+   (ADR 0280).
 
 ## 4. contributes
 
@@ -169,7 +174,7 @@ type PluginAgentToolContrib = {
 
 type PluginSettingContrib = {
  key: string;
- title: string;
+ title: string; // author language; the generated sheet does not localize
  description?: string;
  type: "string" | "number" | "boolean" | "select" | "json" | "shortcut";
  default?: unknown;
@@ -307,6 +312,7 @@ type PluginPermission =
  | "session.delete.own"
  | "audio.capture.background"
  | "audio.playback.background"
+ | "speech.adapter.register"
  | "keyboard.globalShortcut"
  | "net.websocket";
 ```

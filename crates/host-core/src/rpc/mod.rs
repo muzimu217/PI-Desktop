@@ -490,29 +490,8 @@ fn checked_index_root(
 /// Stats range selector. Missing/null keeps the historical default (30 days);
 /// any other value must be one of the supported windows, so an illegal range
 /// is a client error rather than a silent 30-day fallback.
-fn stats_range_days_param(params: &Value) -> Result<i64, JsonRpcError> {
-    match params.get("rangeDays") {
-        None => Ok(30),
-        Some(value) if value.is_null() => Ok(30),
-        Some(value) => match value.as_i64() {
-            Some(days @ 7) | Some(days @ 30) => Ok(days),
-            _ => Err(rpc_err(
-                1002,
-                "rangeDays must be one of 7, 30",
-                "INVALID_PARAMS",
-            )),
-        },
-    }
-}
-
-/// Clamp `limit` to the documented 1..=50 window so a hostile or accidental
-/// value cannot turn the top-sessions scan into an unbounded response.
-fn stats_limit_param(params: &Value) -> i64 {
-    params
-        .get("limit")
-        .and_then(Value::as_i64)
-        .unwrap_or(5)
-        .clamp(1, 50)
+fn plugin_usage_cursor_encode(ended_at: i64, id: &str) -> String {
+    B64.encode(format!("v1:{ended_at}:{id}"))
 }
 
 /// Cursor for `plugin.usage.listTurns`: opaque base64 of `v1:{ended_at}:{id}`
@@ -522,10 +501,6 @@ fn stats_limit_param(params: &Value) -> i64 {
 pub(crate) struct PluginUsageCursor {
     ended_at: i64,
     id: String,
-}
-
-fn plugin_usage_cursor_encode(ended_at: i64, id: &str) -> String {
-    B64.encode(format!("v1:{ended_at}:{id}"))
 }
 
 fn plugin_usage_cursor_decode(raw: &str) -> Result<PluginUsageCursor, JsonRpcError> {
@@ -643,7 +618,7 @@ pub(crate) fn plugin_usage_list_turns(
     )?;
     let mut turns: Vec<PluginUsageTurn> = rows
         .collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(|e| anyhow::Error::from(e))?;
+        .map_err(anyhow::Error::from)?;
     let has_more = turns.len() > query.limit as usize;
     if has_more {
         turns.truncate(query.limit as usize);
@@ -661,15 +636,12 @@ fn plugin_usage_window_params(
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as i64)
             .unwrap_or_default(),
-        Some(value) => {
-            let ms = value
-                .as_i64()
-                .filter(|ms| *ms >= 0)
-                .ok_or_else(|| {
-                    rpc_err(1002, "toMs must be a non-negative integer", "INVALID_PARAMS")
-                })?;
-            ms
-        }
+        Some(value) => value
+            .as_i64()
+            .filter(|ms| *ms >= 0)
+            .ok_or_else(|| {
+                rpc_err(1002, "toMs must be a non-negative integer", "INVALID_PARAMS")
+            })?,
     };
     let from_ms = match params.get("fromMs") {
         None => to_ms - 30 * 24 * 3600 * 1000,

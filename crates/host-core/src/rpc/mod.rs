@@ -1517,12 +1517,26 @@ async fn handle_request(
                 .ok_or_else(|| rpc_err(1002, "active workspace required", "INVALID_PARAMS"))?;
             let root = checked_index_root(requested_root, current_root)?;
             let audit_root = root.to_string_lossy().into_owned();
+            #[cfg(feature = "workspace-watch")]
+            let watch_root = root.clone();
             let status = tokio::task::spawn_blocking(move || {
                 index.rebuild(&root, crate::index::IndexLimits::default())
             })
             .await
             .map_err(|e| rpc_err(1000, e.to_string(), "INDEX_REBUILD_FAILED"))?
             .map_err(|e| rpc_err(1000, e.to_string(), "INDEX_REBUILD_FAILED"))?;
+            // A manually built root is served by the fast path, so it must
+            // also be watched: an external edit has to invalidate it.
+            #[cfg(feature = "workspace-watch")]
+            {
+                let mut st = state.lock().await;
+                if let Some(watcher) = st.workspace_watcher.as_mut() {
+                    if let Err(error) = watcher.watch(&watch_root) {
+                        tracing::warn!(error = %error, "workspace watch failed");
+                    }
+                }
+                drop(st);
+            }
             // Destructive lifecycle operation: record who rebuilt which root.
             // Only the redacted summary fields go to the audit log — never any
             // file content.
@@ -1856,6 +1870,20 @@ async fn handle_request(
             // The index store owns its connection, so its calls below do not
             // need the app state lock; drop the lock before doing them so
             // concurrent RPCs are not serialized behind this one.
+            // Keep the opt-in watcher pointed at the workspace the boost
+            // serves: external edits to a watched root mark it stale, so Grep
+            // falls back instead of trusting a candidate set that predates
+            // the change.
+            #[cfg(feature = "workspace-watch")]
+            {
+                if boost {
+                    if let Some(watcher) = st.workspace_watcher.as_mut() {
+                        if let Err(error) = watcher.watch(&root) {
+                            tracing::warn!(error = %error, "workspace watch failed");
+                        }
+                    }
+                }
+            }
             drop(st);
             if boost && changed {
                 match index.ensure_index(&root) {
@@ -1907,6 +1935,12 @@ async fn handle_request(
         "workspace.clear" => {
             let mut st = state.lock().await;
             st.hashline.drop_all();
+            #[cfg(feature = "workspace-watch")]
+            if let Some(previous) = st.workspace.get() {
+                if let Some(watcher) = st.workspace_watcher.as_mut() {
+                    watcher.unwatch(std::path::Path::new(&previous.path));
+                }
+            }
             st.workspace.clear();
             st.db
                 .kv_delete("app", "currentProjectId")

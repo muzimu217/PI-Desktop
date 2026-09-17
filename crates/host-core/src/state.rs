@@ -29,6 +29,10 @@ pub struct AppState {
     pub data_dir: std::path::PathBuf,
     pub db: Database,
     pub index: IndexStore,
+    /// Opt-in filesystem watcher over indexed workspaces (`workspace-watch`).
+    /// `None` when the feature is off or the platform watcher is unavailable.
+    #[cfg(feature = "workspace-watch")]
+    pub workspace_watcher: Option<crate::index::watch::WorkspaceWatcher>,
     pub stats_cache: stats::SummaryCache,
     pub secrets: SecretStore,
     pub workspace: WorkspaceState,
@@ -129,10 +133,17 @@ impl AppState {
         let mcp_servers = McpServerRegistry::new(data_dir);
         let user_skills = UserSkillRegistry::new(data_dir);
         let user_subagents = UserSubagentRegistry::new(data_dir);
+        #[cfg(feature = "workspace-watch")]
+        let workspace_watcher = {
+            let store = std::sync::Arc::new(index.clone());
+            crate::index::watch::WorkspaceWatcher::start(store)
+        };
         Ok(Self {
             data_dir: data_dir.to_path_buf(),
             db,
             index,
+            #[cfg(feature = "workspace-watch")]
+            workspace_watcher,
             stats_cache: stats::SummaryCache::default(),
             secrets,
             workspace: WorkspaceState::default(),

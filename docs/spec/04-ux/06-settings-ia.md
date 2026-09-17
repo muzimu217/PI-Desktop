@@ -583,8 +583,12 @@ system while preserving their different data ownership:
   index while every other query keeps walking. Re-opening the same workspace
   re-walks it at most once per ten minutes, and that re-walk is preceded by
   a stat-only pass that skips the crawl entirely when no visible file
-  changed; regardless of freshness, per-candidate stat verification keeps
-  Grep's answer identical to the fallback's. The copy promises speed for
+  changed. Content the host itself writes (Write / Edit / Bash) invalidates
+  the root immediately, so the fast path falls back until the next rebuild;
+  the opt-in `workspace-watch` build feature adds a filesystem watcher for
+  edits made outside the host, and an invalidated root only ever costs
+  speed — per-candidate stat verification keeps Grep's answer identical to
+  the fallback's. The copy promises speed for
   eligible searches, never changed results. A second "index new folders"
   toggle would either duplicate this switch or build an index that nothing
   reads, so the section carries exactly one

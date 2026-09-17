@@ -16,6 +16,8 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 pub mod fast_path;
 pub mod metrics;
 pub mod refresh;
+#[cfg(feature = "workspace-watch")]
+pub mod watch;
 
 use metrics::{BuildProgress, IndexMetrics, WorkspaceIndexMetrics};
 

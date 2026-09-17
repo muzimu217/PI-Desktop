@@ -138,6 +138,42 @@ impl IndexStore {
         Ok(!stored.is_empty()) // leftover rows are files no longer on disk
     }
 
+    /// Mark a `fresh` root `stale` after the host itself changed workspace
+    /// content (a Write/Edit/Bash tool call). Grep's fast path answers
+    /// `StateGate` for a stale root and falls back to the full walk, so the
+    /// index can never serve candidates that predate the write — the
+    /// correctness rule the review asked for. A no-op for a root that is not
+    /// `fresh` (nothing to invalidate) or not indexed at all.
+    ///
+    /// The rebuild itself stays opportunistic: the next `workspace.set`
+    /// (or the watcher, where one runs) picks the root up, and until then
+    /// Grep is merely un-accelerated, never wrong.
+    pub fn mark_stale(&self, root: &Path) {
+        let root = normalize_root(root);
+        let root_id = root_id(&root);
+        let is_fresh = self
+            .status(Some(&root))
+            .ok()
+            .and_then(|mut statuses| statuses.pop())
+            .is_some_and(|status| status.status == IndexStatus::Fresh.as_str());
+        if !is_fresh {
+            return;
+        }
+        if let Err(error) = self.set_root_status(
+            &root_id,
+            &root,
+            RootUpdate {
+                status: IndexStatus::Stale,
+                file_count: 0,
+                indexed_bytes: 0,
+                error_count: 0,
+                last_error: None,
+            },
+        ) {
+            tracing::warn!(error = %error, "mark index stale failed");
+        }
+    }
+
     /// Mark a `fresh` root `building` ahead of a same-path auto refresh, so
     /// `index.status` tells the truth while the re-walk runs.
     pub fn request_refresh(&self, root: &Path) -> Result<()> {
@@ -254,6 +290,36 @@ mod tests {
             store.status(Some(root.path())).unwrap()[0].status,
             "building"
         );
+    }
+
+    #[test]
+    fn mark_stale_takes_a_fresh_root_out_of_the_fast_path() {
+        let data = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("one.txt"), "needle\n").unwrap();
+        let store = IndexStore::open(data.path()).unwrap();
+        store.rebuild(root.path(), IndexLimits::default()).unwrap();
+
+        // A fresh root serves the fast path…
+        assert_eq!(store.status(Some(root.path())).unwrap()[0].status, "fresh");
+        store.mark_stale(root.path());
+        // …and a stale one does not: the fast path answers StateGate, so
+        // Grep falls back instead of trusting candidates that predate a write.
+        assert_eq!(store.status(Some(root.path())).unwrap()[0].status, "stale");
+        assert!(matches!(
+            crate::index::fast_path::select_candidates(&store, root.path(), "needle", 20_000),
+            crate::index::fast_path::CandidateSelection::Fallback
+        ));
+    }
+
+    #[test]
+    fn mark_stale_leaves_an_unindexed_root_alone() {
+        let data = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let store = IndexStore::open(data.path()).unwrap();
+        // No row at all: nothing to invalidate, and no row must appear.
+        store.mark_stale(root.path());
+        assert!(store.status(Some(root.path())).unwrap().is_empty());
     }
 
     #[test]

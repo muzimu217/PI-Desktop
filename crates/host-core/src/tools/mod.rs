@@ -1132,6 +1132,15 @@ pub async fn execute_tool_with_path_access(
 
     match result {
         Ok(content) => {
+            // The host just changed workspace content (or a shell it ran
+            // might have). Invalidate the index for this workspace so Grep's
+            // fast path falls back until a rebuild lands: the index may cost
+            // speed, never correctness.
+            if let (Some(index), Some(root)) = (index, workspace) {
+                if matches!(tool_name, "Write" | "Edit" | "Bash") {
+                    index.mark_stale(root);
+                }
+            }
             // Preserve Bash stdout/stderr/exitCode for the model, but still
             // surface a non-zero command as a failed tool result. Previously
             // the shell process could exit 1/128 while the outer tool stayed

@@ -647,7 +647,7 @@ intentional override.
 mode and only when the catalog is non-empty, and all four belong to the Agent
 core set rather than the on-demand catalog of §7.1:
 
-- `Task(agent, task, description?, model?)` — validates its arguments (an
+- `Task(agent, task, description?, model?, resume?)` — validates its arguments (an
   unknown `agent`, an empty `task`, an unresolvable model pin and a definition
   whose tools are all unavailable each return a tool error explaining the
   failure rather than throwing), starts the delegate **in the background**, and
@@ -769,6 +769,62 @@ retain their existing `failed` and `aborted` outcomes. A terminal parent error
 also aborts leftover delegates,
 skips the resume prompt, and returns the session to idle so Continue is not
 `AGENT_BUSY` (D352).
+
+**Resumable delegations (ADR 0279).** `Task` accepts an optional `resume`
+parameter carrying the `delegationId` of a settled delegation in the same
+conversation. The resumed delegate is a new `SubagentRun` seeded with the
+chain's prior messages — the original `task` brief plus every row the chain
+produced — and then prompted with the new `task`, so a delegate that already
+read or changed a file continues from that context instead of starting cold.
+Seeding is transcript-backed: the chain's rows are exactly those carrying
+`parentToolCallId` for one of the chain's `Task` calls, and they are converted
+into provider messages with the delegate's own binding (a pinned delegation
+model is not the session model). Nothing is kept warm in memory and no new
+event type, storage schema, or tool parameter is introduced.
+
+A chain is the sequence of `Task` calls that share one delegate session: the
+first call, plus every later call that passed the earlier `delegationId` as
+`resume`. The runtime rebuilds the chain index from the persisted transcript at
+launch — each `Task` row carries its own `delegationId` and settled status in
+`toolResult.details` and the resumed id in `toolArgs.resume`, with the agent
+name normalized on rebuild — so resumability survives a sidecar restart.
+Chain identity (`delegateSessionId`) stays internal; the parent only
+ever passes a `delegationId`, and the reverse map resolves it.
+
+Only `completed` and `failed` chains are resumable; `stopped` and `aborted` runs
+are terminal and revive only by starting a new delegation, and a run the app
+closed while it still worked rebuilds as `interrupted`, which is not resumable
+either. A chain whose read-only tool output exceeds `MAX_RESUMABLE_READ_LINES`
+(50000) leaves the reusable list without an in-chain trim, so a resume never
+silently drops history. The registry keeps at most
+`MAX_RESUMABLE_CHAINS_PER_AGENT` (2) reusable chains per definition name and
+evicts least-recently-active ones whenever a delegation settles; a chain that is
+still working is never evicted, so the bound counts reusable chains and a live
+chain may sit above it until it settles.
+
+Resume is strictly same-session and never queues: resuming a running
+delegation is a tool error telling the parent to converge with `TaskWait`
+first, and a chain has at most one live record at a time. `model` and `resume`
+together are rejected, and a resumed run keeps the chain's recorded binding:
+the `providerId/modelId` key it resolved is preferred, a chain rebuilt from the
+transcript is matched by model id, and when nothing resolves it the run
+continues on the definition's current binding and records the previous model id
+as `modelChangedFrom` in its lifecycle details. Changing models on purpose means
+starting a new delegation. An unknown id, an id belonging to another definition,
+a non-resumable status, an over-budget chain, and a chain whose rows are gone
+each return a tool error naming the reason and, for an unknown id, the reusable
+ids when there are any.
+
+The parent discovers reusable chains through the system prompt, which lists
+each chain's latest `delegationId`, its objective, and up to
+`MAX_RESUMABLE_LISTED_FILES` (8) of the files it read (with a `(+N more)`
+suffix past that). The list is recomposed when a delegation settles, around the
+existing prompt sections. A resumed run is an ordinary delegation for
+`MAX_SUBAGENT_CONCURRENCY`, `TaskWait`, `TaskList`, `TaskStop`, and lifecycle
+snapshots. The immediate `Task` result and the lifecycle details add
+`resumedFrom` for audit; the transcript renders a chain as one continuous
+multi-turn conversation under its latest `Task` card, with no separate
+"resumed" marker.
 
 **Model pins.** `model: <provider>/<model>` in the frontmatter is resolved once
 per launch in Electron main, where credentials and the models.dev snapshot live, against

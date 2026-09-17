@@ -188,7 +188,7 @@ explicit local/LAN endpoints; the market path does not widen that policy.
   the manual `com.apple.quarantine` command and says signed/notarized builds do
   not need it. The ZIP package also includes the executable helper, which
   searches only `/Applications/PI-Desktop.app` and `~/Applications/PI-Desktop.app`,
-  verifies `CFBundleIdentifier` is `com.pi-desktop.app`, removes only
+  verifies `CFBundleIdentifier` is `net.aiuo.pi-desktop`, removes only
   `com.apple.quarantine` recursively when present, and opens the app. It accepts
   no arbitrary path, uses no privilege escalation, and is not a substitute for
   Developer ID signing or notarization.

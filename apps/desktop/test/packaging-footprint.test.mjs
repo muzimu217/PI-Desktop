@@ -279,7 +279,7 @@ test("macOS installers expose DMG guidance and retain the ZIP helper", () => {
   assert.match(macOpenFixNote, /PI-Desktop-macOS-open\.command/);
   assert.match(macOpenScript, /\/Applications\/\$\{APP_BUNDLE_NAME\}/);
   assert.match(macOpenScript, /CFBundleIdentifier/);
-  assert.match(macOpenScript, /com\.pi-desktop\.app/);
+  assert.match(macOpenScript, /net\.aiuo\.pi-desktop/);
   assert.match(macOpenScript, /\/usr\/bin\/xattr -r -d com\.apple\.quarantine/);
   assert.match(macOpenScript, /\/usr\/bin\/open/);
   assert.doesNotMatch(macOpenScript, /\bsudo\s+\//);

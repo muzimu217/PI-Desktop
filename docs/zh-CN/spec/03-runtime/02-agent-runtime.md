@@ -602,6 +602,45 @@ Stop / 运行时销毁。主 Agent 用 `TaskStop` 判断要不要取消；运行
 父级终态错误还会中止残留委托、跳过续跑提示，并把会话恢复为空闲，这样
 “继续”不会变成 `AGENT_BUSY`（D352）。
 
+**可恢复的委托（ADR 0279）。** `Task` 接受一个可选的 `resume` 参数，携带同一会话中
+某个已结算委托的 `delegationId`。恢复后的委托是一个新的 `SubagentRun`，以该链此前的
+消息为种子 —— 最初的 `task` 简述，加上这条链产出的每一行 —— 然后再以新的 `task`
+提示它，于是一个已经读过或改过某个文件的委托会从那份上下文继续，而不是从零开始。
+种子完全由 transcript 支撑：链的行恰好是那些 `parentToolCallId` 属于该链某个 `Task`
+调用的行，它们用委托自己的绑定（固定的委托模型未必是会话模型）转换成 provider 消息。
+不保活任何内存对象，也不引入新的事件类型、存储 schema 或工具参数。
+
+一条链是共享同一个委托会话的那些 `Task` 调用的序列：第一次调用，加上此后每一个把更早
+的 `delegationId` 当作 `resume` 传入的调用。运行时在启动时从持久化的 transcript 重建
+链索引 —— 每个 `Task` 行都在 `toolResult.details` 里带着自己的 `delegationId` 与结算
+状态、在 `toolArgs.resume` 里带着被恢复的 id，并在重建时归一化 agent 名 —— 因此可恢复性
+能挺过一次 sidecar 重启。链的身份（`delegateSessionId`）始终留在内部；父级只会传
+`delegationId`，由反向映射解析它。
+
+只有 `completed` 与 `failed` 的链可恢复；`stopped` 和 `aborted` 的运行是终态，只能靠
+新建委托重来；而应用在它还在工作时被关掉的那种运行会重建成 `interrupted`，同样不可
+恢复。只读工具输出超过 `MAX_RESUMABLE_READ_LINES`（50000）的链会从可复用清单里消失，
+且不做链内裁剪，因此恢复绝不会悄悄丢掉历史。注册表按定义名最多保留
+`MAX_RESUMABLE_CHAINS_PER_AGENT`（2）条可复用链，并在每次委托结算时淘汰最久未活动的
+那些；仍在工作的链永不淘汰，所以这个上限只算可复用链，活跃链可以让它暂时超出。
+
+恢复严格限定在同一会话内，且从不排队：对正在运行的委托做恢复是一个工具错误，提示父级
+先用 `TaskWait` 收敛；一条链在任何时刻最多只有一条活跃记录。`model` 与 `resume` 同时
+给出会被拒绝，而恢复后的运行会沿用该链记录的绑定：优先使用链解析出的
+`providerId/modelId` 键，从 transcript 重建的链则按模型 id 匹配；当什么都匹配不上时，
+运行会继续使用定义当前的绑定，并把先前的模型 id 记进它生命周期 details 的
+`modelChangedFrom`。有意换模型意味着新建一个委托。未知 id、属于另一个定义的 id、
+不可恢复的状态、超出读预算的链，以及行已经不在的链，各自返回一个说明原因的工具错误；
+对未知 id，还会一并列出当前可复用的 id。
+
+父级通过系统提示发现可复用的链：那里列出每条链最新的 `delegationId`、它的目标，以及它
+读过的文件最多 `MAX_RESUMABLE_LISTED_FILES`（8）个（超出部分带 `(+N more)` 后缀）。
+清单会在委托结算时围绕既有的提示段落重新组装。对 `MAX_SUBAGENT_CONCURRENCY`、
+`TaskWait`、`TaskList`、`TaskStop` 以及生命周期快照而言，恢复来的运行就是一个普通
+委托。`Task` 的立即返回结果与生命周期 details 会增加 `resumedFrom` 以便追溯；
+transcript 把一条链渲染成它最新 `Task` 卡片下的一段连续多轮对话，不带单独的
+“已恢复”标记。
+
 **模型引脚。** Frontmatter 中的 `model: <provider>/<model>` 在每次启动时于
 Electron main 里解析一次——凭据与 models.dev 快照都在那里——匹配提供商 id、
 厂商键或显示名称，且最多 `MAX_SUBAGENT_PROVIDERS`（8）个不同的提供商。无法

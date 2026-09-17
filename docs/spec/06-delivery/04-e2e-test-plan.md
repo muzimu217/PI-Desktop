@@ -300,7 +300,7 @@ identify the platform validation still needed.
   not need it. The ZIP helper searches only `/Applications/PI-Desktop.app` and
   `~/Applications/PI-Desktop.app`, removes only `com.apple.quarantine` when
   present, and opens the app without `sudo` or an arbitrary path argument. It
-  validates `CFBundleIdentifier=com.pi-desktop.app` before changing attributes.
+  validates `CFBundleIdentifier=net.aiuo.pi-desktop` before changing attributes.
   The guidance does not claim that an unsigned artifact has passed Gatekeeper
   qualification.
 - **Specs linked**: `06-delivery/06-release-runbook.md`,
@@ -334,6 +334,25 @@ identify the platform validation still needed.
 - **Milestone**: M6+
 - **Status**: Workflow script/unit-covered; clean-machine journey required for
   each release (run only in a capable environment when this surface changes)
+
+#### E2E-196d: Unsigned macOS packs bind the product codesign identifier
+
+- **Preconditions**: A default unsigned macOS pack (`CSC_IDENTITY_AUTO_DISCOVERY=false`)
+  has produced `PI-Desktop.app` for at least one native architecture.
+- **Steps**: 1) Read `CFBundleIdentifier` from `Contents/Info.plist`. 2) Run
+  `codesign -dv --verbose=4` on the outer app. 3) Confirm the identifier is not
+  `Electron`. 4) With the app unfocused, complete a turn that requests a native
+  task notification.
+- **Expected**: `CFBundleIdentifier` and the codesign `Identifier` are both
+  `net.aiuo.pi-desktop`. `Info.plist` is bound. macOS records the app in
+  System Settings → Notifications and does not require
+  `com.apple.private.usernotifications.bundle-identifiers`. Developer ID
+  packs keep their authority and the same identifier.
+- **Specs linked**: `06-delivery/06-release-runbook.md`, ADR 0278, issue #524
+- **Acceptance**: Quality
+- **Milestone**: M6+
+- **Status**: Automated by `macos-codesign-identity.test.mjs`; native
+  notification delivery remains release-runner validation
 
 #### E2E-212: GitHub Release starts the CNB mirror pipeline
 
@@ -7622,7 +7641,7 @@ identify the platform validation still needed.
 | B / F / Security — Provider copy | E2E-PROVIDER-copy-config-without-credentials |
 | A — App startup | E2E-001, E2E-002, E2E-003, E2E-004, E2E-067, E2E-076, E2E-079, E2E-092, E2E-097, E2E-143, E2E-150, E2E-168, E2E-204 |
 | B — Model config | E2E-005, E2E-006, E2E-007, E2E-038, E2E-050, E2E-052, E2E-055, E2E-066, E2E-080, E2E-082, E2E-102c, E2E-102d, E2E-102e, E2E-151, E2E-154, E2E-163, E2E-166, E2E-172, E2E-174, E2E-197, E2E-005G, E2E-005J, E2E-199, E2E-201, E2E-202, E2E-203, E2E-205, E2E-206, E2E-209 |
-| C — Conversation & stream | E2E-008, E2E-008d, E2E-008a, E2E-009, E2E-010, E2E-011, E2E-011a, E2E-011b, E2E-011d, E2E-011e, E2E-011g, E2E-031, E2E-040, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-052, E2E-053, E2E-054, E2E-055, E2E-059, E2E-059a, E2E-060c, E2E-060d, E2E-061, E2E-061a, E2E-062, E2E-064, E2E-065, E2E-068, E2E-071, E2E-073, E2E-074, E2E-075, E2E-081, E2E-083, E2E-084, E2E-086, E2E-087, E2E-088, E2E-088b, E2E-089, E2E-090, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-106, E2E-109, E2E-111, E2E-114, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-121, E2E-218, E2E-219, E2E-AGENTS-001, E2E-142, E2E-144, E2E-145, E2E-146, E2E-146a, E2E-147, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-161, E2E-162, E2E-166, E2E-172, E2E-173, E2E-174, E2E-177, E2E-178, E2E-179, E2E-180, E2E-182, E2E-183, E2E-187, E2E-198, E2E-199, E2E-202, E2E-203, E2E-207, E2E-208, E2E-CHAT-content-width-handles, E2E-250, E2E-102i, E2E-PLUGIN-session-orchestrator-real-workers, E2E-SUBAGENT-settlement-updates-before-parent-poll |
+| C — Conversation & stream | E2E-008, E2E-008d, E2E-008a, E2E-009, E2E-010, E2E-011, E2E-011a, E2E-011b, E2E-011d, E2E-011e, E2E-011g, E2E-031, E2E-040, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-052, E2E-053, E2E-054, E2E-055, E2E-059, E2E-059a, E2E-060c, E2E-060d, E2E-061, E2E-061a, E2E-062, E2E-064, E2E-065, E2E-068, E2E-071, E2E-073, E2E-074, E2E-075, E2E-081, E2E-083, E2E-084, E2E-086, E2E-087, E2E-088, E2E-088b, E2E-089, E2E-090, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102g, E2E-106, E2E-109, E2E-111, E2E-114, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-121, E2E-218, E2E-219, E2E-AGENTS-001, E2E-142, E2E-144, E2E-145, E2E-146, E2E-146a, E2E-147, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-161, E2E-162, E2E-166, E2E-172, E2E-173, E2E-174, E2E-177, E2E-178, E2E-179, E2E-180, E2E-182, E2E-183, E2E-187, E2E-198, E2E-199, E2E-202, E2E-203, E2E-207, E2E-208, E2E-CHAT-content-width-handles, E2E-250, E2E-102i, E2E-PLUGIN-session-orchestrator-real-workers, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-SUBAGENT-resume-a-settled-delegation |
 | D — Workspace | E2E-INDEX-status-rebuild-clear, E2E-INDEX-settings-health-card, E2E-012, E2E-013, E2E-022B, E2E-024I, E2E-047, E2E-049, E2E-057, E2E-058, E2E-060, E2E-068, E2E-075, E2E-078, E2E-153, E2E-158, E2E-182, E2E-187, E2E-252 |
 | D — Workspace (project ordering) | E2E-253 |
 | E — Tools & permissions | E2E-008a, E2E-014, E2E-015, E2E-016, E2E-017, E2E-018, E2E-019, E2E-024I, E2E-024K, E2E-040, E2E-049, E2E-074, E2E-093, E2E-097, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102d, E2E-102e, E2E-102g, E2E-103, E2E-105, E2E-106, E2E-107, E2E-111, E2E-112, E2E-113, E2E-114, E2E-115, E2E-116, E2E-119, E2E-121, E2E-122, E2E-142, E2E-145, E2E-147, E2E-155, E2E-158, E2E-166, E2E-181, E2E-PLUGIN-imported-pi-package-skills |
@@ -7631,7 +7650,7 @@ identify the platform validation still needed.
 | G — Plugins | E2E-022, E2E-022A, E2E-022B, E2E-022C, E2E-023, E2E-024, E2E-024B, E2E-024C, E2E-024D, E2E-024E, E2E-024W, E2E-024F, E2E-024G, E2E-024H, E2E-024I, E2E-024J, E2E-024K, E2E-024L, E2E-024M, E2E-024N, E2E-024O, E2E-024P, E2E-025, E2E-026, E2E-105, E2E-117, E2E-120, E2E-122, E2E-123, E2E-024Q, E2E-148, E2E-152, E2E-153, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-import-extension-installs-dependencies, E2E-PLUGIN-import-extension-reports-missing-dependency, E2E-PLUGIN-global-shortcut-owns-only-its-own-command, E2E-PLUGIN-permission-gate-for-real-time-capabilities, E2E-PLUGIN-background-audio-and-realtime-connection, E2E-PLUGIN-fs-root-follows-the-calling-session |
 | H — Diagnostics | E2E-027, E2E-031, E2E-034, E2E-042, E2E-096, E2E-098, E2E-104, E2E-107, E2E-108, E2E-109, E2E-110, E2E-113, E2E-115, E2E-116, E2E-118, E2E-121, E2E-146, E2E-146a, E2E-155, E2E-159, E2E-176, E2E-194, E2E-195 |
 | Security | E2E-028, E2E-029, E2E-030, E2E-024J, E2E-024K, E2E-024M, E2E-049, E2E-068, E2E-086, E2E-102c, E2E-102d, E2E-102e, E2E-105, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-112, E2E-113, E2E-115, E2E-116, E2E-117, E2E-119, E2E-121, E2E-122, E2E-123, E2E-142, E2E-148, E2E-151, E2E-153, E2E-158, E2E-187, E2E-196c, E2E-196b, E2E-196, E2E-PLUGIN-fs-root-follows-the-calling-session |
-| Quality | E2E-INDEX-status-rebuild-clear, E2E-INDEX-settings-health-card, E2E-032, E2E-033, E2E-039, E2E-043, E2E-044, E2E-045, E2E-046, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-050, E2E-053, E2E-055, E2E-056, E2E-057, E2E-058, E2E-059, E2E-060, E2E-061, E2E-062, E2E-063, E2E-064, E2E-065, E2E-066, E2E-067, E2E-068, E2E-069, E2E-070, E2E-071, E2E-072, E2E-073, E2E-074, E2E-075, E2E-076, E2E-077, E2E-078, E2E-079, E2E-080, E2E-081, E2E-082, E2E-083, E2E-084, E2E-085, E2E-086, E2E-092, E2E-093, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102e, E2E-103, E2E-AGENTS-001, E2E-021a, E2E-024N, E2E-059a, E2E-060b, E2E-060c, E2E-061a, E2E-073a, E2E-111, E2E-114, E2E-117, E2E-118, E2E-119, E2E-120, E2E-122, E2E-123, E2E-142, E2E-143, E2E-144, E2E-145, E2E-146, E2E-147, E2E-148, E2E-150, E2E-151, E2E-153, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-168, E2E-172, E2E-173, E2E-174, E2E-011g, E2E-176, E2E-177, E2E-178, E2E-179, E2E-180, E2E-181, E2E-182, E2E-183, E2E-186, E2E-187, E2E-194, E2E-195, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-196, E2E-201, E2E-204, E2E-202, E2E-203, E2E-205, E2E-206, E2E-207, E2E-208, E2E-209, E2E-210, E2E-218, E2E-219, E2E-250, E2E-252, E2E-102i, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-fs-root-follows-the-calling-session |
+| Quality | E2E-INDEX-status-rebuild-clear, E2E-INDEX-settings-health-card, E2E-032, E2E-033, E2E-039, E2E-043, E2E-044, E2E-045, E2E-046, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-050, E2E-053, E2E-055, E2E-056, E2E-057, E2E-058, E2E-059, E2E-060, E2E-061, E2E-062, E2E-063, E2E-064, E2E-065, E2E-066, E2E-067, E2E-068, E2E-069, E2E-070, E2E-071, E2E-072, E2E-073, E2E-074, E2E-075, E2E-076, E2E-077, E2E-078, E2E-079, E2E-080, E2E-081, E2E-082, E2E-083, E2E-084, E2E-085, E2E-086, E2E-092, E2E-093, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102e, E2E-103, E2E-AGENTS-001, E2E-021a, E2E-024N, E2E-059a, E2E-060b, E2E-060c, E2E-061a, E2E-073a, E2E-111, E2E-114, E2E-117, E2E-118, E2E-119, E2E-120, E2E-122, E2E-123, E2E-142, E2E-143, E2E-144, E2E-145, E2E-146, E2E-147, E2E-148, E2E-150, E2E-151, E2E-153, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-168, E2E-172, E2E-173, E2E-174, E2E-011g, E2E-176, E2E-177, E2E-178, E2E-179, E2E-180, E2E-181, E2E-182, E2E-183, E2E-186, E2E-187, E2E-194, E2E-195, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-196, E2E-201, E2E-204, E2E-202, E2E-203, E2E-205, E2E-206, E2E-207, E2E-208, E2E-209, E2E-210, E2E-218, E2E-219, E2E-250, E2E-252, E2E-102i, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-SUBAGENT-resume-a-settled-delegation |
 | Quality (project ordering) | E2E-253 |
 | C — Conversation & stream (IME slash alias) | E2E-255 |
 | E — Tools & permissions (Skill residency) | E2E-254 |
@@ -7680,7 +7699,7 @@ identify the platform validation still needed.
 | M2 (IME slash alias) | E2E-255 |
 | M5 (Skill residency) | E2E-254 |
 | M6 | E2E-104, E2E-105, E2E-106, E2E-107, E2E-108, E2E-109, E2E-110, E2E-111, E2E-112, E2E-113, E2E-114, E2E-115, E2E-116, E2E-117, E2E-118, E2E-119, E2E-120, E2E-103, E2E-172 |
-| M6+ | E2E-INDEX-status-rebuild-clear, E2E-121, E2E-122, E2E-148, E2E-150, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-166, E2E-168, E2E-173, E2E-174, E2E-176, E2E-179, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-202, E2E-203, E2E-205, E2E-209, E2E-210, E2E-212, E2E-213, E2E-214, E2E-215, E2E-216, E2E-217, E2E-218, E2E-219, E2E-257, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-PLUGIN-fs-root-follows-the-calling-session |
+| M6+ | E2E-121, E2E-122, E2E-148, E2E-150, E2E-151, E2E-154, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-166, E2E-168, E2E-173, E2E-174, E2E-176, E2E-179, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-202, E2E-203, E2E-205, E2E-209, E2E-210, E2E-212, E2E-213, E2E-214, E2E-215, E2E-216, E2E-217, E2E-218, E2E-219, E2E-257, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-SUBAGENT-resume-a-settled-delegation |
 | M6+ (Session Orchestrator) | E2E-PLUGIN-session-orchestrator-real-workers |
 | M6+ (Session list responsiveness) | E2E-SESSION-list-refresh-keeps-desktop-responsive |
 | M6+ (Independent session communication) | E2E-SESSION-independent-top-level-communication, E2E-SESSION-hover-card-model-and-links |
@@ -9576,6 +9595,112 @@ This test plan spec is accepted when:
 - **Milestone**: M6+
 - **Status**: Runtime event-order and renderer projection regressions automated;
   desktop journey documented. Required suites: `test:e2e`, `test:e2e:subagents`.
+
+#### E2E-SUBAGENT-resume-a-settled-delegation
+
+- **Preconditions**: An Agent session on a deterministic local transport that can
+  complete, fail, stop, and hold a delegate open on request. Two user
+  definitions, `~/.agents/subagents/scout.md` (read-only) and
+  `~/.agents/subagents/fixer.md`; a workspace file `src/report.ts` whose
+  conclusion is easy to locate by file and line; and a definition model binding
+  that can be removed from the configuration. The parent catalog offers `Task`,
+  `TaskWait`, `TaskList`, and `TaskStop`.
+- **Steps**:
+  1. Delegate `scout` a brief that must end by naming one conclusion with its
+     file and line number, and let it settle `completed`. Note the
+     `delegationId` the Task result returns.
+  2. Send a turn that passes that id as `Task.resume` and asks for the same
+     conclusion plus a second occurrence the first run never reached. Expand the
+     delegation card, then inspect what the parent itself received.
+  3. Send a turn that only says "reuse what the scout already found", with no
+     `resume` value.
+  4. Start a long-running `scout` delegation and call `Task.resume` for it while
+     it works; then, while a resumed run of another chain is still working, call
+     `Task.resume` for that chain again.
+  5. `TaskStop` one delegation, abort a second, and close the app while a third
+     is still working. After relaunch, call `Task.resume` for each of those three
+     ids as reported by `TaskWait`.
+  6. Let a delegation fail after one successful read, then call `Task.resume`
+     for it.
+  7. Send one `Task` call that carries both `resume` and `model`.
+  8. Remove the chain's recorded model from the configuration, then `Task.resume`
+     the chain and read its delegation lifecycle details and card.
+  9. Settle two `scout` chains, `resume` the older one, settle a third chain for
+     the same definition, and read the reusable list the next prompt offers; then
+     keep one chain running while two others settle for that definition.
+  10. Accumulate more than 50,000 lines of read-only tool output in one chain,
+      then call `Task.resume` with its id.
+  11. Resume a `scout` chain while spelling `Task.agent` as `Explorer`, then as
+      `explorer.md`, then as another definition's name.
+  12. Let one chain read more than eight files and send two further prompts in
+      the same session, comparing the reusable list each prompt composes.
+  13. Relaunch the app and, without changing anything else, `Task.resume` a
+      `completed` chain from before the restart.
+  14. From a fixture session that resolves a chain but no longer holds any of its
+      delegate rows, call `Task.resume` with that id.
+- **Expected**:
+  - Step 2 resumes from the chain: the new run answers with the earlier
+    conclusion's exact file and line, and its rows contain no fresh full read of
+    that file. `Task` returns a new `delegationId`, and the parent's own context
+    still holds one final report for that delegation and no delegate tool rows.
+  - Step 3 is a cold start: a brand-new delegate with no earlier conclusion in
+    its rows, a fresh `delegationId`, and no link to the earlier chain. Leaving
+    the id out never inherits context, whatever the prompt says.
+  - Step 4 fails twice as tool errors. The running delegation is reported as
+    still running, with the instruction to converge through `TaskWait` first;
+    nothing is started, nothing is queued, and the running delegate keeps
+    working.
+  - Step 5 refuses `stopped`, `aborted`, and the run the app closed while it was
+    still working (which reads as `interrupted` after relaunch) as not
+    resumable, each naming that reason and the fresh-delegation path instead. No
+    run starts.
+  - Step 6 resumes the failed chain like a completed one: the reads it already
+    made seed the new run, and its failed assistant row is not replayed.
+  - Step 7 is refused as a tool error: a resumed run keeps the chain's model, and
+    the message points at starting a new delegation to change models.
+  - Step 8 still resumes, on the binding the definition resolves to now, and the
+    delegation's lifecycle details carry the previous model id as
+    `modelChangedFrom`. The parent sees it through the lifecycle snapshot it
+    polls and the card shows it with the run, so the switch is never silent.
+  - Step 9 keeps at most two reusable chains per definition: the least recently
+    active settled chain is evicted whole, so every id on it answers as an
+    unknown delegation with the current reusable list, while a chain whose latest
+    run is still working is never evicted — the group may sit over the bound
+    rather than strand a live delegate.
+  - Step 10 drops the over-budget chain from the reusable list without trimming
+    its history: no later prompt offers it and a `resume` for it is refused as
+    having read too much to resume cheaply, while an ordinary delegation for the
+    same work still succeeds from cold.
+  - Step 11 matches the definition name case-insensitively and with the document
+    suffix — `Explorer` and `explorer.md` both resume the chain — while a
+    different definition's name is a name mismatch that lists the agents that do
+    have reusable chains.
+  - Step 12 offers each chain's latest `delegationId`, its objective, and at most
+    eight of the files it read, with a `(+N more)` suffix past that. A chain that
+    just settled is already there in the same session, with no app restart and no
+    new session; running, non-resumable, over-budget, and evicted chains never
+    appear.
+  - Step 13 rebuilds the chain relationship from the transcript, so the
+    `completed` chain is offered again after relaunch and resumes as before.
+  - Step 14 fails as having no recorded history, and that same id is not listed
+    among the reusable ids in the error or in any later prompt: the chain leaves
+    the reusable list.
+  - Throughout, the transcript shows the chain as one continuous multi-turn
+    conversation under its newest Task card, with no "resumed" marker, and the
+    resumed run's counters start at 0 so its turn, tool, and usage numbers
+    describe the new run while the earlier rounds stay readable above it.
+- **Specs linked**: `03-runtime/02-agent-runtime.md` §5f, ADR 0279
+- **Acceptance**: C (conversation), Quality
+- **Milestone**: M6+
+- **Not covered (二期)**: reviving a `stopped`/`aborted` delegation, in-chain
+  compaction, task queuing, and cross-session resumption.
+- **Status**: Draft — chain resolution, resume validation, the reusable list, and
+  transcript chain grouping are unit/regression covered
+  (`packages/agent-runtime/src/delegation-chain.test.ts`,
+  `delegation-history.test.ts`, `runtime.test.ts`,
+  `apps/desktop/test/assistant-turns.test.mjs`); the desktop journey needs a
+  capable environment. Required suites: `test:e2e`, `test:e2e:subagents`,
+  `test:e2e:transcript`.
 
 #### E2E-161: A delegation lifecycle row reads as a subagent row
 

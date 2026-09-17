@@ -163,7 +163,7 @@ MCP 市场只接受无凭据的公网 HTTPS 源和目录端点。Main 在每次�
   `If app won't open, read this.txt` 的文本说明，其中给出手动的 `com.apple.quarantine` 命令，并说明
   已签名/公证版本无需执行。ZIP 安装包还包含可执行助手：它只搜索
   `/Applications/PI-Desktop.app` 和 `~/Applications/PI-Desktop.app`，并在删除前先校验
-  `CFBundleIdentifier=com.pi-desktop.app`，再删除唯一的 `com.apple.quarantine` 属性并
+  `CFBundleIdentifier=net.aiuo.pi-desktop`，再删除唯一的 `com.apple.quarantine` 属性并
   打开应用。它不接受任意路径，不提升权限，也不替代 Developer ID 签名或公证。
 - 本地化产品“新增内容”文本 (D164/D345) 在 Main 中从
   已发布变更日志目录并附加到 `UpdateState.releaseNotes`。的

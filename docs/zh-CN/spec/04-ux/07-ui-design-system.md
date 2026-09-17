@@ -99,7 +99,7 @@ PI-Desktop 的行为类似于桌面应用程序 shell，因此意外拖动
   名称、版本和规范图标；没有可见库存 Electron 名称或图标。
   开发启动使用生成的品牌主机包，因为 AppKit
   从主机包而不是 Electron 运行时 API 中读取此标识。
-- 在 Windows、Electron 主寄存器上，规范的 `com.pi-desktop.app`
+- 在 Windows、Electron 主寄存器上，规范的 `net.aiuo.pi-desktop`
   准备就绪之前的 AppUserModelID。运行时 ID、打包的可执行文件名称、
   和 NSIS 快捷方式标识保持一致，以便本机通知，
   通知设置和任务栏组将应用程序标识为 `PI-Desktop`

@@ -38,15 +38,15 @@ test("usage statistics is not a settings destination", () => {
   assert.doesNotMatch(settingsPage, /stats-scope/);
 });
 
-test("the stats UI layer stays deleted while the RPCs stay on Core", () => {
+test("the stats UI layer stays deleted while the RPCs ship separately", () => {
   // The dashboard is plugin-owned (issue #478): no first-party page component
   // may come back for a plugin to "reuse" — a plugin cannot import app
   // internals and ships its own UI.
   assert.doesNotMatch(settingsPage, /stats/);
-  // The host surface the plugin calls is what Core keeps.
-  assert.match(api, /getTokenUsageHistory/);
-  assert.match(api, /statsSummary: \(rangeDays: 7 \| 30/);
-  assert.match(api, /statsTopSessions: \(rangeDays: 7 \| 30/);
+  // The summary/topSessions RPC surface ships in its own change (see the
+  // review thread), so this PR carries neither the RPCs nor their typings.
+  assert.doesNotMatch(api, /statsSummary/);
+  assert.doesNotMatch(api, /statsTopSessions/);
 });
 
 test("the locale bundles carry no usage-dashboard copy", () => {

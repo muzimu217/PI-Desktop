@@ -50,8 +50,10 @@ libc = "0.2"
 tempfile = "3"
 
 [features]
-# Opt-in filesystem watcher: marks a workspace's index stale on external
-# edits (editor, git, build tools) so Grep's fast path falls back instead of
-# serving candidates that predate the change. Off by default — the stat-only
-# refresh and the host-write invalidation already cover the common paths.
+default = ["workspace-watch"]
+# Filesystem watcher: marks a workspace's index stale on external edits
+# (editor, git, build tools) so Grep's fast path falls back instead of
+# serving candidates that predate the change. On by default — a release
+# host without it would serve fresh roots that external edits have already
+# invalidated, which trades Grep correctness for build convenience.
 workspace-watch = ["dep:notify"]

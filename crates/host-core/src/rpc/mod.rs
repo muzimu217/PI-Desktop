@@ -486,34 +486,6 @@ fn checked_index_root(
     Ok(current)
 }
 
-/// Stats range selector. Missing/null keeps the historical default (30 days);
-/// any other value must be one of the supported windows, so an illegal range
-/// is a client error rather than a silent 30-day fallback.
-fn stats_range_days_param(params: &Value) -> Result<i64, JsonRpcError> {
-    match params.get("rangeDays") {
-        None => Ok(30),
-        Some(value) if value.is_null() => Ok(30),
-        Some(value) => match value.as_i64() {
-            Some(days @ 7) | Some(days @ 30) => Ok(days),
-            _ => Err(rpc_err(
-                1002,
-                "rangeDays must be one of 7, 30",
-                "INVALID_PARAMS",
-            )),
-        },
-    }
-}
-
-/// Clamp `limit` to the documented 1..=50 window so a hostile or accidental
-/// value cannot turn the top-sessions scan into an unbounded response.
-fn stats_limit_param(params: &Value) -> i64 {
-    params
-        .get("limit")
-        .and_then(Value::as_i64)
-        .unwrap_or(5)
-        .clamp(1, 50)
-}
-
 fn provider_rpc_err(error: impl ToString) -> JsonRpcError {
     let message = error.to_string();
     if message.starts_with("MODEL_ALIAS_TOO_LONG:") {
@@ -1460,90 +1432,6 @@ async fn handle_request(
                 .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
             Ok(json!({ "projects": projects }))
         }
-        "stats.summary" => {
-            let started = std::time::Instant::now();
-            let result: Result<Value, JsonRpcError> = async {
-                let range_days = stats_range_days_param(&params)?;
-                let project_id = params.get("projectId").and_then(Value::as_i64);
-                // The refresh button sets force to invalidate the TTL cache: the
-                // read is skipped but the freshly computed value is still stored.
-                let force = params
-                    .get("force")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false);
-                let (summary_value, cache_hit) = {
-                    let st = state.lock().await;
-                    let key = crate::stats::cache_key(&st.db, range_days, project_id)
-                        .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-                    let now = chrono::Utc::now().timestamp_millis();
-                    let cached = if force {
-                        None
-                    } else {
-                        st.stats_cache.get(key, now)
-                    };
-                    if let Some(cached) = cached {
-                        (cached, true)
-                    } else {
-                        let summary = crate::stats::summary(&st.db, range_days, project_id)
-                            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-                        let value = serde_json::to_value(&summary)
-                            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-                        // Force recomputes but still refreshes the cached entry.
-                        st.stats_cache.put(key, now, value.clone());
-                        (value, false)
-                    }
-                };
-                tracing::info!(
-                    method = "stats.summary",
-                    range_days,
-                    force,
-                    cache_hit,
-                    duration_ms = started.elapsed().as_millis() as u64,
-                    "stats rpc served"
-                );
-                Ok(summary_value)
-            }
-            .await;
-            if result.is_err() {
-                tracing::info!(
-                    method = "stats.summary",
-                    error = true,
-                    duration_ms = started.elapsed().as_millis() as u64,
-                    "stats rpc failed"
-                );
-            }
-            result
-        }
-        "stats.topSessions" => {
-            let started = std::time::Instant::now();
-            let result: Result<Value, JsonRpcError> = async {
-                let range_days = stats_range_days_param(&params)?;
-                let project_id = params.get("projectId").and_then(Value::as_i64);
-                let limit = stats_limit_param(&params);
-                let st = state.lock().await;
-                let sessions = crate::stats::top_sessions(&st.db, range_days, project_id, limit)
-                    .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-                tracing::info!(
-                    method = "stats.topSessions",
-                    range_days,
-                    limit,
-                    count = sessions.len(),
-                    duration_ms = started.elapsed().as_millis() as u64,
-                    "stats rpc served"
-                );
-                Ok(json!({ "sessions": sessions }))
-            }
-            .await;
-            if result.is_err() {
-                tracing::info!(
-                    method = "stats.topSessions",
-                    error = true,
-                    duration_ms = started.elapsed().as_millis() as u64,
-                    "stats rpc failed"
-                );
-            }
-            result
-        }
         "index.status" => {
             let started = std::time::Instant::now();
             let requested_root = params
@@ -2054,6 +1942,9 @@ async fn handle_request(
                         session_id,
                         &crate::tools::hashline::canonical_key(&resolved),
                     );
+                    // A rollback rewrites workspace content, so the index is
+                    // invalid the same way it is after a Write/Edit.
+                    st.index.mark_stale(std::path::Path::new(root));
                 }
                 sessions::update_tool_review_state(
                     &st.db,
@@ -4018,20 +3909,26 @@ async fn handle_request(
                     });
                 }
 
-                // P2-B: only Grep consults the index, so the settings read and
-                // the store clone stay off every other tool's path. With the
-                // switch absent the fast path is inert and this is exactly the
-                // walk-everything behaviour Grep has always had.
-                let (index_store, index_grep_boost) = if p.tool_name == "Grep" {
+                // Grep consults the index (boost-gated). Write/Edit/Bash get
+                // the store too — not for acceleration, but so a successful
+                // content-changing call can invalidate the workspace's index
+                // (mark stale) and the fast path can never serve a candidate
+                // set that predates the write.
+                let needs_index_for_invalidation =
+                    matches!(p.tool_name.as_str(), "Write" | "Edit" | "Bash");
+                let (index_store, index_grep_boost) = if p.tool_name == "Grep" || needs_index_for_invalidation
+                {
                     let st = state.lock().await;
                     let settings = st
                         .db
                         .get_setting("app")
                         .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-                    (
-                        Some(st.index.clone()),
-                        index_grep_boost_enabled(settings.as_ref()),
-                    )
+                    let boost = if p.tool_name == "Grep" {
+                        index_grep_boost_enabled(settings.as_ref())
+                    } else {
+                        false
+                    };
+                    (Some(st.index.clone()), boost)
                 } else {
                     (None, false)
                 };
@@ -8724,77 +8621,7 @@ mod tests {
         assert_eq!(remaining, 0);
     }
 
-    #[tokio::test]
-    async fn stats_summary_rejects_illegal_range_days() {
-        let data_dir = tempfile::tempdir().unwrap();
-        let mut app_state = AppState::open(data_dir.path()).unwrap();
-        app_state.handshook = true;
-        let state = Arc::new(Mutex::new(app_state));
-        let (tx, _rx) = mpsc::unbounded_channel();
 
-        for bad in [json!({ "rangeDays": 3 }), json!({ "rangeDays": "30" })] {
-            let error = handle_request(state.clone(), "stats.summary", bad.clone(), tx.clone())
-                .await
-                .unwrap_err();
-            assert_eq!(error.data.unwrap()["errorCode"], "INVALID_PARAMS", "{bad}");
-        }
-        // A missing range still defaults to the historical 30 days.
-        let defaulted = handle_request(state.clone(), "stats.summary", json!({}), tx.clone())
-            .await
-            .unwrap();
-        assert!(defaulted.get("cards").is_some());
-    }
-
-    #[tokio::test]
-    async fn stats_summary_serves_cache_unless_forced() {
-        let data_dir = tempfile::tempdir().unwrap();
-        let mut app_state = AppState::open(data_dir.path()).unwrap();
-        app_state.handshook = true;
-        let state = Arc::new(Mutex::new(app_state));
-        let (tx, _rx) = mpsc::unbounded_channel();
-
-        // Seed the cache with a sentinel under the real key for (30, None).
-        {
-            let st = state.lock().await;
-            let key = crate::stats::cache_key(&st.db, 30, None).unwrap();
-            st.stats_cache.put(
-                key,
-                chrono::Utc::now().timestamp_millis(),
-                json!({ "cached": true }),
-            );
-        }
-        // A normal call hits the cache and returns the sentinel unchanged.
-        let hit = handle_request(
-            state.clone(),
-            "stats.summary",
-            json!({ "rangeDays": 30 }),
-            tx.clone(),
-        )
-        .await
-        .unwrap();
-        assert_eq!(hit, json!({ "cached": true }));
-
-        // force=true bypasses the read and recomputes a real summary, which
-        // still refreshes the cache for the next non-forced call.
-        let forced = handle_request(
-            state.clone(),
-            "stats.summary",
-            json!({ "rangeDays": 30, "force": true }),
-            tx.clone(),
-        )
-        .await
-        .unwrap();
-        assert!(forced.get("cards").is_some());
-        let after = handle_request(
-            state.clone(),
-            "stats.summary",
-            json!({ "rangeDays": 30 }),
-            tx.clone(),
-        )
-        .await
-        .unwrap();
-        assert!(after.get("cards").is_some());
-    }
 
     #[tokio::test]
     async fn index_rebuild_and_clear_are_audited() {

@@ -151,26 +151,35 @@ impl IndexStore {
     pub fn mark_stale(&self, root: &Path) {
         let root = normalize_root(root);
         let root_id = root_id(&root);
-        let is_fresh = self
+        let current = self
             .status(Some(&root))
             .ok()
             .and_then(|mut statuses| statuses.pop())
-            .is_some_and(|status| status.status == IndexStatus::Fresh.as_str());
-        if !is_fresh {
-            return;
-        }
-        if let Err(error) = self.set_root_status(
-            &root_id,
-            &root,
-            RootUpdate {
-                status: IndexStatus::Stale,
-                file_count: 0,
-                indexed_bytes: 0,
-                error_count: 0,
-                last_error: None,
-            },
-        ) {
-            tracing::warn!(error = %error, "mark index stale failed");
+            .map(|status| status.status);
+        match current.as_deref() {
+            // A build in flight cannot guarantee it captured whatever the
+            // watcher just saw; flag the root so the build lands as `stale`
+            // instead of `fresh` and the next trigger re-crawls.
+            Some(status) if status == IndexStatus::Building.as_str() => {
+                self.pending_dirty.lock().unwrap().insert(root_id);
+            }
+            // A fresh root loses the fast path immediately.
+            Some(status) if status == IndexStatus::Fresh.as_str() => {
+                if let Err(error) = self.set_root_status(
+                    &root_id,
+                    &root,
+                    RootUpdate {
+                        status: IndexStatus::Stale,
+                        file_count: 0,
+                        indexed_bytes: 0,
+                        error_count: 0,
+                        last_error: None,
+                    },
+                ) {
+                    tracing::warn!(error = %error, "mark index stale failed");
+                }
+            }
+            _ => {}
         }
     }
 
@@ -310,6 +319,35 @@ mod tests {
             crate::index::fast_path::select_candidates(&store, root.path(), "needle", 20_000),
             crate::index::fast_path::CandidateSelection::Fallback
         ));
+    }
+
+    #[test]
+    fn events_during_a_build_land_the_root_stale_after_it() {
+        let data = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("one.txt"), "needle\n").unwrap();
+        let store = IndexStore::open(data.path()).unwrap();
+
+        // ensure_index registers the build and flips the row to building
+        // (the auto-index path); a watcher event arriving mid-build cannot
+        // be trusted to be inside the crawl, so it must be remembered.
+        store.ensure_index(root.path()).unwrap();
+        store.mark_stale(root.path());
+        assert!(store
+            .pending_dirty
+            .lock()
+            .unwrap()
+            .contains(&root_id(&normalize_root(root.path()))));
+
+        // The build lands, but the remembered event downgrades fresh to
+        // stale: the fast path stays off until the next re-crawl.
+        let status = store.rebuild(root.path(), IndexLimits::default()).unwrap();
+        assert_eq!(status.status, "stale");
+        assert!(!store
+            .pending_dirty
+            .lock()
+            .unwrap()
+            .contains(&root_id(&normalize_root(root.path()))));
     }
 
     #[test]

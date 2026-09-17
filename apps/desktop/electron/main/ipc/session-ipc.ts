@@ -245,21 +245,6 @@ export function registerSessionIpc({
       };
     },
   );
-  handle(
-    IPC.invoke.statsSummary,
-    async (input?: { rangeDays?: number; projectId?: number }) => {
-      if (!host) throw Object.assign(new Error("host unavailable"), { errorCode: "HOST_UNAVAILABLE" });
-      return host.call("stats.summary", input ?? {});
-    },
-  );
-
-  handle(
-    IPC.invoke.statsTopSessions,
-    async (input?: { rangeDays?: number; projectId?: number; limit?: number }) => {
-      if (!host) throw Object.assign(new Error("host unavailable"), { errorCode: "HOST_UNAVAILABLE" });
-      return host.call("stats.topSessions", input ?? {});
-    },
-  );
 
   handle(IPC.invoke.indexStatus, async (input?: { rootPath?: string }) => {
     if (!host) throw Object.assign(new Error("host unavailable"), { errorCode: "HOST_UNAVAILABLE" });

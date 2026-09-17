@@ -820,7 +820,7 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 - **关联规格**：`04-ux/06-settings-ia.md`、`03-runtime/06-host-rpc-protocol.md`
 - **验收**：B（模型配置相关）、质量（数据正确性）
 - **里程碑**：M6+
-- **状态**：搁置——仪表盘由插件承载（#478 裁决）；stats RPC 仍由宿主单测覆盖
+- **状态**：搁置——仪表盘由插件承载（#478 裁决）；stats RPC 面单独交付并在其分支保持覆盖
 
 #### E2E-STATS-heatmap-today：热力图当日单元格高亮
 
@@ -830,7 +830,7 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 - **关联规格**：`03-runtime/06-host-rpc-protocol.md`、`04-ux/06-settings-ia.md`
 - **验收**：B（数据正确性）、D（视觉）、质量
 - **里程碑**：M6+
-- **状态**：搁置——仪表盘由插件承载（#478 裁决）；stats RPC 仍由宿主单测覆盖
+- **状态**：搁置——仪表盘由插件承载（#478 裁决）；stats RPC 面单独交付并在其分支保持覆盖
 
 #### E2E-STATS-project-breakdown：Top8 + Other 折叠 + 无项目桶
 
@@ -840,7 +840,7 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 - **关联规格**：`03-runtime/06-host-rpc-protocol.md`、`04-ux/06-settings-ia.md`
 - **验收**：B（数据正确性）、D（视觉）
 - **里程碑**：M6+
-- **状态**：搁置——仪表盘由插件承载（#478 裁决）；stats RPC 仍由宿主单测覆盖
+- **状态**：搁置——仪表盘由插件承载（#478 裁决）；stats RPC 面单独交付并在其分支保持覆盖
 
 #### E2E-STATS-soft-deleted-excluded：已删除会话永不计入合计（R12）
 
@@ -850,7 +850,7 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 - **关联规格**：`03-runtime/06-host-rpc-protocol.md`、`04-ux/06-settings-ia.md`
 - **验收**：质量（数据正确性）、质量（R12 不变量）
 - **里程碑**：M6+
-- **状态**：搁置——仪表盘由插件承载（#478 裁决）；stats RPC 仍由宿主单测覆盖
+- **状态**：搁置——仪表盘由插件承载（#478 裁决）；stats RPC 面单独交付并在其分支保持覆盖
   （`soft_deleted_sessions_exit_summary_and_top_sessions`）
 
 #### E2E-STATS-empty-state：零已完成回合显示整页空态
@@ -861,7 +861,7 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 - **关联规格**：`04-ux/06-settings-ia.md`、`03-runtime/06-host-rpc-protocol.md`
 - **验收**：D（状态完整性）、B
 - **里程碑**：M6+
-- **状态**：搁置——仪表盘由插件承载（#478 裁决）；stats RPC 仍由宿主单测覆盖
+- **状态**：搁置——仪表盘由插件承载（#478 裁决）；stats RPC 面单独交付并在其分支保持覆盖
 
 ### 工作区打开
 

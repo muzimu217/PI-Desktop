@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -153,6 +153,11 @@ pub struct IndexStore {
     /// re-armed instead of answered InProgress; an entry whose root already
     /// has one means a second build must wait, not interleave.
     building_roots: Arc<Mutex<HashMap<String, Arc<BuildProgress>>>>,
+    /// Roots whose watcher saw changes *while a build was running*. The
+    /// in-flight crawl cannot guarantee it captured those changes, so when
+    /// the build finishes the root lands as `stale`, not `fresh`, and the
+    /// next trigger re-crawls. Correctness over acceleration.
+    pending_dirty: Arc<Mutex<HashSet<String>>>,
     /// Root → last same-path auto refresh, so an unchanged workspace still
     /// gets a periodic re-walk while the Grep boost stays on.
     last_refresh: Arc<Mutex<HashMap<String, Instant>>>,
@@ -184,6 +189,7 @@ impl IndexStore {
             metrics: Arc::new(IndexMetrics::default()),
             building_roots: Arc::new(Mutex::new(HashMap::new())),
             last_refresh: Arc::new(Mutex::new(HashMap::new())),
+            pending_dirty: Arc::new(Mutex::new(HashSet::new())),
             disabled: false,
         };
         if let Err(error) = store.initialize() {
@@ -205,6 +211,7 @@ impl IndexStore {
             metrics: Arc::new(IndexMetrics::default()),
             building_roots: Arc::new(Mutex::new(HashMap::new())),
             last_refresh: Arc::new(Mutex::new(HashMap::new())),
+            pending_dirty: Arc::new(Mutex::new(HashSet::new())),
             disabled: true,
         }
     }
@@ -322,7 +329,13 @@ impl IndexStore {
         match scan {
             Ok(result) => {
                 writer.commit()?;
-                let status = if result.over_limit {
+                // Changes the watcher saw while this crawl ran would make a
+                // `fresh` verdict a lie — land the root as `stale` instead so
+                // the fast path stays off until the next re-crawl.
+                let re_dirty = self.pending_dirty.lock().unwrap().remove(&root_id);
+                let status = if re_dirty {
+                    IndexStatus::Stale
+                } else if result.over_limit {
                     IndexStatus::SkippedOverLimit
                 } else if result.error_count > 0 {
                     IndexStatus::Partial
@@ -621,31 +634,9 @@ fn is_binary_extension(path: &Path) -> bool {
         .is_some_and(|extension| {
             matches!(
                 extension.to_ascii_lowercase().as_str(),
-                "7z" | "a"
-                    | "bmp"
-                    | "class"
-                    | "dll"
-                    | "dmg"
-                    | "exe"
-                    | "gif"
-                    | "ico"
-                    | "jar"
-                    | "jpeg"
-                    | "jpg"
-                    | "mov"
-                    | "mp3"
-                    | "mp4"
-                    | "o"
-                    | "obj"
-                    | "pdf"
-                    | "png"
-                    | "so"
-                    | "tar"
-                    | "wasm"
-                    | "webp"
-                    | "woff"
-                    | "woff2"
-                    | "zip"
+                "7z" | "a" | "bmp" | "class" | "dll" | "dmg" | "exe" | "gif" | "ico" | "jar"
+                    | "jpeg" | "jpg" | "mov" | "mp3" | "mp4" | "o" | "obj" | "pdf" | "png"
+                    | "so" | "tar" | "wasm" | "webp" | "woff" | "woff2" | "zip"
             )
         })
 }

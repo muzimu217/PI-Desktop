@@ -51,10 +51,6 @@ describe("Plan protocol contracts", () => {
       "pi-desktop/stats/getTokenUsageHistory",
     );
     expect(IPC_WHITELIST.has(IPC.invoke.statsGetTokenUsageHistory)).toBe(true);
-    expect(IPC.invoke.statsSummary).toBe("pi-desktop/stats/summary");
-    expect(IPC_WHITELIST.has(IPC.invoke.statsSummary)).toBe(true);
-    expect(IPC.invoke.statsTopSessions).toBe("pi-desktop/stats/topSessions");
-    expect(IPC_WHITELIST.has(IPC.invoke.statsTopSessions)).toBe(true);
     expect(IPC.invoke.indexStatus).toBe("pi-desktop/index/status");
     expect(IPC_WHITELIST.has(IPC.invoke.indexStatus)).toBe(true);
     expect(IPC.invoke.indexRebuild).toBe("pi-desktop/index/rebuild");

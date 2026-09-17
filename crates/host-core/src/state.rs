@@ -10,7 +10,6 @@ use crate::permissions::PermissionManager;
 use crate::plans::PlanManager;
 use crate::plugins::PluginManager;
 use crate::secrets::SecretStore;
-use crate::stats;
 use crate::tool_budget::ToolBudget;
 use crate::user_skills::UserSkillRegistry;
 use crate::user_subagents::UserSubagentRegistry;
@@ -33,7 +32,6 @@ pub struct AppState {
     /// `None` when the feature is off or the platform watcher is unavailable.
     #[cfg(feature = "workspace-watch")]
     pub workspace_watcher: Option<crate::index::watch::WorkspaceWatcher>,
-    pub stats_cache: stats::SummaryCache,
     pub secrets: SecretStore,
     pub workspace: WorkspaceState,
     pub permissions: PermissionManager,
@@ -143,7 +141,6 @@ impl AppState {
             index,
             #[cfg(feature = "workspace-watch")]
             workspace_watcher,
-            stats_cache: stats::SummaryCache::default(),
             secrets,
             workspace: WorkspaceState::default(),
             permissions: PermissionManager::default(),

@@ -110,7 +110,8 @@ struct IndexedFile {
 
 #[derive(Debug, Clone, Default)]
 struct ScanResult {
-    files: Vec<IndexedFile>,
+    file_count: i64,
+    ingested_count: i64,
     indexed_bytes: u64,
     error_count: i64,
     over_limit: bool,
@@ -295,7 +296,6 @@ impl IndexStore {
             )
             .unwrap_or(0);
         progress.reset(previous_files.max(0) as u64);
-        let scan = scan_root(&root, limits, Some(&progress));
         self.set_root_status(
             &root_id,
             &root,
@@ -309,9 +309,16 @@ impl IndexStore {
         )?;
 
         let connection = self.connection()?;
+        // Files stream from the crawler into one open transaction — bodies
+        // never accumulate in memory, so a 2GB budget costs SQLite page
+        // cache, not heap.
+        let mut writer = RootWriter::begin(&connection, &root_id)?;
+        let scan = scan_root(&root, limits, Some(&progress), |file| {
+            writer.write(&root_id, &file)
+        });
         match scan {
             Ok(result) => {
-                replace_root_files(&connection, &root_id, &result.files)?;
+                writer.commit()?;
                 let status = if result.over_limit {
                     IndexStatus::SkippedOverLimit
                 } else if result.error_count > 0 {
@@ -338,11 +345,7 @@ impl IndexStore {
                         // The health card's "files indexed" figure stays about
                         // ingested content. The visible-but-unindexed rows
                         // exist for search completeness, not for display.
-                        file_count: result
-                            .files
-                            .iter()
-                            .filter(|file| file.body.is_some())
-                            .count() as i64,
+                        file_count: result.ingested_count,
                         indexed_bytes: result.indexed_bytes as i64,
                         error_count: result.error_count,
                         last_error: message.as_deref(),
@@ -564,6 +567,7 @@ fn scan_root(
     root: &Path,
     limits: IndexLimits,
     progress: Option<&BuildProgress>,
+    mut sink: impl FnMut(IndexedFile) -> Result<()>,
 ) -> Result<ScanResult> {
     let mut result = ScanResult::default();
     // The crawler and Grep share one visible-set definition; see
@@ -584,7 +588,7 @@ fn scan_root(
         {
             continue;
         }
-        if result.files.len() >= limits.max_files {
+        if result.file_count >= limits.max_files as i64 {
             result.over_limit = true;
             break;
         }
@@ -621,13 +625,15 @@ fn scan_root(
                 break;
             }
             result.indexed_bytes = result.indexed_bytes.saturating_add(size);
+            result.ingested_count += 1;
         }
         let rel_path = entry
             .path()
             .strip_prefix(root)
             .map(normalize_rel_path)
             .unwrap_or_else(|_| normalize_rel_path(entry.path()));
-        result.files.push(IndexedFile {
+        result.file_count += 1;
+        sink(IndexedFile {
             rel_path,
             size,
             mtime_ms: metadata
@@ -637,7 +643,7 @@ fn scan_root(
                 .map(|duration| duration.as_millis() as i64)
                 .unwrap_or(0),
             body,
-        });
+        })?;
     }
     Ok(result)
 }
@@ -681,32 +687,61 @@ fn is_binary_extension(path: &Path) -> bool {
         })
 }
 
-fn replace_root_files(connection: &Connection, root_id: &str, files: &[IndexedFile]) -> Result<()> {
-    let transaction = connection.unchecked_transaction()?;
-    transaction.execute("DELETE FROM files WHERE root_id = ?1", [root_id])?;
-    transaction.execute("DELETE FROM file_content_fts WHERE root_id = ?1", [root_id])?;
-    for file in files {
-        transaction.execute(
+/// A per-file writer into an open rebuild transaction. Files stream straight
+/// from the crawler into SQLite — nothing accumulates the bodies in memory.
+/// A per-file writer over one open rebuild transaction. Files stream
+/// straight from the crawler into SQLite — nothing accumulates the bodies in
+/// memory. The two INSERT statements are prepared from the connection before
+/// the transaction opens (SQLite transactions are connection-scoped, so
+/// stepping them inside is equivalent and keeps the writer free of
+/// self-referential borrows).
+struct RootWriter<'conn> {
+    insert_file: rusqlite::Statement<'conn>,
+    insert_fts: rusqlite::Statement<'conn>,
+    transaction: rusqlite::Transaction<'conn>,
+}
+
+impl<'conn> RootWriter<'conn> {
+    fn begin(connection: &'conn Connection, root_id: &str) -> Result<Self> {
+        let insert_file = connection.prepare(
             "INSERT INTO files (root_id, rel_path, size, mtime_ms, content_indexed) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![
-                root_id,
-                file.rel_path,
-                file.size as i64,
-                file.mtime_ms,
-                if file.body.is_some() { 1_i64 } else { 0_i64 }
-            ],
         )?;
+        let insert_fts = connection.prepare(
+            "INSERT INTO file_content_fts (root_id, rel_path, body) VALUES (?1, ?2, ?3)",
+        )?;
+        let transaction = connection.unchecked_transaction()?;
+        // Old rows go first: the FTS hit set must never outlive the files
+        // rows it points into.
+        transaction.execute("DELETE FROM file_content_fts WHERE root_id = ?1", [root_id])?;
+        transaction.execute("DELETE FROM files WHERE root_id = ?1", [root_id])?;
+        Ok(Self {
+            insert_file,
+            insert_fts,
+            transaction,
+        })
+    }
+
+    fn write(&mut self, root_id: &str, file: &IndexedFile) -> Result<()> {
+        self.insert_file.execute(params![
+            root_id,
+            file.rel_path,
+            file.size as i64,
+            file.mtime_ms,
+            if file.body.is_some() { 1_i64 } else { 0_i64 }
+        ])?;
         // Only ingested files reach the full-text table, so an FTS hit always
         // implies a readable body behind it.
         if let Some(body) = &file.body {
-            transaction.execute(
-                "INSERT INTO file_content_fts (root_id, rel_path, body) VALUES (?1, ?2, ?3)",
-                params![root_id, file.rel_path, body],
-            )?;
+            self.insert_fts
+                .execute(params![root_id, file.rel_path, body])?;
         }
+        Ok(())
     }
-    transaction.commit()?;
-    Ok(())
+
+    fn commit(self) -> Result<()> {
+        self.transaction.commit()?;
+        Ok(())
+    }
 }
 
 fn upsert_root(

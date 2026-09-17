@@ -14,7 +14,7 @@ const [search, settingsPage, api, protocol, main, page, enLocale, settingsTypes,
   read("src/components/settings/IndexPage.tsx"),
   read("../../packages/i18n/src/locales/en/index.ts"),
   read("../../packages/shared/src/types/settings.ts"),
-  read("../../packages/shared/src/types/stats.ts"),
+  read("../../packages/shared/src/types/workspace-index.ts"),
 ]);
 
 test("workspace index is a workspace-group settings destination", () => {

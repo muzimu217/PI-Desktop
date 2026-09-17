@@ -487,9 +487,6 @@ fn checked_index_root(
     Ok(current)
 }
 
-/// Stats range selector. Missing/null keeps the historical default (30 days);
-/// any other value must be one of the supported windows, so an illegal range
-/// is a client error rather than a silent 30-day fallback.
 fn plugin_usage_cursor_encode(ended_at: i64, id: &str) -> String {
     B64.encode(format!("v1:{ended_at}:{id}"))
 }

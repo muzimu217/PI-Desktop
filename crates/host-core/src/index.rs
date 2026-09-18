@@ -592,18 +592,17 @@ fn scan_root(
         // ingesting — not whether it exists. A filtered file still gets a row
         // (with `content_indexed = 0`) so the stored set keeps matching the set
         // Grep can reach; the fast path then re-scans it instead of losing it.
-        let body =
-            if size <= limits.max_file_bytes && !fts::is_binary_extension(entry.path()) {
-                match std::fs::read_to_string(entry.path()) {
-                    Ok(body) => Some(body),
-                    Err(_) => {
-                        result.error_count += 1;
-                        None
-                    }
+        let body = if size <= limits.max_file_bytes && !fts::is_binary_extension(entry.path()) {
+            match std::fs::read_to_string(entry.path()) {
+                Ok(body) => Some(body),
+                Err(_) => {
+                    result.error_count += 1;
+                    None
                 }
-            } else {
-                None
-            };
+            }
+        } else {
+            None
+        };
         if body.is_some() {
             if result.indexed_bytes.saturating_add(size) > limits.max_indexed_bytes {
                 result.over_limit = true;
@@ -651,9 +650,8 @@ impl<'conn> RootWriter<'conn> {
         let insert_file = connection.prepare(
             "INSERT INTO files (root_id, rel_path, size, mtime_ms, content_indexed) VALUES (?1, ?2, ?3, ?4, ?5)",
         )?;
-        let insert_fts = connection.prepare(
-            "INSERT INTO file_content_fts (rowid, body) VALUES (?1, ?2)",
-        )?;
+        let insert_fts =
+            connection.prepare("INSERT INTO file_content_fts (rowid, body) VALUES (?1, ?2)")?;
         let transaction = connection.unchecked_transaction()?;
         // Old rows go first: the FTS hit set must never outlive the files
         // rows it points into. The contentless table has no root_id column,
@@ -685,10 +683,8 @@ impl<'conn> RootWriter<'conn> {
         // values, just the inverted index keyed by the files rowid created a
         // statement ago.
         if let Some(body) = &file.body {
-            self.insert_fts.execute(params![
-                self.transaction.last_insert_rowid(),
-                body
-            ])?;
+            self.insert_fts
+                .execute(params![self.transaction.last_insert_rowid(), body])?;
         }
         Ok(())
     }

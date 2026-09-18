@@ -625,30 +625,30 @@ pub(crate) fn plugin_usage_list_turns(
 
 /// Plugin usage time window. Absent/null bounds fall back to the last 30 days
 /// ending now; an explicit pair may span at most 365 days and must be ordered.
-fn plugin_usage_window_params(
-    params: &Value,
-) -> Result<(i64, i64), JsonRpcError> {
+fn plugin_usage_window_params(params: &Value) -> Result<(i64, i64), JsonRpcError> {
     let to_ms = match params.get("toMs") {
         None => std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as i64)
             .unwrap_or_default(),
-        Some(value) => value
-            .as_i64()
-            .filter(|ms| *ms >= 0)
-            .ok_or_else(|| {
-                rpc_err(1002, "toMs must be a non-negative integer", "INVALID_PARAMS")
-            })?,
+        Some(value) => value.as_i64().filter(|ms| *ms >= 0).ok_or_else(|| {
+            rpc_err(
+                1002,
+                "toMs must be a non-negative integer",
+                "INVALID_PARAMS",
+            )
+        })?,
     };
     let from_ms = match params.get("fromMs") {
         None => to_ms - 30 * 24 * 3600 * 1000,
         Some(value) if value.is_null() => to_ms - 30 * 24 * 3600 * 1000,
-        Some(value) => value
-            .as_i64()
-            .filter(|ms| *ms >= 0)
-            .ok_or_else(|| {
-                rpc_err(1002, "fromMs must be a non-negative integer", "INVALID_PARAMS")
-            })?,
+        Some(value) => value.as_i64().filter(|ms| *ms >= 0).ok_or_else(|| {
+            rpc_err(
+                1002,
+                "fromMs must be a non-negative integer",
+                "INVALID_PARAMS",
+            )
+        })?,
     };
     if to_ms < from_ms {
         return Err(rpc_err(1002, "toMs must be >= fromMs", "INVALID_PARAMS"));
@@ -2970,11 +2970,7 @@ async fn handle_request(
                 Some(Value::String(raw)) if raw.is_empty() => None,
                 Some(Value::String(raw)) => Some(plugin_usage_cursor_decode(raw)?),
                 Some(_) => {
-                    return Err(rpc_err(
-                        1002,
-                        "cursor must be a string",
-                        "INVALID_PARAMS",
-                    ));
+                    return Err(rpc_err(1002, "cursor must be a string", "INVALID_PARAMS"));
                 }
             };
             let st = state.lock().await;
@@ -6038,20 +6034,15 @@ mod tests {
         {
             let st = state.lock().await;
             let conn = st.db.conn();
-            for (project_id, path, name) in
-                [(1, "/tmp/p1", "P1"), (2, "/tmp/p2", "P2")]
-            {
+            for (project_id, path, name) in [(1, "/tmp/p1", "P1"), (2, "/tmp/p2", "P2")] {
                 conn.execute(
                     "INSERT INTO projects (id, path, name, created_at, last_opened_at) VALUES (?1, ?2, ?3, ?4, ?4)",
                     rusqlite::params![project_id, path, name, now],
                 )
                 .unwrap();
             }
-            for (id, title, project) in [
-                ("s1", "Small", 1),
-                ("s2", "Big", 2),
-                ("s3", "Trashed", 1),
-            ] {
+            for (id, title, project) in [("s1", "Small", 1), ("s2", "Big", 2), ("s3", "Trashed", 1)]
+            {
                 conn.execute(
                     "INSERT INTO sessions (id, title, project_id, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?4)",
                     rusqlite::params![id, title, project, now],
@@ -6087,7 +6078,12 @@ mod tests {
                 )
                 .as_deref(),
             );
-            turn("t3", "s2", now - 1_000, Some(r#"{"cacheReadTokens":"bad"}"#));
+            turn(
+                "t3",
+                "s2",
+                now - 1_000,
+                Some(r#"{"cacheReadTokens":"bad"}"#),
+            );
             turn("t4", "s3", now - 500, None);
         }
 

@@ -4,6 +4,7 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { withRegistryOnlyProxy } from "./npm-registry-proxy";
+import { augmentedPath } from "./shell-path.ts";
 
 export type ExtensionDependencyInstallResult =
   | { state: "skipped"; reason: "no-package-json" | "no-dependencies" }
@@ -163,7 +164,9 @@ export function defaultDependencyRunner(
       windowsHide: true,
       stdio: ["ignore", "ignore", "pipe"],
       env: {
-        PATH: process.env.PATH ?? "",
+        // Augmented so `npm` from nvm/Homebrew installs resolves even when the
+        // app was launched without a shell PATH (issue #571).
+        PATH: augmentedPath(),
         HOME: process.env.HOME ?? process.env.USERPROFILE ?? "",
         TMPDIR: process.env.TMPDIR ?? process.env.TEMP ?? "",
         LANG: process.env.LANG ?? "en_US.UTF-8",

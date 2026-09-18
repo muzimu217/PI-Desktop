@@ -584,18 +584,17 @@ fn scan_root(
         // ingesting — not whether it exists. A filtered file still gets a row
         // (with `content_indexed = 0`) so the stored set keeps matching the set
         // Grep can reach; the fast path then re-scans it instead of losing it.
-        let body =
-            if size <= limits.max_file_bytes && !fts::is_binary_extension(entry.path()) {
-                match std::fs::read_to_string(entry.path()) {
-                    Ok(body) => Some(body),
-                    Err(_) => {
-                        result.error_count += 1;
-                        None
-                    }
+        let body = if size <= limits.max_file_bytes && !fts::is_binary_extension(entry.path()) {
+            match std::fs::read_to_string(entry.path()) {
+                Ok(body) => Some(body),
+                Err(_) => {
+                    result.error_count += 1;
+                    None
                 }
-            } else {
-                None
-            };
+            }
+        } else {
+            None
+        };
         if body.is_some() {
             if result.indexed_bytes.saturating_add(size) > limits.max_indexed_bytes {
                 result.over_limit = true;

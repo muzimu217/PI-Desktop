@@ -1,6 +1,7 @@
 import { spawn as nodeSpawn, type ChildProcess } from "node:child_process";
 import { isAbsolute, resolve, sep } from "node:path";
 import type { PluginMcpServerContrib } from "@pi-desktop/plugin-sdk";
+import { augmentedPath } from "./shell-path.ts";
 
 /** MCP revision we advertise during the handshake. */
 export const MCP_PROTOCOL_VERSION = "2025-06-18";
@@ -69,8 +70,11 @@ export function mcpProcessEnv(
   const env: Record<string, string> = {
     ...(pluginId ? { PI_PLUGIN_ID: pluginId } : {}),
     NODE_ENV: process.env.NODE_ENV ?? "production",
+    // A GUI launch misses the user's shell PATH, so stdio servers named `uvx`
+    // or `npx` would fail to spawn (issue #571); serve the augmented PATH.
+    PATH: augmentedPath(),
   };
-  for (const key of ["PATH", "SystemRoot", "windir", "TEMP", "TMP", "TMPDIR", "LANG"]) {
+  for (const key of ["SystemRoot", "windir", "TEMP", "TMP", "TMPDIR", "LANG"]) {
     const value = process.env[key];
     if (value) env[key] = value;
   }

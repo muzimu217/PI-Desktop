@@ -160,6 +160,7 @@ import { registerPluginIpc } from "./ipc/plugin-ipc";
 import { registerPluginUiIpc } from "./ipc/plugin-ui-ipc";
 import { registerSkillsIpc } from "./ipc/skills-ipc";
 import { stripWinLongPrefix } from "./path-utils";
+import { warmUserShellPath } from "./shell-path.ts";
 
 // The shared error-code union is reconciled in the shared lane. Keep desktop
 // source type-safe while that lane is temporarily staged at main.
@@ -177,6 +178,11 @@ const ErrorCodes = {
 // HTTP headers from a system proxy, destroyed webContents, etc.).
 ignoreBrokenStdio();
 installMainProcessErrorHandlers();
+// Kick off the login-shell PATH probe before any backend boots, so stdio MCP
+// servers, npm installs and host-core children resolve user tools (`uvx`,
+// `npx`, ...) even from a Finder/Dock launch (issue #571). Best effort: the
+// synchronous fallback PATH applies until (and if) the probe lands.
+void warmUserShellPath();
 
 app.setName(APP_NAME);
 if (process.platform === "win32") {

@@ -16,6 +16,7 @@ import {
 } from "./linux-glibc";
 import { DbSchemaTooNewError, parseSchemaTooNew } from "./host-boot-diagnostics";
 import { redactValue } from "./logger";
+import { augmentedPath } from "./shell-path.ts";
 
 const HOST_DISPOSE_GRACE_MS = 3_000;
 const HOST_FORCE_KILL_GRACE_MS = 1_000;
@@ -116,6 +117,9 @@ export class HostProcess {
       stdio: ["pipe", "pipe", "pipe"],
       env: {
         ...stripProxyEnv(process.env),
+        // The host's Bash-like tools resolve user commands through this PATH;
+        // a GUI launch needs the augmented one for `npx` and friends (#571).
+        PATH: augmentedPath(),
         PI_DESKTOP_DATA_DIR: dataDir,
         // Only Electron knows whether this build runs from `resources/` or a
         // source checkout, so it resolves the bundled-plugin directory and

@@ -3,7 +3,7 @@ import test from "node:test";
 import { createServer } from "node:http";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -13,6 +13,7 @@ import {
   mcpProcessEnv,
   resolveMcpCommand,
 } from "../electron/main/plugin-mcp.ts";
+import { augmentedPath } from "../electron/main/shell-path.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = join(here, "..");
@@ -470,8 +471,10 @@ test("the stdio environment carries no host secrets", () => {
     assert.equal(env.PI_PLUGIN_ID, "com.example.mcp");
     assert.equal(env.TOKEN, "t0ken");
     assert.equal(env.PI_LEAKED_SECRET, undefined);
-    // PATH still crosses, or a bare command name could never be found.
-    assert.equal(env.PATH, process.env.PATH);
+    // PATH still crosses — augmented with the user's tool directories, or a
+    // bare command name like `uvx` could never be found (issue #571).
+    assert.equal(env.PATH, augmentedPath());
+    assert.ok(env.PATH.length > 0);
   } finally {
     delete process.env.PI_LEAKED_SECRET;
   }

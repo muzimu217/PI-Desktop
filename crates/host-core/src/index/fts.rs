@@ -5,6 +5,45 @@ use anyhow::{Context, Result};
 use rusqlite::Connection;
 use std::path::Path;
 
+/// Binary/archival extensions the index never ingests. This is a *content*
+/// filter, not a visibility rule: such files stay visible to Grep and are
+/// simply not worth indexing. Vendor/ignore visibility lives in
+/// `crate::tools::ignore_rules`.
+pub(crate) fn is_binary_extension(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            matches!(
+                extension.to_ascii_lowercase().as_str(),
+                "7z" | "a"
+                    | "bmp"
+                    | "class"
+                    | "dll"
+                    | "dmg"
+                    | "exe"
+                    | "gif"
+                    | "ico"
+                    | "jar"
+                    | "jpeg"
+                    | "jpg"
+                    | "mov"
+                    | "mp3"
+                    | "mp4"
+                    | "o"
+                    | "obj"
+                    | "pdf"
+                    | "png"
+                    | "so"
+                    | "tar"
+                    | "wasm"
+                    | "webp"
+                    | "woff"
+                    | "woff2"
+                    | "zip"
+            )
+        })
+}
+
 pub const SCHEMA: &str = r#"
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;

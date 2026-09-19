@@ -7169,7 +7169,9 @@ mod tests {
         .await
         .unwrap();
         let mut fresh = false;
-        for _ in 0..50 {
+        // 20s budget: CI runners under parallel load can take multiple seconds
+        // for the spawned rebuild to win the SQLite write lock and commit.
+        for _ in 0..200 {
             let status = handle_request(state.clone(), "index.status", json!({}), tx.clone())
                 .await
                 .unwrap();

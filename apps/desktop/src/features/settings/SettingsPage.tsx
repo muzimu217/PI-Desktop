@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type {
   AppSettings,
   GlobalPermissionMode,
-  PluginSettingsDestinationMeta,
+  PluginScenicThemesDestinationMeta,
   ShortcutPlatform,
 } from "@pi-desktop/shared";
 import { useAppStore } from "../../stores/app-store";
@@ -13,6 +13,7 @@ import {
   SETTINGS_NAV_GROUP_LABELS,
   type SettingsNavGroupId,
 } from "../../lib/settings-search";
+import { pluginViewIcon } from "../../lib/plugin-view-icons";
 import {
   IconArchive,
   IconDatabase,
@@ -21,8 +22,10 @@ import {
   IconChevronLeft,
   IconDownload,
   IconFileText,
+  IconGlobe,
   IconInfo,
   IconKeyboard,
+  IconPalette,
   IconSearch,
   IconServer,
   IconSliders,
@@ -43,6 +46,7 @@ import { ProjectsPage } from "../../pages/ProjectsPage";
 import { AgentSkillsPage } from "../../components/settings/AgentSkillsPage";
 import { AgentMcpPage } from "../../components/settings/AgentMcpPage";
 import { AgentSubagentsPage } from "../../components/settings/AgentSubagentsPage";
+import { RemoteHostsPage } from "../../components/settings/RemoteHostsPage";
 import {
   CommandShellRow,
   ContextUsageDisplayRow,
@@ -51,14 +55,11 @@ import {
   SettingsCard,
   SettingsRow,
 } from "./primitives";
-import {
-  AgentInstructionsSection,
-  ImportSection,
-  UpdatesRow,
-} from "./agent-sections";
-import { VoiceSettingsCard } from "./voice-settings";
+import { AgentInstructionsSection, UpdatesRow } from "./agent-sections";
+import { ImportSection } from "./import-page";
+import { PromptEnhancementCard } from "./prompt-enhancement-card";
 import { CloseBehaviorSection, DeveloperSection } from "./developer-sections";
-import { PluginSettingsDestination } from "../../components/settings/PluginSettingsDestination";
+import { PluginScenicThemesDestination } from "../../components/settings/PluginScenicThemesDestination";
 
 type SettingsTab = ReturnType<typeof useAppStore.getState>["settingsTab"];
 
@@ -87,11 +88,11 @@ export function SettingsPage() {
   const [query, setQuery] = useState("");
   const [recoveringSettings, setRecoveringSettings] = useState(!settings);
   const [settingsRecoveryFailed, setSettingsRecoveryFailed] = useState(false);
-  const [extensions, setExtensions] = useState<PluginSettingsDestinationMeta[]>([]);
-  const [activeExtension, setActiveExtension] = useState<PluginSettingsDestinationMeta | null>(null);
+  const [extensions, setExtensions] = useState<PluginScenicThemesDestinationMeta[]>([]);
+  const [activeExtension, setActiveExtension] = useState<PluginScenicThemesDestinationMeta | null>(null);
 
   useEffect(() => {
-    const refresh = () => void api.listPluginSettingsDestinations().then(setExtensions, () => setExtensions([]));
+    const refresh = () => void api.listPluginScenicThemesDestinations().then(setExtensions, () => setExtensions([]));
     refresh();
     return api.onPluginChanged(refresh);
   }, []);
@@ -170,6 +171,10 @@ export function SettingsPage() {
     await refreshProviders();
   };
 
+  const selectPluginTheme = async (theme: string) => {
+    await saveSettings({ theme: theme as AppSettings["theme"] });
+  };
+
   // Nav structure comes from the shared settings index (lib/settings-search)
   // so the global search dialog and this page stay in sync; only the icons
   // are view-level.
@@ -187,6 +192,7 @@ export function SettingsPage() {
       import: <IconDownload size={14} />,
       projects: <IconArchive size={14} />,
       index: <IconDatabase size={14} />,
+      remoteHosts: <IconGlobe size={14} />,
       about: <IconInfo size={14} />,
     };
     return SETTINGS_NAV.map((entry) => ({
@@ -261,7 +267,10 @@ export function SettingsPage() {
                   <button
                     key={item.id}
                     className={cx("settings-nav-item", tab === item.id && "active")}
-                    onClick={() => setSettingsTab(item.id)}
+                    onClick={() => {
+                      setActiveExtension(null);
+                      setSettingsTab(item.id);
+                    }}
                   >
                     <span className="settings-nav-icon">{item.icon}</span>
                     <span className="settings-nav-label">{t(item.labelKey)}</span>
@@ -276,12 +285,19 @@ export function SettingsPage() {
               {extensions.filter((entry) => {
                 const q = query.trim().toLowerCase();
                 return !q || [entry.label, ...entry.keywords].some((value) => value.toLowerCase().includes(q));
-              }).map((entry) => (
-                <button key={entry.ref} className={cx("settings-nav-item", activeExtension?.ref === entry.ref && "active")} onClick={() => setActiveExtension(entry)}>
-                  <span className="settings-nav-icon"><IconBookOpen size={14} /></span>
-                  <span className="settings-nav-label">{entry.label}</span>
-                </button>
-              ))}
+              }).map((entry) => {
+                const ExtensionIcon = pluginViewIcon(entry.icon) ?? IconPalette;
+                return (
+                  <button
+                    key={entry.ref}
+                    className={cx("settings-nav-item", activeExtension?.ref === entry.ref && "active")}
+                    onClick={() => setActiveExtension(entry)}
+                  >
+                    <span className="settings-nav-icon"><ExtensionIcon size={14} /></span>
+                    <span className="settings-nav-label">{entry.label}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -308,7 +324,7 @@ export function SettingsPage() {
           <h1 className="settings-section-title">{activeExtension?.label ?? t(activeTitleKey)}</h1>
 
           {activeExtension ? (
-            <PluginSettingsDestination pluginId={activeExtension.pluginId} destinationId={activeExtension.destinationId} label={activeExtension.label} />
+            <PluginScenicThemesDestination destination={activeExtension} selectTheme={selectPluginTheme} />
           ) : <>
 
           {tabNeedsSettings && !settings ? (
@@ -372,8 +388,6 @@ export function SettingsPage() {
                 </SettingsRow>
               </SettingsCard>
 
-              <VoiceSettingsCard settings={settings} saveSettings={saveSettings} />
-
               <SettingsCard title={t("settings.defaultsTitle")}>
                 <SettingsRow title={t("settings.mode")} description={t("settings.modeDesc")}>
                   <div
@@ -430,6 +444,11 @@ export function SettingsPage() {
                   saveSettings={saveSettings}
                 />
               </SettingsCard>
+
+              <PromptEnhancementCard
+                settings={settings}
+                saveSettings={saveSettings}
+              />
             </div>
           )}
 
@@ -460,6 +479,7 @@ export function SettingsPage() {
           {tab === "index" && settings && (
             <IndexPage settings={settings} saveSettings={saveSettings} />
           )}
+          {tab === "remoteHosts" && <RemoteHostsPage />}
 
           {tab === "about" && (
             <div className="settings-stack">

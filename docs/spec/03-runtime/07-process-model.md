@@ -123,7 +123,9 @@ start its local service. Windows 11 ARM64 systems run this x64 package through
 the operating system's x64 emulation; native Windows ARM64 artifacts are not
 currently published.
 
-Supervision parameters (implemented in Electron main):
+Supervision parameters (the transports, restart policy, and turn lifecycle are
+`packages/host-runtime`, ADR 0284; Electron main adapts them and owns the
+renderer-facing status):
 
 - Child exit rejects all in-flight RPCs for that child immediately (no 130s timeout wait).
 - An NDJSON request line over 64 MiB is drained and answered with `LIMIT_EXCEEDED`; it does not end the stdin reader (ADR 0216). Electron rejects the same size before writing stdin (ADR 0217).
@@ -281,3 +283,17 @@ until a post-MVP implementation milestone explicitly amends this section.
 6. A queued/running execution that was already approved is interrupted without
    replay and its durable session remains Agent
 7. Bash timeout/abort shuts down the complete child process tree
+
+
+### Native tray session projection
+
+The tray service keeps Running, Unread, and Pinned groups current independently
+of renderer visibility or lifetime. Host remains authoritative for sessions and
+notifications; root agent events describe running state. Renderer mirrors only
+organization preferences through a main-window-only IPC. Read requests are
+coalesced; obsolete Host results cannot repopulate the menu, failures clear
+shortcuts, and quitting prevents further publication. A closed window retains
+only the last organization copy, which is replaced after renderer bootstrap.
+Menu command readiness is acknowledged after bootstrap's initial navigation,
+so a tray click cannot be overwritten by the startup draft or pending-plan
+selection. See [ADR tray-session-shortcuts](/adr/tray-session-shortcuts).

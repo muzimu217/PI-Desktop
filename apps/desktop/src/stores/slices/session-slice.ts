@@ -68,6 +68,7 @@ export type SessionSliceDependencies = StoreAccess & {
   openPlanArtifact: (
     proposal: PlanProposal,
     openWorkPanelTabForSession: AppState["openWorkPanelTabForSession"],
+    pluginViews: AppState["pluginViews"],
   ) => void;
   rememberSessionCompactions: (
     sessionId: string,
@@ -196,7 +197,11 @@ export function createSessionSlice({
           ),
         }));
         if (checkpoint && activeProposal) {
-          openPlanArtifact(checkpoint, get().openWorkPanelTabForSession);
+          openPlanArtifact(
+            checkpoint,
+            get().openWorkPanelTabForSession,
+            get().pluginViews,
+          );
         }
         return activeProposal ? "pending" : "terminal";
       } catch {

@@ -38,6 +38,7 @@ import {
 } from "./default-model";
 import { copyProviderConfiguration, type ProviderCopyDraft } from "./provider-copy";
 import { ProviderSetupDialog } from "./ProviderSetupDialog";
+import { useProviderReorder } from "./useProviderReorder";
 import { VendorAccountsSection } from "./VendorAccountsSection";
 
 const DELETE_CONFIRM_MS = 3000;
@@ -116,6 +117,7 @@ export function ModelConfigPage() {
     () => providers.filter((provider) => provider.authKind !== OAUTH_AUTH_KIND),
     [providers],
   );
+  const reorder = useProviderReorder(aiProviders, busyId !== null || testingId !== null || setupFor !== null);
   const readyProviders = providers.filter(providerReady);
   const defaultModelOptionsList = defaultModelOptions(readyProviders);
   const visibleDefaultModelOptions = useMemo(() => {
@@ -126,6 +128,7 @@ export function ModelConfigPage() {
     );
   }, [defaultModelOptionsList, defaultModelQuery]);
 
+
   if (!settings) return null;
 
   const defaultProvider =
@@ -133,6 +136,7 @@ export function ModelConfigPage() {
   const editingProvider =
     setupFor ? providers.find((provider) => provider.id === setupFor) ?? null : null;
   const defaultProviderReady = defaultProvider !== null && providerReady(defaultProvider);
+
 
   const setDefaultModel = async (provider: ProviderPublic, modelId: string) => {
     setBusyId(provider.id);
@@ -447,10 +451,10 @@ export function ModelConfigPage() {
               </Button>
             </div>
           ) : (
-            <ul className="model-provider-list">
-              {aiProviders.map((provider) => {
+            <ul className="model-provider-list" aria-busy={reorder.saving}>
+              {reorder.providers.map((provider) => {
                 const isDefault = settings.defaultProviderId === provider.id;
-                const rowBusy = busyId === provider.id || testingId === provider.id;
+                const rowBusy = reorder.saving || busyId === provider.id || testingId === provider.id;
                 const confirming = confirmDeleteId === provider.id;
                 const modelCount = provider.models?.length ?? 0;
                 // A plugin-declared row is refreshed from the plugin's manifest
@@ -461,7 +465,11 @@ export function ModelConfigPage() {
                 return (
                   <li
                     key={provider.id}
-                    className={cx("model-provider-row", !provider.enabled && "is-disabled")}
+                    className={cx("model-provider-row", !provider.enabled && "is-disabled", reorder.draggingId === provider.id && "is-dragging")}
+                    data-provider-id={provider.id}
+                    aria-label={t("settings.reorderProvider", { name: provider.name })}
+                    ref={reorder.rowRef(provider.id)}
+                    {...reorder.rowEvents(provider.id)}
                   >
                     <div className="model-provider-row-copy">
                       <div className="model-provider-row-title">

@@ -231,6 +231,9 @@ packages/
   shared/              IPC/protocol contracts, error codes
   i18n/                UI catalogs
   agent-runtime/       pi sidecar wrapper
+  agent-host/          headless Agent Host module (admission, queue, approvals, events)
+  host-runtime/        Electron-independent runtime (transports, supervisor, turn lifecycle)
+  racp/                RACP-WS server/client and device pairing
   plugin-sdk/          plugin author types/validators
   plugin-devkit/       pi-plugin CLI
 examples/plugins/      sample plugins

@@ -133,12 +133,13 @@ test("the workbench reuses the shared segmented control instead of a third copy"
 });
 
 test("the empty state dresses its own glyph, not the icon in its CTA button", () => {
-  // The empty state can carry a create button, and that button carries an icon.
-  // As a descendant selector this rule also turned that 14px glyph into a 34px
-  // faint chip with its own background, which hid the icon and stretched the
-  // button. Direct child only.
-  assert.match(styles, /\.agent-capability-empty > svg\s*\{/);
+  // Lucide icons set inline width/height. Padding the SVG itself crushed the
+  // stroke into a blank chip, and a descendant `svg` rule also ate the CTA
+  // button's icon. Chip the host Icon on a wrapper instead.
+  assert.match(layout, /agent-capability-empty-icon/);
+  assert.match(styles, /\.agent-capability-empty-icon\s*\{/);
   assert.doesNotMatch(styles, /\.agent-capability-empty svg\s*\{/);
+  assert.doesNotMatch(styles, /\.agent-capability-empty > svg\s*\{/);
   // The pages that pass a CTA into the empty state are the ones that regressed.
   for (const page of [mcp, subagents]) {
     assert.match(page, /action=\{addButton\}|action=\{[a-zA-Z]*[Bb]utton\}/);
@@ -297,9 +298,11 @@ test("revealing a skill carries the level so project skills resolve", () => {
 test("skill import is one native file and is copied through the host", () => {
   assert.notEqual(skillImport, "", "skill import handler should be present");
   assert.match(skillImport, /properties:\s*\["openFile"\]/);
-  assert.doesNotMatch(skillImport, /properties:\s*\[[^\]]*(?:multiSelections|openDirectory)/);
+  // Scan-and-import (a separate `skillImportScan` handler) opens a directory,
+  // but the single-file skill-import branch must never do that or select many.
+  assert.doesNotMatch(skillImport, /properties:\s*\[[^\]]*multiSelections/);
   assert.match(skillImport, /host\.call\("skills\.import"/);
-  assert.match(read("../../../crates/host-core/src/user_skills.rs"), /fs::copy\(&source_path, &target\)/);
+  assert.match(read("../../../crates/host-core/src/user_skills.rs"), /fs::copy\(source, target\)/);
 });
 
 test("MCP management reuses the validated modal and blocks same-level duplicates", () => {
@@ -445,4 +448,13 @@ test("the move action offers a level only when there is a destination", () => {
     assert.match(source, /moveTarget\[level === "global" \? "project" : "global"\]/);
     assert.match(source, /showToast\(t\("settings\.selectProjectFirst"\)/);
   }
+});
+
+test("MCP OAuth subscribe is owned by a ref cleaned up on unmount", () => {
+  const mcpIpc = readMainModuleSync("ipc/mcp-ipc.ts");
+  assert.match(mcp, /pendingOAuthRef/);
+  assert.match(mcp, /useEffect\(\(\) => \{/);
+  assert.match(mcp, /pendingOAuthRef\.current\?\.unsubscribe\(\)/);
+  assert.match(mcp, /api\.onMcpOAuth\(/);
+  assert.match(mcpIpc, /oauth\.start\(server\.id, server\.url, server\)/);
 });

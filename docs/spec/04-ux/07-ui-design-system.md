@@ -497,9 +497,9 @@ same 6px contract and scroll-reveal mark. This keeps first-party surfaces such
 as the Files view aligned with the host renderer; the external page loaded
 inside the Browser guest remains page-owned and keeps its own scrollbar style.
 
-The expanded sidebar is a fixed 275px column. Collapse/open changes only whether
-the column is present; the historical resize handle is hidden and legacy width
-preferences are not persisted.
+The expanded sidebar is user-resizable from 240px to 520px (default 275px).
+Dragging the right-edge handle below 160px collapses the column. Collapse/open
+preserves the preferred expanded width.
 
 The profile menu is `280px` wide, opens `8px` above the footer, and uses the
 standard opaque elevated-menu surface, subtle border, and dialog shadow. Its
@@ -1040,7 +1040,7 @@ Codex parity decisions (D034/D070) supersede any older value here.
 |---|---|---|
 | Titlebar row height | 46px | Codex toolbar rhythm (D034); traffic lights {x:16,y:16} |
 | Sidebar width (collapsed) | 48px | Icon-only rail |
-| Sidebar width (expanded) | 275px | Fixed column; collapse/open does not resize it |
+| Sidebar width (expanded) | 240–520px (default 275px) | Right-edge handle; drag below 160px collapses (ADR 0141 / ADR 0290) |
 | Main pane minimum readable width | 450px | The MainChat hard floor; the sidebar yields before it is breached (ADR 0238) |
 | Work panel width (closed) | 0px | Hidden by default |
 | Work panel width (open) | `≥244px` (new-profile default 360px), capped by `client width - 450px - expanded sidebar` with no fixed pixel cap | the panel is an in-flow column whose width is taken from the existing client area; the renderer owns its divider (ADR 0033 / ADR 0151 / ADR 0238); saved widths remain unchanged |
@@ -1300,7 +1300,7 @@ Full component contract and usage rules: [08-component-spec.md §17](08-componen
 - Floating composer plate: Codex elevated-primary (`#212121f5` / `color-mix(gray-800 96%, transparent)`) with standard elevation-prominent (`0 0 0 .5px` stroke + `0 3px 7.5px #0000000a` + `0 0 20px #0000000d`); no heavier night-only lift
 - Light workspace chips capsule: elevated gray `#f4f4f4` (not pure white-on-white)
 - Combined workspace chips: elevated translucent plate over main, not flat main gray
-- Stage Manager: host re-asserts min bounds while collapsed (permanent watchdog)
+- Stage Manager (macOS only): host re-asserts min bounds while collapsed (permanent watchdog). The watchdog does not run on Windows/Linux, so no platform re-layers its own window unprompted (D447)
 
 ## Destination pages
 
@@ -1308,14 +1308,27 @@ Full component contract and usage rules: [08-component-spec.md §17](08-componen
   is embedded in Settings with no duplicate page title or outer page padding;
   the earlier standalone Projects destination and card grid (D042) are
   superseded by D133. Per D267 the destination is composed exactly like the
-  agent capability pages (D257): a quiet description-only intro line, one
-  toolbar (sort segment, search, primary action), and one elevated panel whose
-  Pinned / All projects / Archived groups are in-panel header strips carrying
-  the only counts on the page. It has no hero block, no decorative gradient,
-  and no page-level counter run
+  agent capability pages (D257): one toolbar (sort segment, search, primary
+  action) and one index whose
+  Pinned / All projects / Archived groups are plain section header lines
+  carrying the only counts on the page. Per D455 it stays one column with no
+  side-by-side
+  pane, and the index is an inset grouped list in the iOS sense: each row reads
+  left to right as identity (glyph, name, status tag, path) and right to left as
+  detail (session count, last active, disclosure indicator), and the selected
+  row is the header of the card that opens under it — so the detail repeats no
+  name, path, or tag. It has no hero block, no decorative gradient, and no
+  page-level counter run
 - **Settings**: full-page Codex shell per D063/D090/D133/D166 (275px compact
   navigation rail sharing the main sidebar material, elevated content cards, Back to app);
   per D092, the content cards fill the pane width available from the current
   window instead of retaining D070's fixed 720px cap — the earlier in-shell
   200px rail and broad grouped directory are superseded
+- **Import**: four kinds (sessions / models / skills / MCP) behind one
+  page-scale segmented switcher, composed like the agent capability pages: a
+  quiet pre-scan next-action state per kind, one toolbar per kind (select-all
+  with both counts, the kind's own option, re-scan, import selected), and one
+  list whose group headers are quiet label lines and whose candidates are
+  individual tiles. No per-kind scan card, no tinted group band, no second
+  copy of the settings row scaffold
 - Light destination cards use white elevated plates (not flat gray fills)

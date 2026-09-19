@@ -5,12 +5,12 @@
 > Interaction behavior: [09-interaction-patterns.md](09-interaction-patterns.md)
 
 
-> Shell layout is Codex-aligned: left thread sidebar (fixed 275px), main transcript, floating bottom composer with runtime mode/permission/model controls, and a compact action-only top bar. Prefer neutral charcoal surfaces over blue-slate chrome.
+> Shell layout is Codex-aligned: left thread sidebar (240–520px, default 275px), main transcript, floating bottom composer with runtime mode/permission/model controls, and a compact action-only top bar. Prefer neutral charcoal surfaces over blue-slate chrome.
 >
 > **Precedence rule**: where a metric or copy string below disagrees with a
 > Codex parity decision in [decisions-log §D](../08-meta/decisions-log.md)
 > (D034+), the decision log wins — it tracks the live gold captures. Known
-> updated values: sidebar 275px fixed, toolbar 46px (not 44px),
+> updated values: sidebar 240–520px (default 275px), toolbar 46px (not 44px),
 > composer placeholder per D094/D066, home empty stack and bottom composer per
 > D111/D204/D206,
 > Projects index table per D066/D133, settings full-page shell per D063 with the
@@ -30,7 +30,7 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
 ```text
 +------------------+------------------------------+------------------+
 | Sidebar          | MainChat                     | WorkPanel        |
-| (275px / 48px) | (flex-1)                   | (≥244px / dynamic|
+| (240–520px / 48px) | (flex-1)                   | (≥244px / dynamic|
 |                  |                              |  hidden)         |
 +------------------+------------------------------+------------------+
 | Titlebar row: 46px, traffic lights at {x:16,y:16} (D034/D070)      |
@@ -60,9 +60,9 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   restore the full retained layout directly. Entering Settings cancels either
   pending phase, including during rapid navigation; no hidden shell is kept
   mounted solely to suppress animation.
-- Sidebar width: the expanded column is fixed at 275px. Collapse/open changes
-  only whether the column is present; the historical resize handle is hidden
-  and legacy persisted width preferences are ignored.
+- Sidebar width: the expanded column is user-resizable from 240px to 520px
+  (default 275px) via the right-edge handle. Dragging below 160px collapses
+  the sidebar and preserves the preferred expanded width (ADR 0141 / ADR 0290).
 - Work panel collapse: the sole control is the viewport-fixed toggle in the
   window's top-right corner, available on every non-Settings route whether the
   panel is open or closed. It does not sit in the work-panel content header.
@@ -92,8 +92,8 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
 
 ### 1.6 MVP constraints
 
-- Sidebar width is fixed at 275px and remains independent from the collapsed
-  icon-rail state; the work panel remains adjustable from its own divider
+- Sidebar width is user-resizable from 240px to 520px (default 275px) and
+  remains independent from the collapsed icon-rail state; the work panel remains adjustable from its own divider
 - The main pane renders one active transcript and one selected workspace while
   the sidebar may retain several project tabs/groups
 - Sidebar and work-panel dock transitions animate their flex allocation as well
@@ -208,6 +208,18 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
 
 ---
 
+### Native tray session menu
+
+The Main-owned native menu contains Open, non-empty Running/Unread/Pinned
+sections, and Quit. Each section has a disabled localized heading, single-line
+session rows up to the share allocated to that group, and View more only when
+it overflows that share. Session rows are globally deduplicated before
+truncation. View more expands session navigation;
+session rows enter their original conversation. The menu follows active locale
+changes and never marks a result read merely by opening. macOS single-click
+opens the attached menu; Open and double-click restore/focus the window.
+See [ADR tray-session-shortcuts](/adr/tray-session-shortcuts).
+
 ## 2. Topbar
 
 ### 2.1 Purpose
@@ -316,7 +328,8 @@ combined model × reasoning selection (§11).
 
 - Every control is keyboard-reachable with Tab
 - Composer stop control has `aria-label="Stop generating"`
-- Composer transcribe / speak controls are icon buttons with `aria-label` from `chat.transcribe` / `chat.speak`. They stay disabled until the matching speech role is configured.
+- The Composer renders no transcription or speech control; the host speech
+  capability is reachable only from IPC and plugins (ADR 0291).
 - The topbar does not render a separate running-state indicator; the Composer
   submit control and transcript working feedback remain the running-state cues.
 
@@ -402,7 +415,7 @@ visually distinct from list content.
 | State | Behavior |
 |---|---|
 | Expanded | Full session titles visible |
-| Sidebar width | Fixed at 275px; collapse/open changes only column presence |
+| Sidebar width | 240–520px (default 275px); drag below 160px collapses |
 | Collapsed | Icon rail — hover shows tooltip with session title |
 | Active session | Accent-blue outlined status ring plus active row background |
 | Selecting session | Destination row receives the active treatment immediately while transcript/workspace resolution continues |
@@ -480,6 +493,8 @@ visually distinct from list content.
   reflows continuously, the press position remains anchored, and the final
   width is saved on release. Focus the edge handle and use ArrowLeft/Right,
   Home, or End for keyboard resizing; Escape cancels an active pointer resize.
+  Double-click the handle to restore the default 275px width, clamped by the
+  live three-column budget so the reset never breaches the MainChat floor.
 - Click the viewport-fixed work-panel toggle to reveal or hide the panel
   without deleting tabs; the work-panel header keeps its tab strip and fixed `+`
   menu, while each tab owns resource closing
@@ -1014,8 +1029,14 @@ entirely inside the plugin's isolated page:
 - Trigger: file/URL references and BrowserPreview create/activate their
   resource tab in the originating session's runtime context. BrowserPreview
   events carry `sessionId`, and the renderer retains that session's preview
-  path/URL as its Browser resource. Successful workspace Write/Edit artifacts
-  create/activate Review in the originating session.
+  path/URL as its Browser resource. Review is never triggered by a tool
+  result: it opens only from the `+` launcher row or from the retained panel
+  context the viewport-fixed toggle and `Cmd/Ctrl + J` reveal, so a successful
+  workspace Write/Edit cannot open, activate, or resize the panel in any
+  session.
+  The plan/goal approval artifact still creates or activates a tab in its
+  originating session, but the host picks its surface: the bundled file view when
+  that view is launchable, otherwise the host file tab (D452).
   The viewport-fixed toggle and `Cmd/Ctrl + J` both toggle the active session's
   retained panel context: they reveal the panel without creating a resource and
   collapse the visible panel without deleting one. With no active session the
@@ -1078,7 +1099,10 @@ entirely inside the plugin's isolated page:
   and starting panel width, so grabbing the handle cannot jump the divider;
   moves are frame-coalesced. Escape, pointer cancellation, and lost capture
   restore the press-time panel width. The 10px hit area keeps a column-resize
-  cursor and suppresses text selection during the gesture.
+  cursor and suppresses text selection during the gesture. A double-click on
+  the divider restores the default 360px width, clamped by the same live
+  minimum and three-column budget, so a reset never breaches the MainChat
+  floor.
 - Persistence: all session contexts are renderer runtime state only. On app
   startup, open state, tabs, active-tab selection, file requests, and Browser
   resources reset; only the committed preferred `{width}` remains in
@@ -1573,8 +1597,17 @@ Single message render — either user (plaintext) or assistant (markdown streami
   the tooltip and accessible name). Image attachments that are not already
   inlined as `@path` chips render as bounded thumbnails (data URL from
   `fs/readImageDataUrl`); unresolved loads keep the chip. Bare path tokens in
-  message text recognize Unicode letters and digits, so non-ASCII filenames
-  chip exactly like ASCII ones; absolute and `~/` tokens are matched whole,
+  message text recognize Unicode letters and digits. In user-message prose,
+  these are candidates only: show a chip after the existing `fs/resolveRef`
+  lookup confirms a real file. Pending, missing, or failed lookups preserve
+  the exact original text, including `使用llama.cpp`. Explicit `@path` refs
+  and structured attachments retain their existing chips without speculative
+  lookup. At most 32 unique candidates per message are checked, with four
+  concurrent lookups across visible rows; additional candidates remain text.
+  Confirmation is scoped to the message text, workspace path, and session; changing
+  any of these discards old results and cancels queued work. Newly created
+  files are reconsidered when the message remounts or its scope changes, not
+  by polling. Non-ASCII filenames remain supported. Absolute and `~/` tokens are matched whole,
   and one outside the workspace (or any home path) stays plain text rather
   than rendering a chip that could never open — containment is unchanged
   (D322). Clicking a chip
@@ -1589,11 +1622,13 @@ Single message render — either user (plaintext) or assistant (markdown streami
    image thumbnail resolves and opens the same way. A chip whose reference
    matches nothing opens nothing and reports itself; the OS default application
    is no longer what this click does.
-  HTTP(S) URLs remain inline text links. Plain clicks follow the persisted
-  Link open destination setting (Work panel browser by default, or the system
-  default browser). Right-clicking a link opens a body-level context menu with
-  Open in default browser, Open in work panel, and Copy link address. Modifier
-  clicks (Ctrl/Cmd/Shift/Alt) continue to open externally. Long URL links wrap
+  HTTP(S) URLs remain inline text links. Plain clicks — including markdown
+  links, autolinked URLs, inline-code URLs, and remote images — follow the
+  persisted Link open destination setting (Work panel browser by default, or
+  the system default browser). Right-clicking a link opens a body-level
+  context menu with Open in default browser, Open in work panel, and Copy
+  link address. Modifier clicks (Ctrl/Cmd/Shift/Alt) continue to open
+  externally. Long URL links wrap
   within the plate and keep logical-start alignment instead of inheriting the
   browser's centered button text.
 - Assistant: transparent surface, left-aligned, markdown rendered at full
@@ -1874,7 +1909,9 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   observed inside the scroller with the same near-top threshold the scroll handler
   uses. An underfilled tail page, a page whose fetched rows all land outside the
   mounted window, and a window transition can leave `scrollTop` untouched, so a
-  scroll-only trigger could never fire again.
+  scroll-only trigger could never fire again. A collapsed scroller and a pinned
+  overflowing transcript whose `scrollTop` has been reset to 0 are not treated as
+  "at the top", so opening or revealing a session cannot page back to the start.
 - **Minimap hover cost**: dash magnification is applied by writing a custom
   property per dash, and dash centers are measured in a separate read-only pass.
   Reading a dash's geometry inside the same loop that writes to it forces one
@@ -2379,10 +2416,17 @@ execution permission mode, not an individual tool call.
 ### 10A.2 Content
 
 The card renders the structured title and an opener for the exact
-`.pi/<kind>/*.md` path. Opening the artifact reads the host-written file;
-renderer edits do not change the approved bytes. The submitted question/
-description, status, validity/deadline, inline Markdown, SHA-256, byte size,
-and revision/feedback controls are not rendered card content.
+`.pi/<kind>/*.md` path; the opener prefers the bundled file view and falls back
+to the host file tab when that view is not launchable (D452). Opening the
+artifact reads the host-written file; renderer edits do not change the approved
+bytes. The submitted question/description, status, validity/deadline, inline
+Markdown, SHA-256, byte size, and revision/feedback controls are not rendered
+card content.
+
+Because the bundled file view can edit and save the file it opened (ADR 0241),
+an artifact changed before Approve no longer matches the recorded hash: the host
+fails that approval closed with `PLAN_ARTIFACT_HASH_MISMATCH` until the proposal
+is rejected and resubmitted.
 
 ### 10A.3 Actions and states
 
@@ -2703,8 +2747,9 @@ reasoning-level control.
   `role="menu"`. Its root has exactly two `role="menuitem"` entries. The Model
   submenu has a search input and sticky provider headings, while the Reasoning
   level submenu starts with `Current model <model> supports these reasoning
-  levels` and lists the selected model binding's enabled levels in canonical
-  order.
+  levels` and lists `omit` then the selected model binding's enabled levels in
+  canonical order. `omit` persists as the session thinking level and sends no
+  provider thinking override (ADR 0295).
   Model-row reasoning badges use published reasoning metadata; vision badges
   use the effective image-input capability for the row's provider binding
   (`supportsImages` when explicitly set, published image input otherwise).
@@ -2891,9 +2936,35 @@ Anatomy:
   separate because identity and dispatch use the canonical path, not the name.
   Text/plain and `.txt` chips are also keyboard-focusable buttons: clicking or
   pressing Enter/Space expands their bounded contents into editable draft text;
-  binary, image, oversized, or failed reads keep the chip. Image and other file
-  references use the same compact chip treatment; no separate explanatory
-  vision-status row is rendered.
+  binary, image, oversized, or failed reads keep the chip. Ordinary files stay
+  compact chips. Unsent images render in a left-aligned attachment row above and
+  outside the input shell, never within editable text. Their existing detached
+  reference metadata survives text selection, editing, undo, and session
+  switching; restored inline-image tokens are removed from text while keeping
+  the attachment. Image-only drafts enable Send; a rejected send restores both
+  text and attachments even when rejection precedes the next render. The
+  attachment row is height-limited and scrolls vertically so every image remains
+  reachable in a narrow chat pane. Thumbnails have an independent
+  remove button shown on hover/focus (always visible for touch input). No
+  separate explanatory vision-status row is rendered.
+  Clicking an image or pressing Enter/Space opens a modal image preview, without
+  sending the draft or changing the work-panel tabs. Inside the dark viewport,
+  the image is horizontally and vertically centered, keeps its aspect ratio,
+  and initially fits available space without upscaling small images. The
+  preview supports zoom, fit reset, original-image download, and previous/next
+  navigation across the draft's images. Dragging with the primary pointer or
+  scrolling pans the image at any zoom; pointer capture keeps a drag continuous
+  outside the image, and release/cancel ends it without dismissing the modal.
+  A visible portion remains in bounds. Fit reset and switching images recenter
+  the image; switching images also resets zoom. Escape,
+  the close button, or a blank-area click dismisses it and restores the prior
+  input focus/caret. Focus remains inside the modal, and native plugin surfaces
+  are hidden while it is open. The remove button never opens or submits.
+  Thumbnails and previews use the bounded, contained `fs/readImageDataUrl`
+  bridge, including allowed scratch files when no project is open. Missing,
+  unsupported, oversized, or undecodable images show a retry state and retain
+  the draft. Session/project changes or removal of the selected attachment
+  dismiss the preview; late reads cannot replace a newer image.
 - Sent template invocations render in the transcript as a monospace command
   chip from the message's `command` field instead of the expanded body.
 - Sent `@path` file references (quoted or unquoted) render as the same compact
@@ -3193,34 +3264,60 @@ dismissToast(id: number); // ToastHost internal / tests
 
 ---
 
-## 18. SessionImportPanel
+## 18. Import destination
 
 ### 18.1 Purpose
 
-Scan supported local agent stores, review discovered sessions in manageable
-groups, select candidates, and start an explicit import.
+Scan supported local agent stores for the four things this machine can hand
+over — sessions, provider/model configuration, skills, and MCP servers — then
+review the candidates, select them, and start an explicit import.
 
 ### 18.2 Anatomy
 
+One workbench per kind behind a segmented kind switcher; every kind owns its
+own scan, selection, and import action.
+
 ```text
-[Found N sessions]  [Group by: Source ▾]  [Import selected (N)]
-──────────────────────────────────────────────────────────────────
-[ ] [›] Claude Code                                      N sessions
-[ ] [›] Codex                                            N sessions
+[ Sessions | Models | Skills | MCP ]                   ← kind switcher
+[ ] Found 12 · 6 selected   Group by: Source ▾   [Scan] [Import selected (6)]
+───────────────────────────────────────────────────────────────────────────
+CLAUDE CODE              ~/code/pi                                  4
+[ ] Refactor the importer   12 messages · Jan 5, 2026   [Claude Code]
 ```
 
-- The grouping control supports **Project path** and **Source**.
-- Source is the default grouping.
-- In project-path mode, exact paths remain visible in group headers.
-- Sessions without a project path appear in a final **No project** group.
-- Each group header includes group selection, disclosure, label, and count.
-- Import source names, grouping controls, counts, results, and accessible names
-  come from the shared i18n catalog. Candidate dates use the active app locale.
+- The switcher reuses the labels the sidebar and the settings rail already ship
+  (`nav.sessions`, `settings.nav.models`, `settings.nav.skills`,
+  `settings.nav.mcp`), so the page adds no catalog entries of its own.
+- Each kind carries its own toolbar: the select-all checkbox with both the
+  "found" sentence and the selected count, the kind's own option (session
+  grouping, skills import mode), re-scan, and Import selected.
+- Before a kind's first scan its panel shows a quiet next-action state: what the
+  scan reads plus the Scan action. Switching tabs never starts a scan
+  (D007 / D342).
+- Group headers are quiet label lines — source or project name, the resolved
+  path in mono, and a count pill — not tinted bands; the candidates below them
+  are individual tiles.
+- The grouping control supports **Project path** and **Source**. Source is the
+  default. In project-path mode, exact paths remain visible in group headers,
+  and sessions without a project path appear in a final **No project** group.
+- Import source names, grouping and mode controls, counts, results, and
+  accessible names come from the shared i18n catalog. Candidate dates use the
+  active app locale.
 
 ### 18.3 States and interactions
 
 - A successful scan replaces the prior candidate set, clears selection, and
-  leaves every group collapsed.
+  shows every group expanded: the found candidates are the answer to the scan,
+  so they are not hidden behind a second click.
+- Codex session discovery walks `~/.codex/sessions/YYYY/MM/DD` newest-path-first
+  and stops after 250 `.jsonl` files. That order is folder-date lexicographic,
+  not `updatedAt`. When the cap hits, `session/importScan` returns
+  `truncated.codex = 250` and the sessions toolbar shows the localized cap note;
+  older Codex files are absent from the candidate list.
+
+- Every kind scans on its own: a session scan never starts a model-config,
+  skills, or MCP scan, and switching tabs preserves the result and the
+  selection of the kind left behind (inactive panels stay mounted and hidden).
 - A successful import creates or reuses one durable Projects-index entry for
   each distinct non-empty project path and refreshes sessions/projects.
 - When a successful core or plugin import adds a project-bound session under an
@@ -3232,20 +3329,29 @@ groups, select candidates, and start an explicit import.
   sessions. Import never creates a physical filesystem directory.
 - Re-importing an existing source session skips it without duplicating its
   project entry.
-- Changing the grouping mode preserves candidate selection but collapses every
-  newly formed group.
+- Changing the grouping mode preserves candidate selection and shows every
+  newly formed group expanded.
 - Expanding or collapsing one group does not affect the others.
 - Group and global checkboxes support checked, unchecked, and indeterminate
-  selection states as applicable.
+  selection states; the global checkbox reports a partial selection as
+  indeterminate.
 - Candidates inside each group and groups themselves are ordered newest first;
   the path-less group remains last in project-path mode.
 
 ### 18.4 Accessibility
 
+- The kind switcher is a `tablist` of `tab` controls, each carrying
+  `aria-selected` and `aria-controls` that names its panel. Every panel is a
+  `tabpanel` labelled by its tab, and an inactive panel is `hidden` rather than
+  visually covered.
 - Each disclosure button exposes `aria-expanded` and references its body with
   `aria-controls`.
-- Global and group checkboxes have localized accessible names.
-- The grouping selector has a visible label and is keyboard-operable.
+- Global and group checkboxes have localized accessible names and carry the
+  indeterminate state.
+- The grouping and import-mode selectors are the shared in-app menu selects
+  with visible labels and keyboard operation, never a platform-drawn
+  `<select>`.
+- Group count pills carry the localized count sentence as their title.
 - Projects-row disclosure and action-menu buttons expose localized,
   project-specific accessible names.
 
@@ -3255,17 +3361,17 @@ Scan the same local agent stores for provider and model settings, review
 candidates grouped by source, select them, and start an explicit import.
 
 ```text
-[Found N providers]                         [Import selected (N)]
-──────────────────────────────────────────────────────────────────
-[ ] [›] Claude Code                                      N providers
-[ ] [›] OpenCode                                         N providers
-[ ] [›] CC Switch                                        N providers
+[ ] Found 3 · 1 selected                        [Scan] [Import selected (1)]
+───────────────────────────────────────────────────────────────────────────
+CLAUDE CODE                                                                1
+[ ] acme-gateway   4 models · api.acme.dev    [API key]
 ```
 
-- The card is independent of session import: its own Scan, selection, and
-  Import selected action. A session scan never starts a model-config scan.
+- The kind is independent of session import: its own scan, selection, and
+  Import selected action. A session scan never starts a model-config scan, and
+  the two are shown one at a time behind the switcher.
 - Source grouping is the only grouping. A successful scan replaces the prior
-  candidate set, clears selection, and leaves every group collapsed.
+  candidate set, clears selection, and shows every group expanded.
 - Each row shows the provider name, model count, host, an API key / No API
   key badge, and the source. The raw secret never reaches the renderer.
 - Import creates one `providers.create` row per selected candidate. An
@@ -3277,7 +3383,6 @@ candidates grouped by source, select them, and start an explicit import.
   a different credential remains visible.
 - If `settings.defaultProviderId` is empty after a successful create, the
   first new provider becomes the global default.
-
 ---
 
 ## 19. ProviderStudio (Settings → Agent)
@@ -3290,6 +3395,18 @@ surface, while model metadata remains owned by models.dev and transport
 compatibility remains owned by pi-ai.
 
 ### 19.2 Anatomy
+
+Each AI service card can be dragged from its non-interactive surface. After a
+small movement threshold, the card follows the pointer and surrounding cards
+animate into the proposed slot. Dragging near the list edge scrolls it. Releasing
+saves the previewed order; Escape, pointer cancellation, focus loss, unmount or
+catalog changes cancel the drag. Buttons and form controls retain their actions.
+There is no separate drag handle. A focused card accepts Up/Down to move one visible row. Saving blocks further
+moves; a failed save shows an error and restores the accepted order. Late catalog
+responses cannot restore an earlier order. The default-model picker and Composer
+model groups follow the persisted order. Sorting changes neither the selected
+default nor provider configuration. OAuth accounts remain in their separate section.
+
 1. **Defaults card** — a compact settings row reusing the shared
    14px/16px row geometry; the Default model label sits above the provider name
    and exact model ID, while a quiet Change action opens the picker without
@@ -3559,3 +3676,15 @@ Sidebar footer                                        Popover (360px max)
     panel width (ADR 0151)
 19. Expanded sidebar session titles, project/group titles, and empty-state copy
     use the 13px compact token while primary sidebar actions remain at 14px
+
+
+### Native deletion beside composer file chips
+
+Deleting text before an inline file reference must not add a blank line or move
+the chip to the next line. Keep native editing and undo/redo. Before a native
+deletion, record the browser's target range and existing BR nodes; after input,
+remove a newly created BR only when removing that exact node makes the draft
+match the requested deletion. Never trim leading newlines or normalize all BRs.
+Remember proven placeholder nodes weakly so native redo cannot restore them.
+Explicit line breaks, IME composition, file references, and chip deletion retain
+their normal behavior. The input owns and disposes the native event listeners.

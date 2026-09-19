@@ -97,7 +97,7 @@ Windows 安装包目标为 x64。Windows host-core 使用
 系统通过操作系统的 x64 模拟运行该 x64 安装包；目前不发布原生 Windows ARM64
 工件。
 
-监管参数（在Electron main中实现）：
+监管参数（传输、重启策略与回合生命周期位于 `packages/host-runtime`，ADR 0284；Electron main 适配它们并负责面向渲染层的状态）：
 
 - 子进程退出立即拒绝该子进程的所有正在进行的 RPC（无 130 秒超时等待）。
 - 超过 64 MiB 的 NDJSON 请求行以 `LIMIT_EXCEEDED` 应答，不结束 stdin 读取器（ADR 0216）。Electron 在写入 stdin 前拒绝同样大小的载荷（ADR 0217）。
@@ -221,3 +221,17 @@ Gateway 负责路由已认证客户，但不拥有工作区状态。
 6. 已批准的 queued/running 执行被中断，无需
    重播及其持久会话仍然是 Agent
 7. Bash timeout/abort 关闭完整的子进程树
+
+
+### Native tray session projection
+
+The tray service keeps Running, Unread, and Pinned groups current independently
+of renderer visibility or lifetime. Host remains authoritative for sessions and
+notifications; root agent events describe running state. Renderer mirrors only
+organization preferences through a main-window-only IPC. Read requests are
+coalesced; obsolete Host results cannot repopulate the menu, failures clear
+shortcuts, and quitting prevents further publication. A closed window retains
+only the last organization copy, which is replaced after renderer bootstrap.
+Menu command readiness is acknowledged after bootstrap's initial navigation,
+so a tray click cannot be overwritten by the startup draft or pending-plan
+selection. See [ADR tray-session-shortcuts](/adr/tray-session-shortcuts).

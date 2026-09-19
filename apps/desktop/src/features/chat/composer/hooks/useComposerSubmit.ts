@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import {
+  canonicalThinkingLevel,
   restoreInlineComposerFileReferenceTokens,
   serializeComposerFileReferences,
   serializeInlineComposerFileReferences,
@@ -119,7 +120,7 @@ export function useComposerSubmit({
         draft: textToEnhance,
         providerId,
         modelId,
-        thinkingLevel,
+        thinkingLevel: canonicalThinkingLevel(thinkingLevel),
       });
       const currentKey = draftKeyForSession(useAppStore.getState().activeSessionId);
       if (
@@ -164,7 +165,10 @@ export function useComposerSubmit({
       }
       const typed = error as Error & { code?: string };
       setEnhancementError({
-        message: typed.message || t("chat.enhancementFailed"),
+        message:
+          typed.code === "TIMEOUT"
+            ? t("chat.enhancementTimeout")
+            : typed.message || t("chat.enhancementFailed"),
         code: typed.code || "PROMPT_ENHANCEMENT_FAILED",
       });
     } finally {

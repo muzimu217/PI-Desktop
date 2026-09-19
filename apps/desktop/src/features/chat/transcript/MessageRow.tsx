@@ -185,7 +185,7 @@ export const MessageRow = memo(function MessageRow({
                         {message.command}
                       </code>
                     ) : (
-                      <LinkifiedText text={String(message.content || "")} />
+                      <LinkifiedText text={String(message.content || "")} attachments={message.attachments} />
                     )}
                   </div>
                 ) : null}

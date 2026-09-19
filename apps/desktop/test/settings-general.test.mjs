@@ -110,6 +110,8 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   assert.match(aiSource, /enterToSend: !settings\.enterToSend/);
   assert.match(aiSource, /LargePasteThresholdRow/);
   assert.match(aiSource, /ContextUsageDisplayRow/);
+  assert.match(aiSource, /PromptEnhancementCard/);
+  assert.doesNotMatch(aiSource, /EnhancementModelCard/);
   assert.match(
     settingsPageSource,
     /saveSettings\(\{ contextUsageDisplay: value \}\)/,
@@ -139,6 +141,14 @@ test("Basics and AI tabs expose their respective app and AI controls", () => {
   // The AI tab keeps the Settings picker control: a native <select> popup is
   // platform-drawn and cannot carry the shared menu surface or its check mark.
   assert.doesNotMatch(aiSource, /<select/);
+  // Speech is not a Settings surface: the AI tab renders no voice card, search
+  // indexes no speech keys, its styles are gone, and the host capability keeps
+  // its IPC contract (ADR 0291).
+  assert.doesNotMatch(settingsPageSource, /VoiceSettingsCard|voice-settings/);
+  assert.doesNotMatch(settingsSearchSource, /settings\.speech/);
+  assert.doesNotMatch(stylesSource, /\.settings-speech/);
+  assert.doesNotMatch(enLocaleSource, /speechTitle:|speechVoicePlaceholder:/);
+  assert.match(protocolSource, /speechTranscribe: "pi-desktop\/speech\/transcribe"/);
 });
 
 test("language persists as part of shared app settings", () => {
@@ -217,6 +227,7 @@ test("model configuration keeps model defaults; AI owns app behavior defaults", 
   assert.match(providersSource, /settings\.defaultModel/);
   assert.doesNotMatch(providersSource, /enterToSend/);
   assert.doesNotMatch(providersSource, /settings\.modeAgent/);
+  assert.doesNotMatch(providersSource, /EnhancementModelCard/);
 });
 
 test("default model selector shows every configured model under its provider", () => {
@@ -354,6 +365,7 @@ test("settings nav keeps a flat searchable index with titled visual groups", () 
   assert.doesNotMatch(generalEntry, /settings\.defaultsTitle/);
   assert.match(aiEntry, /settings\.defaultsTitle/);
   assert.match(aiEntry, /settings\.commandShell/);
+  assert.match(aiEntry, /settings\.promptEnhancementModelTitle/);
   assert.match(settingsSearchSource, /keywordKeys/);
   assert.match(settingsSearchSource, /settings\.projectArchive/);
   assert.doesNotMatch(stylesSource, /\.token-usage-page/);
@@ -407,11 +419,11 @@ test("marketplace source settings live inside the Plugins marketplace surface", 
 test("settings compact pickers hug the current label on the shared menu select", () => {
   assert.match(
     stylesSource,
-    /\.settings-language-anchor,\s*\.settings-theme-anchor,\s*\.settings-menu-select-anchor\s*\{[^}]*width:\s*max-content/s,
+    /\.settings-language-anchor,\s*\.settings-theme-anchor,\s*\.settings-menu-select-anchor,\s*\.settings-font\s*\{[^}]*width:\s*max-content/s,
   );
   assert.match(
     stylesSource,
-    /\.settings-language-trigger,\s*\.settings-theme-trigger,\s*\.settings-menu-select-trigger\s*\{[^}]*width:\s*max-content/s,
+    /\.settings-language-trigger,\s*\.settings-theme-trigger,\s*\.settings-menu-select-trigger,\s*\.settings-font-trigger\s*\{[^}]*width:\s*max-content/s,
   );
 });
 

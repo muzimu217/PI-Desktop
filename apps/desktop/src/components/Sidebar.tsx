@@ -53,6 +53,11 @@ import {
   SIDEBAR_WIDTH_MAX,
   SIDEBAR_WIDTH_MIN,
 } from "../lib/sidebar-preferences";
+import {
+  SIDEBAR_RESIZE_STEP,
+  sidebarPointerResize,
+  sidebarResetWidth,
+} from "../lib/sidebar-resize";
 import { BrandLogo } from "./BrandLogo";
 import { NotificationCenter } from "./NotificationCenter";
 import { ProjectEditDialog } from "./ProjectEditDialog";
@@ -96,7 +101,7 @@ type ProjectEntry = {
 };
 
 const VIEWPORT_PADDING = 8;
-const SIDEBAR_RESIZE_STEP = 16;
+
 /** Private MIME so a sidebar session drag is never mistaken for an OS file drop. */
 const SESSION_DRAG_MIME = "application/x-pi-desktop-session";
 
@@ -198,16 +203,20 @@ export function Sidebar({
   onToggleSidebar,
   sidebarToggleShortcut,
   sidebarWidth,
+  widthMax = SIDEBAR_WIDTH_MAX,
   onWidthChange,
   onWidthCommit,
+  onResizeCollapse,
   className,
   onAnimationEnd,
 }: {
   onToggleSidebar: () => void;
   sidebarToggleShortcut: string;
   sidebarWidth: number;
+  widthMax?: number;
   onWidthChange: (width: number) => void;
   onWidthCommit: (width: number) => void;
+  onResizeCollapse: () => void;
   className?: string;
   onAnimationEnd?: ReactAnimationEventHandler<HTMLElement>;
 }) {
@@ -305,10 +314,13 @@ export function Sidebar({
     insertAfter: boolean,
   ) => void>(() => {});
 
-  const finishSidebarResize = useCallback((cancelled: boolean) => {
+  const finishSidebarResize = useCallback((cancelled: boolean, collapse = false) => {
     const state = sidebarResizeRef.current;
     if (!state) return;
-    if (cancelled) {
+    if (collapse) {
+      // Keep the previewed width for the exit animation and persist nothing:
+      // the shell restores the preferred expanded width on reopen.
+    } else if (cancelled) {
       onWidthChange(state.startWidth);
     } else {
       onWidthChange(state.currentWidth);
@@ -321,13 +333,16 @@ export function Sidebar({
       state.handle.releasePointerCapture(state.pointerId);
     }
     setSidebarResizing(false);
-  }, [onWidthChange, onWidthCommit]);
+    if (collapse) onResizeCollapse();
+  }, [onResizeCollapse, onWidthChange, onWidthCommit]);
 
   const startSidebarResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || sidebarResizeRef.current) return;
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.focus({ preventScroll: true });
+    // Anchor to the rendered width so pressing the handle never resizes the
+    // column; the live budget only limits where the gesture may land.
     const startWidth = clampSidebarWidth(sidebarWidth);
     sidebarResizeRef.current = {
       pointerId: event.pointerId,
@@ -340,20 +355,28 @@ export function Sidebar({
     setSidebarResizing(true);
     document.documentElement.setAttribute("data-sidebar-resizing", "true");
     event.currentTarget.setPointerCapture(event.pointerId);
-  }, [sidebarWidth]);
+  }, [sidebarWidth, widthMax]);
 
   const moveSidebarResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     const state = sidebarResizeRef.current;
     if (!state || state.pointerId !== event.pointerId) return;
-    const nextWidth = clampSidebarWidth(state.startWidth + event.clientX - state.startX);
-    state.currentWidth = nextWidth;
+    const result = sidebarPointerResize({
+      startWidth: state.startWidth,
+      deltaX: event.clientX - state.startX,
+      maxWidth: widthMax,
+    });
+    if (result.type === "collapse") {
+      finishSidebarResize(true, true);
+      return;
+    }
+    state.currentWidth = result.width;
     if (state.frame) return;
     state.frame = requestAnimationFrame(() => {
       if (sidebarResizeRef.current !== state) return;
       state.frame = 0;
       onWidthChange(state.currentWidth);
     });
-  }, [onWidthChange]);
+  }, [finishSidebarResize, onWidthChange, widthMax]);
 
   const endSidebarResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (sidebarResizeRef.current?.pointerId !== event.pointerId) return;
@@ -369,17 +392,28 @@ export function Sidebar({
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
     event.stopPropagation();
-    const currentWidth = clampSidebarWidth(sidebarWidth);
+    const currentWidth = clampSidebarWidth(sidebarWidth, widthMax);
     const nextWidth = event.key === "Home"
       ? SIDEBAR_WIDTH_MIN
       : event.key === "End"
-        ? SIDEBAR_WIDTH_MAX
+        ? clampSidebarWidth(widthMax, widthMax)
         : clampSidebarWidth(
             currentWidth + (event.key === "ArrowRight" ? SIDEBAR_RESIZE_STEP : -SIDEBAR_RESIZE_STEP),
+            widthMax,
           );
     if (nextWidth === currentWidth) return;
     onWidthCommit(nextWidth);
-  }, [onWidthCommit, sidebarWidth]);
+  }, [onWidthCommit, sidebarWidth, widthMax]);
+
+  /**
+   * Double-click reset: the shell's default width, clamped by the live
+   * three-column budget. A pointer gesture that is somehow still open is
+   * dropped first so its release cannot overwrite the reset.
+   */
+  const resetSidebarWidth = useCallback(() => {
+    if (sidebarResizeRef.current) finishSidebarResize(true);
+    onWidthCommit(sidebarResetWidth(widthMax));
+  }, [finishSidebarResize, onWidthCommit, widthMax]);
 
   useEffect(() => {
     if (!sidebarResizing) return;
@@ -2363,9 +2397,9 @@ export function Sidebar({
         aria-orientation="vertical"
         aria-label={t("nav.resizeSidebar")}
         aria-valuemin={SIDEBAR_WIDTH_MIN}
-        aria-valuemax={SIDEBAR_WIDTH_MAX}
-        aria-valuenow={clampSidebarWidth(sidebarWidth)}
-        aria-valuetext={t("nav.sidebarWidth", { width: clampSidebarWidth(sidebarWidth) })}
+        aria-valuemax={clampSidebarWidth(widthMax, widthMax)}
+        aria-valuenow={clampSidebarWidth(sidebarWidth, widthMax)}
+        aria-valuetext={t("nav.sidebarWidth", { width: clampSidebarWidth(sidebarWidth, widthMax) })}
         tabIndex={0}
         onPointerDown={startSidebarResize}
         onPointerMove={moveSidebarResize}
@@ -2373,6 +2407,7 @@ export function Sidebar({
         onPointerCancel={cancelSidebarResize}
         onLostPointerCapture={cancelSidebarResize}
         onKeyDown={handleSidebarResizeKeyDown}
+        onDoubleClick={resetSidebarWidth}
       />
     </aside>
   );

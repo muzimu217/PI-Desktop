@@ -1,6 +1,6 @@
 # ADR 0281: Host speech capability
 
-- Status: Accepted for implementation
+- Status: Accepted for implementation (amended by [ADR 0291](0291-remove-speech-settings-ui.md))
 - Date: 2026-09-17
 - Deciders: PI-Desktop core
 - Related: [ADR 0257](0257-plugin-real-time-capabilities.md) ·
@@ -27,12 +27,14 @@ must not appear in the chat model picker. Local OpenAI-Audio-compatible servers
    high-risk `speech.adapter.register`. Handles stay in the guest; HTTP plans
    are executed by the host with the bound provider's key and must stay on that
    origin. Built-in protocol ids are reserved.
-5. v1 product entry is Settings → AI Voice plus Composer file transcription and
-   draft speech. Audio bytes never enter the renderer (path in, scratch out).
+5. v1 product entry is the host API only: the `speech/*` IPC and plugin
+   adapters. No Settings card and no Composer transcription / draft-speech
+   control exists (ADR 0291 withdrew both). Audio bytes never enter the renderer
+   (path in, scratch out).
 6. Out of scope: microphone / `pi.audio` device backend, Realtime, agent
    `transcribe`/`speak` tools, audio as LLM content blocks, changing pi-ai.
 
 ## Consequences
 
-Composer voice actions stay disabled until a role is configured. Provider
+An unconfigured role fails `SPEECH_NOT_CONFIGURED`. Provider
 deletion makes the binding fail `NOT_FOUND`. Plugin unload drops its protocols.

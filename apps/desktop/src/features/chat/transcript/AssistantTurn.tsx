@@ -85,7 +85,8 @@ export function compactionMarksEqual(
     previous.throughMessageId === next.throughMessageId &&
     previous.generation === next.generation &&
     previous.summaryTokens === next.summaryTokens &&
-    previous.summarized === next.summarized
+    previous.summarized === next.summarized &&
+    previous.fallback === next.fallback
   );
 }
 
@@ -376,11 +377,13 @@ export function CompactionRow({ mark }: { mark: ContextCompactionMark }) {
         {t("chat.compactionRow", { times: mark.generation })}
       </span>
       <span className="transcript-compaction-detail">
-        {mark.summarized
-          ? t("chat.compactionRowSummary", {
-              tokens: formatCompactTokenCount(mark.summaryTokens),
-            })
-          : t("chat.compactionRowNoSummary")}
+        {mark.fallback
+          ? t("chat.compactionRowSummaryFailed")
+          : mark.summarized
+            ? t("chat.compactionRowSummary", {
+                tokens: formatCompactTokenCount(mark.summaryTokens),
+              })
+            : t("chat.compactionRowNoSummary")}
       </span>
     </div>
   );

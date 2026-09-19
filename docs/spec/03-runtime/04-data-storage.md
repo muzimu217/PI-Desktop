@@ -241,6 +241,17 @@ The app settings JSON optionally stores `thinkingDisplayMode` (`detailed` or
 `compact`). Missing values retain detailed presentation. This additive display
 preference neither rewrites stored reasoning nor changes the database schema.
 
+The same blob optionally stores the prompt-enhancement overrides
+`promptEnhancementCustomTemplate` (the switch that decides whether a stored
+template applies), `promptEnhancementUserTemplate`,
+`promptEnhancementProviderId`, `promptEnhancementModelId`, and
+`promptEnhancementThinkingLevel` (ADR 0121). An absent or blank user template means the
+built-in default applies, so clearing the field stores no key rather than an
+empty string. A non-blank user template must contain the draft variable and stay
+within `PROMPT_ENHANCEMENT_TEMPLATE_MAX_LENGTH`; host-core rejects a write that
+breaks either rule and drops any stored `promptEnhancementSystemPrompt`, which is
+no longer read. No schema version bump is required.
+
 New config domains (e.g. MCP servers) start as a namespace; they graduate to
 tables only when they need relations or indexes.
 
@@ -395,7 +406,7 @@ CREATE TABLE sessions (
   mode        TEXT NOT NULL DEFAULT 'agent',   -- plan | agent
   thinking_level TEXT NOT NULL DEFAULT 'off'
                 CHECK (thinking_level IN ('off', 'minimal', 'low', 'medium',
-                                          'high', 'xhigh', 'max')),
+                                          'high', 'xhigh', 'max', 'omit')),
   permission_mode TEXT NOT NULL DEFAULT 'inherit' -- D115: inherit follows settings
                 CHECK (permission_mode IN ('inherit', 'ask', 'accept-edits', 'auto')),
   source      TEXT,                            -- import origin: claude-code | codex | opencode | pi
@@ -434,7 +445,9 @@ CREATE INDEX idx_session_import_origins_plugin
   allowed, and built-in runtimes (e.g. `pi`) never exist in `providers`.
 - `thinking_level` is the durable session selector. New and v2-migrated
   sessions default to `off`; capability resolution may clamp the effective
-  request without rewriting the stored preference.
+  request without rewriting the stored preference. Schema v19 adds `omit`
+  (ADR 0295): send no thinking override. Existing rows keep their stored
+  canonical values.
 
 - `project_id` normalizes v1's free-text `project_path` (grouping, badges,
   hover-`+` new-session-in-project all become indexed lookups).
@@ -751,7 +764,16 @@ type Block =
       toolUsage?: ToolTokenUsage }
   | { type: "attachment"; kind: "image" | "file"; name: string;
       ref: string /* attachments/<sha256> or absolute path */;
-      mimeType?: string; size?: number };
+      mimeType?: string; size?: number }
+  | { type: "hostedSearch"; status: "searching" | "completed" | "failed";
+      rounds: Array<{ id: string;
+        status: "searching" | "completed" | "failed";
+        kind?: "search" | "openPage" | "findInPage";
+        query?: string; url?: string;
+        sources: Array<{ url: string; title?: string }> }>;
+      replay?: Array<{ type: "hostedSearch"; phase: string;
+        blockId?: string; name?: string; input?: unknown;
+        status?: string; isError?: boolean; wire?: unknown }> };
 ```
 
 - Tool results are stored **post-truncation** (16-tool-result-limits); full
@@ -1436,7 +1458,14 @@ host call is still pending. If `messages.id` already belongs to another
 session, the host remaps to `{sessionId}:{id}` before any JSONL write; a
 replay of the original id is a no-op against that remapped row. The outbox
 treats `UNIQUE constraint failed: messages.id` as an ack and keeps draining
-(D444). No schema migration is required.
+(D444). A permanently rejected append whose host error carries a
+`PERMISSION_DENIED:` prefix is likewise dropped so the FIFO can continue;
+`PLUGIN_PERMISSION_DENIED` and other host failures still pause (D597).
+Steering into a claimed collaboration delivery turn is extra human input: it
+must target that delivery's session, is exempt from the delivery
+content/attachment contract, does not inherit the delivery origin, and has
+any client-supplied `session_message` stripped. No schema migration is
+required.
 
 ## 12. Native Pi session authority (ADR 0254)
 
@@ -1480,3 +1509,10 @@ the sidecar.
 The first slice has no projection cache or async scan bound; every list still
 reads/parses complete files. Caching by canonical path/file identity/size/mtime
 and bounded asynchronous scanning remain deferred performance work.
+
+### Provider display order
+
+`kv(ns="app", key="providers.order")` stores an ordered array of provider IDs.
+Host-core owns updates through `providers.reorder`; missing metadata preserves
+creation order, new IDs follow saved IDs, and deleted IDs are ignored. This
+preference does not rewrite provider configuration or require a schema migration.

@@ -248,7 +248,7 @@ started on and a proxy is never silently dropped.
 
 ### 5e. Silent-turn recovery
 
-A turn that ends with no tool call and no visible assistant text is invisible
+An ordinary turn that ends with no tool call and no visible assistant text is invisible
 to the user: reasoning is never rendered, so a conclusion written only there
 did not arrive. 15 of 255 recorded sessions ended a turn that way, and the
 user's only recourse was typing "继续".
@@ -289,7 +289,35 @@ If the re-run is silent too, the turn ends as a visible assistant error with
 retriable `EMPTY_MODEL_RESPONSE`, which gives the transcript its normal retry
 action. No empty assistant message is persisted in either case.
 
-Decision D193; see E2E-146.
+A Host-ledger completion notice (ADR 0239, D446) is the narrow exception:
+its prompt already permits no acknowledgement. Main resolves the queued message
+by ID, verifies its target session, and constructs provenance from the ledger.
+The runtime accepts silence only for `kind: completion` targeting the current
+session with nonempty message and reply-to IDs. A silent notice reply emits its
+normal completed message and terminal lifecycle without a recovery request or
+`EMPTY_MODEL_RESPONSE`. Provider errors and aborts retain their normal handling,
+and a provider retry of the same attempt keeps the exception. The original
+task/result is not rewritten, and completion notices never request another
+callback.
+
+The exception covers exactly the notice's own reply: the first settled
+assistant response of the run spends it, whether that response is silent,
+textual, or a tool batch. A reply that follows tool results is therefore
+ordinary work under this section, and the exception is revoked as soon as an
+accepted steering message enters the model context, so a reply to the user
+keeps its full re-run and error path. Every new run recomputes it from the
+prompt's provenance. Ordinary user input, task/message deliveries, copied
+source framing, and restored history cannot enable it.
+
+An accepted silent reply is still not worth resending. Main persists it as an
+empty completed row (the transcript hides it and the host stores no text), but
+the runtime keeps it out of its entries and out of pi's transcript state, and
+the context projection drops any assistant with no content blocks, exactly as
+a restored transcript already did. The next provider request therefore carries
+no empty assistant message.
+
+Decision D193 and D446 (ADR 0239 amendment); see E2E-146 and
+E2E-SESSION-completion-notice-allows-silence.
 
 ### 5e.1. Progress-only recovery for approved Plan/Goal execution
 
@@ -435,18 +463,27 @@ tokens, capped at half the hard budget so retention alone cannot fill a small
 window and leave the summary no room. None of these values are configurable.
 
 The incoming user prompt participates in budgeting before the first provider
-request. If normal compaction fails during an automatic threshold or overflow
-recovery, the runtime persists a short recovery checkpoint with the previous
-summary (when available) and an aggressively bounded applicable tail. The
-complete transcript remains durable and visible, while the next model request
-receives only that recovery checkpoint and applicable tail. The lifecycle event marks
-this as `fallback: "retained_tail"` so the renderer can show a warning rather
-than a false success. If the fallback cannot be prepared, persisted, or kept
-below the safe budget, the user row and an assistant error remain durable and
-no provider request starts. Provider-reported context overflow is the last
-recovery layer: omit the failed assistant from model context, compact once,
-and retry once. A second overflow remains terminal. Bedrock's
-`prompt is too long: N tokens > M maximum` form maps to this path.
+request. The automatic summary request retries transient provider failures
+under a bounded pi-ai retry policy (3 retries, 2s/4s/8s backoff, cancelled by
+Stop); deterministic failures such as quota or auth return at once. The
+preflight guard sizes the prompt pi actually serializes — tool results already
+capped — rather than the raw messages, and when that prompt still exceeds the
+window it tries exactly one reduced input (tool results cut to a short prefix,
+thinking dropped, no message removed) before giving up on the summary (ADR
+0282). If normal compaction still fails during an automatic threshold or
+overflow recovery, the runtime persists a short recovery checkpoint with the
+previous summary (when available) and an aggressively bounded applicable tail.
+The complete transcript remains durable and visible, while the next model
+request receives only that recovery checkpoint and applicable tail. The
+lifecycle event marks this as `fallback: "retained_tail"`, and the checkpoint's
+mark carries the same `fallback`, so the renderer shows a warning and labels
+the transcript row as a failed summary rather than a false success. If the
+fallback cannot be prepared, persisted, or kept below the safe budget, the user
+row and an assistant error remain durable and no provider request starts.
+Provider-reported context overflow is the last recovery layer: omit the failed
+assistant from model context, compact once, and retry once. A second overflow
+remains terminal. Bedrock's `prompt is too long: N tokens > M maximum` form
+maps to this path.
 
 Automatic protection is always enabled and is not user-configurable. The
 runtime still accepts a construction-time override that disables it, used by
@@ -550,7 +587,10 @@ criterion-by-criterion report of what was met and the evidence observed.
 ## 5c. Thinking capability and stream contract
 
 - Canonical levels are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`,
-  and `max`.
+  and `max`. Session (and subagent) selectors also accept `omit`, which is
+  not a catalog/binding capability: the runtime keeps agent bookkeeping at
+  `off` and uses the low-level provider stream so no thinking override is
+  synthesized (ADR 0194 / ADR 0295).
 - The bundled models.dev release snapshot is authoritative for published
   reasoning support, thinking-level mapping, limits, input/output modalities,
   pricing, and other model metadata. pi-ai remains responsible for request

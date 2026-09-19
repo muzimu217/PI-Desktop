@@ -26,7 +26,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | [ADR 0128：瞬时 provider 故障的有界重试](/adr/0128-bounded-transient-provider-retry) | 为瞬时 provider 故障共享一个有界重试预算，跨请求设置和流式传输阶段共用四次重试 |
 | [ADR 0131：大段 Composer 粘贴写入会话临时目录](/adr/0131-large-text-paste-session-reference) | 超过可配置阈值的纯文本粘贴保存为会话临时文件，并在原位置插入内联 `@` 引用 |
 | [ADR 0137：保留的会话面板](/adr/0137-retained-session-panes) | 最近访问的会话各自保留一个已挂载的面板（上限三个），切换是可见性交换而不是重建转录 |
-| [ADR 0141：展开侧边栏宽度可调整](/adr/0141-sidebar-width-resize) | 展开侧边栏通过右边缘手柄调整 240–520px 宽度，并持久化首选值 |
+| [ADR 0141：展开侧边栏宽度可调整](/adr/0141-sidebar-width-resize) | 展开侧边栏通过右边缘手柄调整 240–520px 宽度；拖过 160px 会收起（ADR 0290） |
 | [ADR 0142：允许非回环 HTTP MCP 端点](/adr/0142-allow-non-loopback-http-mcp) | 支持局域网 MCP，并明确提示明文连接风险，插件仍受网络白名单约束 |
 | [ADR 0145：发布本机 macOS Intel 工件](/adr/0145-native-macos-intel-release-lane) | 通过匹配的 macOS 原生运行器发布 arm64 与 Intel x64 DMG/ZIP，两个架构工件均带有明确后缀，并合并更新源 |
 | [ADR 0148：明确禁用应用快捷键](/adr/0148-explicitly-disable-keyboard-shortcuts) | 缺少覆盖使用默认值，`null` 表示未绑定并关闭渲染器、菜单和启动器分发 |
@@ -58,7 +58,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | [ADR 0200：宿主拥有的插件会话导入与归属 API](/adr/0200-plugin-owned-session-api) | 插件历史会话由主机生成 id，并按插件、来源和外部 id 归属 |
 | [ADR 0201：显式插件项目 id 与宿主拥有的会话刷新](/adr/0201-plugin-project-ids-and-session-refresh) | 插件可显式绑定主机项目，成功写入由主机通知渲染器刷新 |
 | [ADR 0204：未签名 macOS 首次启动助手](/adr/0204-unsigned-macos-first-launch-helper) | 只清理 PI-Desktop 的 quarantine 属性，并用 Finder 一键启动可信的未签名应用（由 ADR 0232 修订） |
-| [ADR 0232：macOS DMG 只保留打开说明](/adr/0232-macos-dmg-text-only-opening-guidance) | DMG 只显示“如果打不开请看”说明，ZIP 保留首次启动助手 |
+| [ADR 0232：macOS DMG 只保留打开说明](/adr/0232-macos-dmg-text-only-opening-guidance) | 由 ADR 0296 修订：DMG 现为双图标安装；ZIP 仍保留首次启动助手 |
 | [ADR 0252：插件的宿主回合结束事件](/adr/0252-plugin-host-turn-end-event) | 宿主在每次已开始的回合结束时向插件宣告一次 `session:turnEnded`，携带回合身份与终止原因 |
 
 ## 完整索引
@@ -116,7 +116,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | 0046 | [按类别拆分的进程日志文件](/adr/0046-categorized-process-logs) | 已接受 |
 | 0047 | [带精确与估算 token 来源的上下文用量检查器](/adr/0047-context-usage-inspector) | 已接受 |
 | 0048 | [按回合惰性激活工具](/adr/0048-lazy-per-turn-tool-activation) | 已接受 |
-| 0049 | [用保留尾部恢复自动上下文压缩失败](/adr/0049-context-compaction-failure-recovery) | 已接受 |
+| 0049 | [用保留尾部恢复自动上下文压缩失败](/adr/0049-context-compaction-failure-recovery) | 已接受（预检守卫由 ADR 0282 修订） |
 | 0050 | [有界的 provider 流恢复与诊断](/adr/0050-bounded-provider-stream-recovery) | 已接受 |
 | 0051 | [将 host RPC stdio 与 Tokio 阻塞池隔离](/adr/0051-host-rpc-stdio-resource-isolation) | 已接受 |
 | 0052 | [Plan 运行状态与审批边界](/adr/0052-plan-operating-state-and-approval-boundary) | 已被 ADR 0053 取代 |
@@ -271,7 +271,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | 0203 | [桌面操作的本地 MCP 控制平面](/adr/0203-local-mcp-control-plane) | 已接受（由 D372 修订） |
 | 0204 | [未签名 macOS 首次启动助手](/adr/0204-unsigned-macos-first-launch-helper) | 已接受（由 D406 / ADR 0232 修订） |
 | 0205 | [远程 Agent 控制使用专用的 Host 边界](/adr/0205-remote-agent-control-boundary) | 已接受待实现（MVP 之后；由 D376 修订） |
-| 0232 | [macOS DMG 只保留打开说明](/adr/0232-macos-dmg-text-only-opening-guidance) | 已接受（修订 D371 / ADR 0204） |
+| 0232 | [macOS DMG 只保留打开说明](/adr/0232-macos-dmg-text-only-opening-guidance) | 已接受（由 D457 / ADR 0296 修订；修订 D371 / ADR 0204） |
 | 0241 | [文件视图改为 vendor 的可更新插件](/adr/0241-vendored-updatable-file-view-plugin) | 已接受（取代 ADR 0105；issue #304） |
 | 0242 | [仅增量且合并的流式更新](/adr/0242-delta-only-streaming-updates) | 已接受（修订 0127 / 0130 / 0149 / 0153；issue #299） |
 | 0243 | [技能市场公网 HTTPS 目录拉取](/adr/0243-skill-market-public-https-catalog) | 已接受（修订 ADR 0009；issue #287 / PR #290） |
@@ -290,7 +290,19 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | 0278 | [规范应用 ID `net.aiuo.pi-desktop`](/adr/0278-canonical-application-id) | 已接受（D443；修订 D141 / D371 / ADR 0204；issue #524） |
 | 0279 | [可恢复的子代理委托](/adr/0279-resumable-subagent-delegations) | 已接受待实现（修订 ADR 0062；ADR 0089；issue #513） |
 | 0280 | [插件自有界面按宿主语言自行本地化](/adr/0280-plugin-owned-ui-localizes-from-host-locale) | 已接受（修订 ADR 0267；ADR 0159） |
+| 0282 | [压缩摘要先重试并按实际提示大小预检，再回退保留尾部](/adr/0282-compaction-summary-retry-and-sizing) | 已接受（修订 ADR 0049；issue #543） |
+| 0283 | [远程 MCP 服务端 OAuth 2.1 认证](/adr/0283-remote-mcp-oauth) | 已接受 |
+| 0284 | [`packages/host-runtime` 的无头运行时边界](/adr/0284-headless-runtime-boundary) | 已接受（实施中）（D447；ADR 0205 R2 前置） |
+| 0285 | [`packages/racp` 的 `RACP-WS` 传输](/adr/0285-racp-ws-transport) | 已接受（实施中）（D448；ADR 0205 R2） |
 | turn-process-and-thinking-display | [回合过程与思考展示](/adr/turn-process-and-thinking-display) | 已接受 |
+| 0289 | [签名的 macOS GitHub Release 与应用内更新](/adr/0289-signed-macos-github-releases) | 已接受（D450；修订 ADR 0022 / 0145 / 0191 / 0204 / D078） |
+| 0290 | [恢复可拖拽侧边栏宽度，过窄时收起](/adr/0290-resizable-sidebar-collapse-threshold) | 已接受（D451；修订 ADR 0141 / ADR 0238） |
+| 0291 | [移除设置页面的语音界面](/adr/0291-remove-speech-settings-ui) | 已接受（修订 ADR 0281） |
+| 0292 | [远端主机的 SSH 引导](/adr/0292-ssh-remote-host-bootstrap) | 已接受实施（D453；ADR 0205 R2b，扩展 ADR 0286） |
+| 0294 | [项目存档改为列表 + 检查器](/adr/0294-project-archive-list-inspector) | 已接受（D455；修订 D267 / D168） |
+| 0295 | [会话思考参数不发送](/adr/0295-session-thinking-parameter-omission) | 已接受（D456；修订 ADR 0194 / ADR 0144 / ADR 0221） |
+| 0296 | [已签名 macOS DMG 改为双图标安装](/adr/0296-macos-signed-dmg-two-icon-install) | 已接受（D457；修订 ADR 0232 / ADR 0204） |
+| 0297 | [提供商托管联网搜索作为适配器能力](/adr/0297-provider-hosted-web-search-adapter-capability) | 已接受 |
 
 ## 什么时候看 ADR
 
@@ -299,3 +311,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 - 决策日志记录更细的冻结条款和后续修订。
 
 前往 [英文 ADR 索引](/adr/README) 查看完整记录，或打开 [中文决策日志](/zh-CN/spec/08-meta/decisions-log) 按编号检索。
+
+## Tray session shortcuts
+
+[ADR tray-session-shortcuts](/adr/tray-session-shortcuts) defines bounded native session groups and the renderer/Main ownership boundary.

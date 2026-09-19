@@ -82,6 +82,7 @@ import type {
   Risk,
   SubagentDefinition,
   SubagentRunStatus,
+  SessionThinkingLevel,
   SubagentThinkingLevel,
   ThinkingLevel,
   ToolTokenUsage,
@@ -95,6 +96,7 @@ import {
   DEFAULT_SUBAGENT_PERMISSION,
   formatAskToolOutput,
   formatSessionMessage,
+  hostedSearchFromMessage,
   isCommandShellOption,
   isToolsOutputParams,
   MAX_SUBAGENT_CONCURRENCY,
@@ -154,7 +156,7 @@ import {
   composeModeSystemPrompt,
   DEFAULT_RUNTIME_SYSTEM_PROMPT,
 } from "./mode-prompts.js";
-import { clampThinkingLevel } from "./thinking-level.js";
+import { agentThinkingLevel, clampThinkingLevel, omitThinkingModel } from "./thinking-level.js";
 import {
   alignRetainedReasoningIdentity,
   harvestRetainedReasoning,
@@ -175,6 +177,11 @@ import {
   withOpenCodeSessionHeaders,
 } from "./opencode-session-headers.js";
 import { withCompactionRequestHeaders } from "./compaction-request.js";
+import {
+  COMPACTION_SUMMARY_RETRY_POLICY,
+  estimateSummaryPromptTokens,
+  reduceSummaryInput,
+} from "./compaction-summary-input.js";
 import {
   mergeProviderHeaders,
   providerHeadersEqual,
@@ -831,7 +838,7 @@ export type AgentRuntimeOptions = {
   /** Durable host turn ID for the current prompt, used by plan identity. */
   turnId?: string;
   provider: RuntimeProviderConfig;
-  thinkingLevel: ThinkingLevel;
+  thinkingLevel: SessionThinkingLevel;
   systemPrompt?: string;
   /** Session-bound workspace root used for path-scoped instruction requests. */
   projectPath?: string;
@@ -883,7 +890,7 @@ export type AgentRuntimeOptions = {
 export type RuntimeMatchConfig = {
   mode: Mode;
   provider: RuntimeProviderConfig;
-  thinkingLevel: ThinkingLevel;
+  thinkingLevel: SessionThinkingLevel;
   pluginTools?: PluginToolDef[];
   pluginSkills?: PluginSkillDef[];
   trustedExtensions?: TrustedExtensionSpec[];
@@ -1053,13 +1060,24 @@ const MAX_ACCEPTED_COMMAND_TIMEOUT = 100_000_000;
  * name. Every strong model has `file_path`/`query` burned in from pretraining
  * and sends them regardless of what the schema says, so the schema accepts both
  * spellings and {@link normalizeToolParams} folds the alias away before the
- * host sees the call (D273).
+ * host sees the call (D273). Weaker models — issue #454 pinned longcat 2.0 —
+ * reach for `filepath` / `filename` / `filePath` / `file` instead; folding
+ * those the same way rescues the turn before the model gives up on the tool
+ * and silently falls back to Bash.
  */
+const PATH_ARG_ALIASES = {
+  file_path: "path",
+  filepath: "path",
+  filePath: "path",
+  filename: "path",
+  fileName: "path",
+  file: "path",
+} as const;
 const TOOL_PARAM_ALIASES: Record<string, Record<string, string>> = {
-  Read: { file_path: "path" },
-  Write: { file_path: "path" },
-  Edit: { file_path: "path" },
-  BrowserPreview: { file_path: "path" },
+  Read: { ...PATH_ARG_ALIASES },
+  Write: { ...PATH_ARG_ALIASES },
+  Edit: { ...PATH_ARG_ALIASES },
+  BrowserPreview: { ...PATH_ARG_ALIASES },
   Glob: { query: "pattern" },
   Grep: { query: "pattern" },
 };
@@ -1145,9 +1163,22 @@ function requireAliasedParams(toolName: string, params: unknown): void {
   if (!aliases || !isRecord(params)) return;
   for (const canonical of new Set(Object.values(aliases))) {
     if (params[canonical] !== undefined) continue;
+    // A weaker model that keeps hitting this error gives up on the tool and
+    // silently switches to Bash (issue #454). Naming the accepted spellings and
+    // showing a minimal example lets the next call self-correct instead of the
+    // whole turn falling back to shell.
+    const acceptedAliases = Object.keys(aliases).filter(
+      (alias) => aliases[alias] === canonical,
+    );
+    const aliasHint =
+      acceptedAliases.length > 0
+        ? ` (the alias${acceptedAliases.length > 1 ? "es" : ""} ${acceptedAliases
+            .map((name) => `\`${name}\``)
+            .join(", ")} ${acceptedAliases.length > 1 ? "are" : "is"} also accepted)`
+        : "";
     throw Object.assign(
       new Error(
-        `Invalid arguments for ${toolName}: \`${canonical}\` is required`,
+        `Invalid arguments for ${toolName}: \`${canonical}\` is required${aliasHint}. Example: {"${canonical}": "..."}.`,
       ),
       { errorCode: "INVALID_ARGUMENT" },
     );
@@ -1442,7 +1473,7 @@ export class DesktopAgentRuntime {
   readonly sessionId: string;
   private mode: Mode;
   private provider: RuntimeProviderConfig;
-  private thinkingLevel: ThinkingLevel;
+  private thinkingLevel: SessionThinkingLevel;
   private host: RuntimeHost;
   private onEvent: (envelope: AgentEventEnvelope) => void;
   private streamSink: StreamCoalescer;
@@ -1568,6 +1599,12 @@ export class DesktopAgentRuntime {
    * One automatic re-run per prompt, then the failure becomes visible. */
   private pendingSilentTurnRerun = false;
   private silentTurnRerunAttempted = false;
+  /**
+   * The first settled reply to a current Host-ledger completion notice may
+   * need no acknowledgement (D446). Spent by that reply, and revoked as soon
+   * as accepted user steering enters the model context.
+   */
+  private allowSilentCompletion = false;
   private silentTurnRerunInProgress = false;
   private suppressSilentTurnRunEnd = false;
   /** Autonomous plan/goal execution: one progress-only continue (#43). */
@@ -1800,7 +1837,10 @@ Delegation rules:
           m,
           context,
           hookedOptions,
-          (retryOptions) => this.models.streamSimple(m, context, retryOptions),
+          (retryOptions) =>
+            this.thinkingLevel === "omit"
+              ? this.models.stream(omitThinkingModel(m), context, retryOptions)
+              : this.models.streamSimple(m, context, retryOptions),
           {
             claim: (error, phase) => this.claimProviderRetry(error, phase),
             headers: () => this.providerRetryHeaders,
@@ -1833,7 +1873,7 @@ Delegation rules:
         systemPrompt: this.composeSystemPrompt(),
         model,
         tools,
-        thinkingLevel: this.thinkingLevel,
+        thinkingLevel: agentThinkingLevel(this.thinkingLevel),
         messages: this.liveSessionContext().messages,
       },
       // Plan transitions must be the only tool call in an assistant batch.
@@ -2243,7 +2283,7 @@ Delegation rules:
     });
     this.thinkingLevel = clampThinkingLevel(this.provider, this.thinkingLevel);
     this.agent.state.model = model;
-    this.agent.state.thinkingLevel = this.thinkingLevel;
+    this.agent.state.thinkingLevel = agentThinkingLevel(this.thinkingLevel);
   }
 
   async activateTrustedExtensionAgent(agentKey: string, modelId: string): Promise<boolean> {
@@ -2314,7 +2354,7 @@ Delegation rules:
       getModel: () => runtime.model,
       setModel: (model) => runtime.setExtensionModel(model),
       modelRegistry: runtime.extensionModelRegistry(),
-      getThinkingLevel: () => runtime.thinkingLevel,
+      getThinkingLevel: () => agentThinkingLevel(runtime.thinkingLevel),
       setThinkingLevel: (level) => {
         runtime.thinkingLevel = clampThinkingLevel(runtime.provider, level as ThinkingLevel);
       },
@@ -2434,13 +2474,13 @@ Delegation rules:
   }
 
   /* Rebuild pi-ai messages from the persisted transcript, including tool
-   * call/result pairs — tool rows persist toolCallId/toolName/toolArgs and
-   * the result (including deferred-tool activation markers), which is
-   * everything the model context needs. Losing them
-   * (the pre-D120 behavior) collapsed a reseeded session to bare chat text:
-   * the model forgot every file it had read and, seeing its own history
-   * "answer" without visible tool use, stopped calling tools altogether.
-   * Failed assistant turns stay transcript-only. */
+   * call/result pairs and hosted-search replay blocks. Tool rows persist
+   * toolCallId/toolName/toolArgs and the result (including deferred-tool
+   * activation markers). Hosted search persists the adapter's raw content
+   * parts on `hostedSearch.replay` so Anthropic/Responses can ground later
+   * turns after a restart. Losing either (the pre-D120 tool behavior)
+   * collapsed a reseeded session to bare chat text. Failed assistant turns
+   * stay transcript-only. */
   private historyToEntries(history: UiMessage[]): MessageEntry[] {
     const api = apiBindingForProviderModel(this.provider).api;
     const deepSeekCompletionsReplay =
@@ -2509,6 +2549,15 @@ Delegation rules:
               ? { thinkingSignature: "reasoning_content" as const }
               : {}),
           });
+        }
+        const replay = m.hostedSearch?.replay;
+        if (Array.isArray(replay)) {
+          for (const block of replay) {
+            if (!block || typeof block !== "object" || block.type !== "hostedSearch") {
+              continue;
+            }
+            content.push(block as unknown as AssistantMessage["content"][number]);
+          }
         }
         if (m.content?.trim()) {
           content.push({ type: "text" as const, text: m.content });
@@ -5337,6 +5386,7 @@ Delegation rules:
     this.suppressProviderRetryRunEnd = false;
     this.pendingSilentTurnRerun = false;
     this.silentTurnRerunAttempted = false;
+    this.allowSilentCompletion = false;
     this.silentTurnRerunInProgress = false;
     this.suppressSilentTurnRunEnd = false;
     this.pendingProgressTurnRerun = false;
@@ -6120,15 +6170,32 @@ Delegation rules:
     // The summary now covers the whole boundary range, so its input is the
     // context that tripped the hard limit. On a window whose headroom leaves
     // less room for the summary request than the hard limit allows, this is the
-    // guard that routes the turn to retained-tail recovery instead.
-    const historyTokens = preparation.messagesToSummarize.reduce(
-      (total, message) => total + estimateTokens(message),
-      0,
-    );
-    const previousSummaryTokens = preparation.previousSummary
-      ? Math.ceil(preparation.previousSummary.length / 4)
-      : 0;
-    return historyTokens + previousSummaryTokens >= summaryInputLimit;
+    // guard that routes the turn to retained-tail recovery instead. It sizes
+    // the prompt the way pi serializes it — tool results already capped —
+    // rather than the raw messages, which overstated tool-heavy sessions by
+    // several times and skipped summaries that would have fit (#543).
+    return estimateSummaryPromptTokens(preparation) >= summaryInputLimit;
+  }
+
+  /**
+   * Fit the summary input under the provider budget. The full input is tried
+   * first; when it is too large, one reduced pass (tool results cut to a short
+   * prefix, thinking dropped) is tried before giving up. The reduced input
+   * still covers every message the checkpoint files behind its boundary, so
+   * nothing is silently dropped from the summary's scope (ADR 0282).
+   */
+  private fitSummaryInputToBudget(
+    preparation: ShapedPreparation,
+    budget: { hardLimit: number; requestHeadroom: number },
+  ): ShapedPreparation | undefined {
+    if (!this.compactionSummaryWouldExceedBudget(preparation, budget)) {
+      return preparation;
+    }
+    const reduced = reduceSummaryInput(preparation);
+    if (!reduced || this.compactionSummaryWouldExceedBudget(reduced, budget)) {
+      return undefined;
+    }
+    return reduced;
   }
 
   private async persistCheckpoint(
@@ -6293,8 +6360,11 @@ Delegation rules:
       withCompactionRequestHeaders(this.models, this.provider, this.sessionId),
       this.model,
       undefined,
-      this.thinkingLevel,
-      undefined,
+      agentThinkingLevel(this.thinkingLevel),
+      // Without a policy pi-ai returns the first failed response as-is, which
+      // made a single dropped stream or 503 discard the whole summary (#543).
+      // pi's classifier decides what is transient; the waits honour `signal`.
+      COMPACTION_SUMMARY_RETRY_POLICY,
       undefined,
       withAbortSignal(signal, BACKGROUND_CONTEXT),
     );
@@ -6335,7 +6405,8 @@ Delegation rules:
       return this.buildRolloverCheckpoint(entries, budget, preparation.value);
     }
 
-    if (this.compactionSummaryWouldExceedBudget(preparation.value, budget)) {
+    const summaryInput = this.fitSummaryInputToBudget(preparation.value, budget);
+    if (!summaryInput) {
       return {
         ok: false,
         entries,
@@ -6349,7 +6420,7 @@ Delegation rules:
 
     let result: Awaited<ReturnType<typeof compact>>;
     try {
-      result = await this.generateCompaction(preparation.value, signal);
+      result = await this.generateCompaction(summaryInput, signal);
     } catch (error) {
       return {
         ok: false,
@@ -6535,6 +6606,33 @@ Delegation rules:
     }
   }
 
+  /**
+   * Fold pi-ai hostedSearch content blocks and message citations into the
+   * current assistant bubble as `UiMessage.hostedSearch`, emitting a
+   * full-frame message_update when the normalized state actually changed.
+   * Search state transitions are low frequency, so a full frame costs less
+   * than teaching every delta path about the field.
+   */
+  private applyHostedSearch(message: unknown): void {
+    if (!this.currentAssistant) return;
+    const record = message as {
+      content?: unknown;
+      hostedSearchCitations?: unknown;
+    };
+    const next = hostedSearchFromMessage({
+      content: record?.content,
+      citations: record?.hostedSearchCitations,
+    });
+    if (!next) return;
+    const previous = this.currentAssistant.hostedSearch;
+    if (previous && JSON.stringify(previous) === JSON.stringify(next)) return;
+    this.currentAssistant = {
+      ...this.currentAssistant,
+      hostedSearch: next,
+    };
+    this.emit({ type: "message_update", message: this.currentAssistant });
+  }
+
   private async handleAgentEvent(event: AgentEvent) {
     this.forwardAgentEventToExtensions(event);
     switch (event.type) {
@@ -6600,6 +6698,7 @@ Delegation rules:
           } else {
             this.emit({ type: "message_start", message: this.currentAssistant });
           }
+          this.applyHostedSearch(event.message);
         }
         // User messages are echoed and persisted by the desktop main process
         // (agentPrompt handler); re-emitting them here would duplicate the
@@ -6608,6 +6707,7 @@ Delegation rules:
       }
       case "message_update": {
         if (this.currentAssistant && event.message.role === "assistant") {
+          this.applyHostedSearch(event.message);
           const content = assistantContent((event.message as any).content);
           const previousText = this.currentAssistant.content;
           const previousThinking = this.currentAssistant.thinking ?? "";
@@ -6653,8 +6753,15 @@ Delegation rules:
         if (event.message.role === "user") {
           const steeringId = this.pendingSteering.get(event.message);
           const id = steeringId ?? this.pendingUserMessageId ?? randomUUID();
-          if (steeringId) this.pendingSteering.delete(event.message);
-          else this.pendingUserMessageId = undefined;
+          if (steeringId) {
+            this.pendingSteering.delete(event.message);
+            // User input is now part of the model context: whatever the model
+            // says next answers the user, not a completion notice, so the
+            // ordinary response contract applies again.
+            this.allowSilentCompletion = false;
+          } else {
+            this.pendingUserMessageId = undefined;
+          }
           this.appendLiveEntry(id, event.message);
           break;
         }
@@ -6717,6 +6824,21 @@ Delegation rules:
             );
           }
           const usage = usageFromPi((event.message as any).usage as Usage | undefined);
+          const hostedSearch = hostedSearchFromMessage({
+            content: (event.message as any).content,
+            citations: (event.message as any).hostedSearchCitations,
+          });
+          if (hostedSearch) {
+            const terminal = failed || aborted ? "failed" : "completed";
+            for (const round of hostedSearch.rounds) {
+              if (round.status === "searching") round.status = terminal;
+            }
+            hostedSearch.status = hostedSearch.rounds.some(
+              (round) => round.status === "failed",
+            )
+              ? "failed"
+              : "completed";
+          }
           const endedAt = Date.now();
           const providerWaitMs =
             this.requestStartedAt !== undefined &&
@@ -6739,11 +6861,20 @@ Delegation rules:
           // leaving the user with nothing: the reasoning that may hold the
           // answer is never rendered. Re-run once with a nudge before letting
           // that surface as a finished turn.
-          const silentTurn =
+          const silence =
             !failed &&
             !aborted &&
             responseText.trim().length === 0 &&
             !messageRequestsTools(event.message);
+          // A completion notice needs no acknowledgement, so its own reply may
+          // stay silent (D446). The exception covers exactly that reply: the
+          // first settled response spends it, whether silent, textual, or a
+          // tool batch, so later replies in the same run answer tool results
+          // or user input under the ordinary contract. A provider failure
+          // keeps it for the retried attempt.
+          const exemptSilence = silence && this.allowSilentCompletion;
+          if (!failed && !aborted) this.allowSilentCompletion = false;
+          const silentTurn = silence && !exemptSilence;
           if (silentTurn && !this.silentTurnRerunAttempted) {
             this.silentTurnRerunAttempted = true;
             this.pendingSilentTurnRerun = true;
@@ -6879,6 +7010,7 @@ Delegation rules:
             ...(classifiedError
               ? { error: classifiedError, isError: true }
               : {}),
+            ...(hostedSearch ? { hostedSearch } : {}),
           };
           this.emit({ type: "message_end", message: this.currentAssistant });
           this.activeProviderRetryAttempt = 0;
@@ -6888,7 +7020,18 @@ Delegation rules:
             this.compactionEnabled &&
             overflow &&
             !this.overflowRecoveryAttempted;
-          if (!failed && !aborted && !emptyResponse) {
+          if (exemptSilence) {
+            // Accepted silence is still nothing worth resending: keep it out
+            // of the runtime entries, exactly as a restored transcript would,
+            // and out of pi's transcript state so the next request carries no
+            // empty assistant message. pi appends the message before it
+            // notifies listeners; the identity check keeps this from touching
+            // anything else should that order ever change.
+            const messages = this.agent.state.messages;
+            if (messages.at(-1) === event.message) {
+              this.agent.state.messages = messages.slice(0, -1);
+            }
+          } else if (!failed && !aborted && !emptyResponse) {
             this.appendLiveEntry(assistantId, event.message);
           } else {
             this.turnHadError = true;
@@ -7245,6 +7388,12 @@ Delegation rules:
     this.pendingUserMessageId = userMessageId;
     this.resetRunRecoveryState();
     this.autonomousExecution = false;
+    // Main resolves this provenance from the Host ledger. Never infer it from
+    // prompt text, model output, extension content, or restored history.
+    const origin = typeof input === "string" ? undefined : input.sessionMessage;
+    this.allowSilentCompletion = origin?.kind === "completion" &&
+      origin.targetSessionId === this.sessionId &&
+      Boolean(origin.messageId?.trim() && origin.replyToMessageId?.trim());
     this.turnEpoch += 1;
     this.abortDelegationsFromPreviousTurns();
     this.requestStartedAt = Date.now();

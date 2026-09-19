@@ -31,8 +31,8 @@ synthesize({ sessionId, text, voice?, format? }) → { path, mimeType, dataUrl? 
 }
 ```
 
-协议 id 匹配 `^[a-z][a-z0-9._-]{0,63}$`。speech 为空或缺省即未配置状态：
-Composer 入口保持禁用。
+协议 id 匹配 `^[a-z][a-z0-9._-]{0,63}$`。speech 为空或缺省即未配置状态；应用界面
+不再读取该绑定，调用方只有插件与显式 IPC 调用（ADR 0291）。
 
 ## 3. 内置协议
 
@@ -68,8 +68,8 @@ pi-desktop/speech/synthesize
 
 ## 6. 产品
 
-设置 → AI **语音** 卡片：ASR 和 TTS 各选 provider × protocol × model
-（TTS 还选 voice）。Composer：转写附件音频到草稿；朗读草稿。
+设置页面**不再提供**语音入口（ADR 0291）。绑定由调用方通过宿主设置接口写入，
+消费方只有插件与 `speech/*` IPC，渲染器没有任何转写或朗读控件。
 Whisper / TTS 模型不得出现在聊天模型选择器中。
 
 v1 不实现麦克风采集、Realtime 和 agent 工具。

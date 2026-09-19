@@ -451,6 +451,50 @@ storage. P2/P3 operations (session create, message mutation, arbitrary re-bindin
 provider/model binding, batch delete, and tags) are intentionally not part of
 this contract.
 
+### usage (requires `usage.read`)
+
+Read-only completed-turn facts for the non-deleted sessions the user can
+still see. The host serves one flat fact row per turn — counters and
+identifiers only; no message body, no transcript projection, and no write
+path. Deliberately **no dashboard shape**: streaks, heatmaps, per-model
+shares, and top-session rankings are the plugin's own computation on top of
+these rows, so changing a metric definition later is never a breaking SDK
+change.
+
+```ts
+pi.usage.listTurns(input?: {
+  fromMs?: number      // inclusive window start, epoch ms; default toMs - 30 days
+  toMs?: number        // inclusive window end, epoch ms; default now
+  projectId?: number | null
+  sessionId?: string
+  cursor?: string      // opaque page cursor from the previous nextCursor
+  limit?: number       // 1..=500 rows; default 200
+}): Promise<{
+  turns: Array<{
+    turnId: string; sessionId: string; sessionTitle: string | null
+    projectId: number | null; providerId: string | null; modelId: string | null
+    startedAt: number; endedAt: number
+    inputTokens: number; outputTokens: number
+    cacheReadTokens: number; cacheWriteTokens: number; reasoningTokens: number
+  }>
+  nextCursor: string | null
+}>
+```
+
+Semantics:
+
+- Only completed turns of non-deleted sessions are listed. A session the
+  user deleted leaves the listing.
+- Rows are ordered by `endedAt` ascending with a keyset cursor, so paging is
+  stable while the window fills; the ranking a dashboard shows is its own
+  sort, not the host's.
+- The window spans at most 365 days; `limit` is 1..=500 (default 200). The
+  Electron side validates first, and the host RPC re-checks the same bounds.
+  Absent and `null` bounds are equivalent; an empty session title is returned
+  as `null`.
+- A missing or malformed `usage_json` yields zero cache/reasoning counters —
+  never a partial row.
+
 ### session collaboration (requires `desktop.control`)
 
 The official Session Orchestrator composes the reviewed desktop-control
@@ -761,6 +805,24 @@ not receive a native microphone handle or a host secret; browser speech
 recognition and speech synthesis remain page-owned. A panel should provide a
 text fallback and announce permission or recognition failures through its
 accessible status.
+
+## Scenic Settings contribution
+
+`contributes.scenicThemes` is a declarative presentation contribution, not a
+plugin page API. It provides localized card metadata for same-plugin themes and
+declared preview assets. The host owns the Settings DOM, styles, selection,
+focus behavior, slider draft, and Apply action. The plugin receives no Settings
+bridge, renderer DOM access, arbitrary CSS, JavaScript, navigation, or actions.
+
+The host persists Apply through the existing typed theme-variable boundary and
+only for the declared `--nexus-backdrop-blur` variable. `ui.panel` windows and
+`contributes.views` retain their independent native-view implementation.
+
+Theme assets declared for scenic cards may be package-relative, in which case
+the host resolves them inside the installed plugin package before rewriting the
+matching CSS `url()` or card preview to `plugin-asset:`. Absolute declared
+assets retain the external-path route. Neither route grants a plugin arbitrary
+filesystem access (ADR 0288).
 
 ### audio (requires `audio.capture.background` / `audio.playback.background`)
 

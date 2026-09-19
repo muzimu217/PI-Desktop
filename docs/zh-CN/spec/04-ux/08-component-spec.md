@@ -178,6 +178,18 @@
 
 ---
 
+### Native tray session menu
+
+The Main-owned native menu contains Open, non-empty Running/Unread/Pinned
+sections, and Quit. Each section has a disabled localized heading, single-line
+session rows up to the share allocated to that group, and View more only when
+it overflows that share. Session rows are globally deduplicated before
+truncation. View more expands session navigation;
+session rows enter their original conversation. The menu follows active locale
+changes and never marks a result read merely by opening. macOS single-click
+opens the attached menu; Open and double-click restore/focus the window.
+See [ADR tray-session-shortcuts](/adr/tray-session-shortcuts).
+
 ## 2. Topbar
 
 ### 2.1 目的
@@ -254,6 +266,7 @@ Composer 拥有 Agent/Plan/Goal 控件以及组合的模型 × 推理选择（§
 ### 2.5 辅助功能
 
 - 每个控件都可以通过 Tab 键盘访问
+- 输入框不渲染任何转写或朗读控件；宿主语音能力只能由 IPC 与插件调用（ADR 0291）。
 - 停止按钮有 `aria-label="Stop generating"`
 
 ### 2.6 MVP 约束
@@ -651,11 +664,11 @@ expanded/collapsed 侧边栏仍为 20px/18px 且启动画面为 64 像素。
 
 ### 5.1 目的
 
-停靠右侧工作栏，用于检查和引导座席的工作空间。可主动启动的表面是插件视图
-（ADR 0104），包括 vendor 进来的文件管理器 `pi.file-manager`（项目浏览与编辑）
+停靠右侧工作栏，用于检查和引导座席的工作空间。可主动启动的表面是宿主 Review 行与
+插件视图（ADR 0104），包括 vendor 进来的文件管理器 `pi.file-manager`（项目浏览与编辑）
 和随应用打包的 `pi.browser`
-（工作面板浏览器 chrome；访客页仍由宿主拥有，ADR 0170）。审阅与 `file:<path>` 属于
-**产物**表面：由宿主渲染，但由对话打开，因此不出现在工具列表中。
+（工作面板浏览器 chrome；访客页仍由宿主拥有，ADR 0170）。`file:<path>` 属于
+**产物**表面：由宿主渲染，但由对话打开，因此不出现在启动器中。
 应用不再提供交互式终端；Agent Bash 输出保留在对话中。
 
 ### 5.2 解剖学
@@ -771,8 +784,12 @@ vendor 进来的 `pi.file-manager` 视图在插件自己的隔离页面内完成
 
 - 触发器：file/URL 引用和 BrowserPreview 在原始会话运行时上下文中
   创建或激活资源选项卡。BrowserPreview 事件携带 `sessionId`，渲染器保留
-  该会话的预览 path/URL 作为其浏览器资源。成功的工作区 Write/Edit 工件
-  在原始会话中创建或激活审阅。
+  该会话的预览 path/URL 作为其浏览器资源。审阅永不由工具结果触发：
+  它只会从 `+` 启动器行，或视口固定开关与 `Cmd/Ctrl + J` 显示的会话
+  保留上下文打开，因此成功的工作区 Write/Edit 不会在任何会话中打开、
+  激活或改变面板。
+  计划/目标审批工件仍会在其来源会话中创建或激活标签，但承载界面由宿主选择：
+  内置文件视图可启动时用它，否则用宿主机文件标签（D452）。
   `Cmd/Ctrl + J` 显示活动会话的保留面板上下文，无需
   创建资源；如果没有活动会话，它什么也不做。捷径是
   当“设置”处于活动页面时被忽略。
@@ -1149,7 +1166,7 @@ row 而不是在转录本中添加树镶边。
   聊天轮流而不是全角块。气泡按提示的 max-content 收缩，而不是撑到该上限；内联文件芯片使用确定的 240px 名称上限，因此粘贴文件加上短提示仍保持紧凑。用户正文是明文
 保留硬换行符（`white-space: pre-wrap`）；
   仅应用 trailing/leading 输入框修剪，从不应用内部换行符
-  崩溃。序列化的 `@path` 文件引用画成与输入框一致的叶子名芯片（图标 + 省略号文件名；规范路径放在工具提示和无障碍名称里）。未内联成 `@path` 芯片的图片附件渲染为有界缩略图（`fs/readImageDataUrl` 的 data URL）；无法解析时保留芯片。消息正文里的裸路径 token 识别 Unicode 字母与数字，非 ASCII 文件名与 ASCII 一样成为芯片；绝对路径与 `~/` 整体匹配，工作区之外（以及一切家目录路径）保持纯文本，而不是渲染一个永远打不开的芯片——包含边界不变（D322）。点击芯片先经 `pi-desktop/fs/resolveRef` 补全引用——该通道搜索整个打开的项目，按项目组文件夹顺序、主文件夹优先（ADR 0263）——再按解析结果打开：项目文件在随应用打包的 `pi.file-manager` 工作面板视图中打开（该视图不可用时退回宿主 `file:` 选项卡），会话临时目录或附件文件在宿主 `file:` 选项卡中打开，主文件夹中的 `.html`/`.htm` 仍由侧边浏览器打开。交给该视图的地址跟随应答的文件夹：主文件夹中的文件用项目内相对路径传递，同一项目的同级文件夹中的文件用绝对路径传递，与会话临时目录和附件文件一致。已解析的图片缩略图按同样规则打开。什么都没匹配到的芯片不打开任何东西，而是自己报告出来；系统默认应用不再由这次点击触发。HTTP(S) URL 仍是内联文本链接，在侧边浏览器打开；长 URL 在板内换行并保持逻辑开始对齐，而不是继承浏览器的居中按钮文本。
+  崩溃。序列化的 `@path` 文件引用画成与输入框一致的叶子名芯片（图标 + 省略号文件名；规范路径放在工具提示和无障碍名称里）。未内联成 `@path` 芯片的图片附件渲染为有界缩略图（`fs/readImageDataUrl` 的 data URL）；无法解析时保留芯片。消息正文里的裸路径 token 识别 Unicode 字母与数字。在用户消息正文中，它们只是候选：现有的 `fs/resolveRef` 查找确认是真实文件后才显示芯片。等待、未找到或失败的查找保留原文，包括 `使用llama.cpp`。显式 `@path` 引用和结构化附件保留现有芯片，不做猜测查询。每条消息最多检查 32 个唯一候选，可见行之间最多 4 个并发查找；其余候选保持纯文本。确认结果绑定到当前消息文本、工作区路径和会话；任一变化都会丢弃旧结果并取消排队的工作。之后新建的文件在消息重新挂载或作用域变化时再考虑，不轮询。非 ASCII 文件名仍受支持。绝对路径与 `~/` 整体匹配，工作区之外（以及一切家目录路径）保持纯文本，而不是渲染一个永远打不开的芯片——包含边界不变（D322）。点击芯片先经 `pi-desktop/fs/resolveRef` 补全引用——该通道搜索整个打开的项目，按项目组文件夹顺序、主文件夹优先（ADR 0263）——再按解析结果打开：项目文件在随应用打包的 `pi.file-manager` 工作面板视图中打开（该视图不可用时退回宿主 `file:` 选项卡），会话临时目录或附件文件在宿主 `file:` 选项卡中打开，主文件夹中的 `.html`/`.htm` 仍由侧边浏览器打开。交给该视图的地址跟随应答的文件夹：主文件夹中的文件用项目内相对路径传递，同一项目的同级文件夹中的文件用绝对路径传递，与会话临时目录和附件文件一致。已解析的图片缩略图按同样规则打开。什么都没匹配到的芯片不打开任何东西，而是自己报告出来；系统默认应用不再由这次点击触发。HTTP(S) URL 仍是内联文本链接，在侧边浏览器打开；长 URL 在板内换行并保持逻辑开始对齐，而不是继承浏览器的居中按钮文本。
 - Assistant：透明表面，左对齐，Markdown 完全渲染
   内容宽度。该 Markdown 里的工作区文件路径可预览：行内代码、Markdown 链接与裸路径
   token（带已知扩展名）都像芯片一样，在打开项目的每个文件夹里先补全再打开（ADR 0263）——
@@ -1751,10 +1768,15 @@ Agent 并保存在新的不可变 `.pi/<kind>/*.md` 工件中。它是独特的
 ### 10A.2 内容
 
 该卡片呈现结构化标题和确切的开场白
-`.pi/<kind>/*.md` 路径。打开工件会读取主机写入的文件；
+`.pi/<kind>/*.md` 路径；打开器优先使用内置文件视图，在该视图不可启动时
+回退到宿主机文件标签（D452）。打开工件会读取主机写入的文件；
 渲染器编辑不会更改批准的字节。提交的问题/
 描述、状态、validity/deadline、内联 Markdown、SHA-256、字节大小、
 和 revision/feedback 控件不渲染卡片内容。
+
+由于内置文件视图可以编辑并保存它打开的文件（ADR 0241），在 Approve 之前被改动的
+工件不再匹配记录的哈希：宿主会以 `PLAN_ARTIFACT_HASH_MISMATCH` 让该次审批失败关闭，
+直到提议被拒绝并重新提交。
 
 ### 10A.3 动作和状态
 
@@ -2093,6 +2115,21 @@ MainChat 底部的输入区域，用于撰写和发送提示。支持多行输�
   分开是因为身份和调度使用规范路径，而不是名称。`text/plain` 和 `.txt`
   芯片还可通过键盘聚焦；点击或按 Enter/Space 会将有界内容展开为可编辑草稿
   文本。二进制、图像、过大或读取失败时保留芯片。
+  未发送图片在输入框外上方单独一行靠左显示缩略图，不占据可编辑正文。
+  全选、编辑或撤销正文不会删除图片；切换会话保留图片，旧草稿里的图片标记恢复为
+  独立附件。只有图片的草稿也能点击发送；发送立即失败时仍恢复文字与附件。
+  附件区限制高度并可纵向滚动，窄聊天面板内也能查看和删除每张图片。
+  悬停或聚焦时显示独立删除按钮，触屏始终显示。
+  点击或按 Enter/Space 打开图片浮层，不发送草稿，不改变工作面板选项卡。
+  图片在深色遮罩内水平、垂直居中，保持比例并适应可用区域，小图默认不放大。
+  支持缩放、适应窗口、下载原图及同一草稿内的多图切换；切图重置缩放与位置。按住图片拖动或滚动可在任意缩放下平移，
+  指针移出图片后仍能连续拖动；松开或取消即结束拖动，不关闭浮层。图片保留一部分
+  在可见区域内，适应窗口会恢复居中。
+  按 Esc、点击关闭或空白处退出并恢复输入焦点与光标。焦点限制在浮层内，
+  打开期间隐藏原生插件视图。删除按钮不触发预览或发送。
+  缩略图与预览沿用有界、受限的 `fs/readImageDataUrl` 接口，无项目时也可读取允许
+  访问的暂存图片。图片丢失、格式不支持、过大或解码失败时显示重试并保留草稿。
+  切换会话或项目、删除正在查看的附件时关闭预览；晚到的读取结果不得覆盖新图片。
 - 发送的模板调用在记录中呈现为等宽命令
   来自消息的 `command` 字段的芯片而不是扩展的正文。
 - 已发送的 `@path` 文件引用（带引号或不带引号）画成与草稿相同的叶子名芯片。点击芯片先经 `pi-desktop/fs/resolveRef` 补全引用——搜索整个打开的项目，按项目组文件夹顺序、主文件夹优先（ADR 0263）——再按解析结果打开：项目文件在随应用打包的 `pi.file-manager` 视图中打开（该视图不可用时退回宿主 `file:` 选项卡），会话临时目录或附件文件在宿主 `file:` 选项卡中打开，主文件夹中的 `.html`/`.htm` 在侧边浏览器打开。交给该视图的地址跟随应答的文件夹：主文件夹中的文件用项目内相对路径传递，同一项目的同级文件夹中的文件用绝对路径传递，与会话临时目录和附件文件一致。什么都没匹配到时既不打开任何东西，也会自己报告出来；系统默认应用不再由这次点击触发。HTTP(S) URL 仍是侧边浏览器的文本链接。
@@ -2364,55 +2401,76 @@ dismissToast(id: number); // ToastHost internal / tests
 
 ---
 
-## 18. SessionImportPanel
+## 18. 导入目的地
 
 ### 18.1 目的
 
-扫描支持的本地代理商店，以可管理的方式查看发现的会话
-组、选择候选者并开始显式导入。
+扫描受支持的本地代理存储，找出这台机器能够移交的四样内容——会话、
+提供商/模型配置、技能和 MCP 服务器——然后审查候选项、选中它们并
+发起一次显式导入。
 
 ### 18.2 解剖学
 
+每个类型一个工作台，位于分段式类型切换器之后；每个类型拥有自己的
+扫描、选择和导入操作。
+
 ```text
-[Found N sessions]  [Group by: Source ▾]  [Import selected (N)]
-──────────────────────────────────────────────────────────────────
-[ ] [›] Claude Code                                      N sessions
-[ ] [›] Codex                                            N sessions
+[ Sessions | Models | Skills | MCP ]                   ← 类型切换器
+[ ] Found 12 · 6 selected   Group by: Source ▾   [Scan] [Import selected (6)]
+───────────────────────────────────────────────────────────────────────────
+CLAUDE CODE              ~/code/pi                                  4
+[ ] Refactor the importer   12 messages · Jan 5, 2026   [Claude Code]
 ```
 
-- 分组控件支持**项目路径**和**来源**。
-- 来源是默认分组。
-- 在项目路径模式下，精确路径在组标题中保持可见。
-- 没有项目路径的会话出现在最终的**无项目**组中。
-- 每个组标题包括组选择、公开、标签和计数。
-- 导入源名称、分组控件、计数、结果和可访问名称
-  来自共享的 i18n 目录。候选日期使用活动的应用程序区域设置。
+- 切换器复用侧边栏和设置导航栏已经发布的标签（`nav.sessions`、
+  `settings.nav.models`、`settings.nav.skills`、`settings.nav.mcp`），
+  因此该页面不新增自己的目录条目。
+- 每个类型都带自己的工具栏：全选复选框连同“found”文案和已选数量、
+  该类型自己的选项（会话分组、技能导入模式）、重新扫描，以及 Import selected。
+- 在某个类型首次扫描之前，其面板会显示一个安静的下一步操作状态：扫描会读取
+  什么，以及 Scan 操作。切换选项卡绝不会启动扫描（D007 / D342）。
+- 分组标题是安静的标签行——来源或项目名称、以等宽字体显示的解析路径，
+  以及一个计数胶囊——而不是着色条带；它们下方的候选项是独立磁贴。
+- 分组控件支持**项目路径**和**来源**。来源是默认值。在项目路径模式下，
+  精确路径在分组标题中保持可见，没有项目路径的会话出现在最后的
+  **无项目**分组中。
+- 导入来源名称、分组与模式控件、计数、结果和可访问名称都来自共享的
+  i18n 目录。候选项日期使用当前应用区域设置。
 
 ### 18.3 状态和交互
 
-- 成功的扫描会替换先前的候选集，清除选择，并且
-  让每组都崩溃了。
-- 成功的导入会创建或重复使用一个持久的项目索引条目
-  每个不同的非空项目路径并刷新 sessions/projects。
-- 无路径导入不会创建项目条目并保留在临时状态下
-  会话。导入永远不会创建物理文件系统目录。
-- 重新导入现有源会话会跳过它，而不重复它
-  项目进入。
-- 更改分组模式可以保留候选选择，但会折叠每个
-  新成立的团体。
-- 展开或折叠一组不会影响其他组。
-- 组和全局复选框支持选中、未选中和不确定
-  选择状态适用。
-- 每个组内的候选人以及组本身都按最新的排在最前面；
-  无路径组在项目路径模式下保持在最后。
+- 一次成功的扫描会替换先前的候选集合、清空选择，并让每个分组保持展开：
+  找到的候选项就是扫描的答案，所以它们不会被藏在第二次点击之后。
+- 每个类型各自扫描：会话扫描绝不会启动模型配置、技能或 MCP 扫描，
+  切换选项卡会保留离开的那个类型的结果和选择（非活动面板保持挂载并隐藏）。
+- 一次成功的导入会为每个不同的非空项目路径创建或重复使用一个持久的项目索引条目
+  并刷新 sessions/projects。
+- 当一次成功的核心或插件导入在已归档项目下新增一个绑定项目的会话时，
+  渲染器会在刷新之后恢复该项目的展示状态，使该项目和导入的会话在默认
+  侧边栏中可见。这只适用于新增的绑定会话；普通刷新、无路径会话和被跳过的
+  导入都会保留归档状态。
+- 无路径导入不会创建项目条目并保留在临时
+  会话下。导入永远不会创建物理文件系统目录。
+- 重新导入现有来源会话会跳过它，而不会重复其项目条目。
+- 更改分组模式会保留候选选择，并让每个新形成的分组保持展开。
+- 展开或折叠一个分组不会影响其他分组。
+- 分组和全局复选框支持选中、未选中和不确定
+  选择状态；全局复选框将部分选择报告为不确定。
+- 每个分组内的候选项以及分组本身都按最新优先排序；
+  无路径分组在项目路径模式下保持在最后。
 
 ### 18.4 辅助功能
 
+- 类型切换器是一个由 `tab` 控件组成的 `tablist`，每个控件都带有
+  `aria-selected` 和命名其面板的 `aria-controls`。每个面板都是一个由其选项卡
+  标记的 `tabpanel`；非活动面板是 `hidden`，而不是被视觉覆盖。
 - 每个公开按钮都会公开 `aria-expanded` 并引用其主体
   `aria-controls`。
-- 全局和组复选框具有本地化的可访问名称。
-- 分组选择器具有可见标签并且可通过键盘操作。
-- 项目行公开和操作菜单按钮公开本地化、
+- 全局和分组复选框具有本地化的可访问名称，并携带不确定状态。
+- 分组和导入模式选择器是共享的应用内菜单选择器，具有可见标签并可通过键盘操作，
+  绝不是平台绘制的 `<select>`。
+- 分组计数胶囊以其标题携带本地化的计数文案。
+- 项目行公开按钮和操作菜单按钮公开本地化、
 项目特定的可访问名称。
 
 ### 18.5 ModelConfigImportPanel
@@ -2421,18 +2479,17 @@ dismissToast(id: number); // ToastHost internal / tests
 选中它们，然后发起一次显式导入。
 
 ```text
-[Found N providers]                         [Import selected (N)]
-──────────────────────────────────────────────────────────────────
-[ ] [›] Claude Code                                      N providers
-[ ] [›] OpenCode                                         N providers
-[ ] [›] CC Switch                                        N providers
+[ ] Found 3 · 1 selected                        [Scan] [Import selected (1)]
+───────────────────────────────────────────────────────────────────────────
+CLAUDE CODE                                                                1
+[ ] acme-gateway   4 models · api.acme.dev    [API key]
 ```
 
-- 该卡片独立于会话导入：它有自己的扫描、选择和"导入所选"操作。会话扫描
-  绝不会触发模型配置扫描。
+- 该类型独立于会话导入：它有自己的扫描、选择和 Import selected 操作。
+  会话扫描绝不会启动模型配置扫描，两者在切换器之后一次只显示一个。
 - 按来源分组是唯一的分组方式。一次成功的扫描会替换先前的候选集合、清空
-  选择，并让所有分组保持折叠。
-- 每一行显示提供商名称、模型数量、主机、"有 API key / 无 API key"徽章，
+  选择，并让所有分组保持展开。
+- 每一行显示提供商名称、模型数量、主机、“有 API key / 无 API key”徽章，
   以及来源。原始密钥绝不会到达渲染器。
 - 导入会为每个选中的候选项创建一条 `providers.create` 记录。若已存在
   base URL 归一化结果、API 风格和凭据都相同的提供商，则跳过；同一端点的
@@ -2625,3 +2682,21 @@ Sidebar footer                                        Popover (360px max)
     取消的分隔符手势恢复之前的宽度 (ADR 0033)
 19. 扩展侧边栏会话标题、project/group 标题和空状态文案
     使用 13px 紧凑令牌，同时主要侧边栏操作保持在 14px
+
+### Provider ordering
+
+Each AI service card can be dragged from its non-interactive surface. After a
+small movement threshold, the card follows the pointer and surrounding cards
+animate into the proposed slot. Dragging near the list edge scrolls it. Releasing
+saves the previewed order; Escape, pointer cancellation, focus loss, unmount or
+catalog changes cancel the drag. Buttons and form controls retain their actions.
+There is no separate drag handle. A focused card accepts Up/Down to move one visible row. Saving blocks further
+moves; a failed save shows an error and restores the accepted order. Late catalog
+responses cannot restore an earlier order. The default-model picker and Composer
+model groups follow the persisted order. Sorting changes neither the selected
+default nor provider configuration. OAuth accounts remain in their separate section.
+
+
+### 输入框文件芯片前的原生删除
+
+删除内联文件引用前面的文字时，不得插入空行或把芯片挤到下一行。保留原生编辑与撤销/重做。原生删除前记录浏览器的目标范围和已有 BR 节点；输入之后，仅当去掉那颗新出现的 BR 后草稿恰好等于这次删除的目标时才移除它。绝不裁掉前导换行，也不整批规范化所有 BR。用弱引用记住已证实的占位节点，避免原生重做把它们恢复回来。显式换行、输入法合成、文件引用和芯片删除保持原有行为。由输入框安装并卸载这些原生事件监听。

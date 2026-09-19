@@ -369,6 +369,44 @@ Projects 页面也会据此刷新持久项目索引；插件不需要、也不�
 5 次批量导入和 20 次删除。写入前会移除工具 `__pi*` 与 `piDesktop.*` 对象键。
 P2/P3（会话创建、消息变更、任意重新绑定、provider/model 绑定、批量删除、标签）不属于本次接口。
 
+### 用量（需要 `usage.read`）
+
+面向用户仍可见的未删除会话，提供只读的**已完成回合事实行**。宿主只提供
+每个 turn 一行的扁平事实——计数与标识符；绝不包含消息正文、转录投影或任何
+写路径。**刻意不提供仪表盘形状**：连续天数、热力图、分模型占比、高消耗
+排名都是插件在这些事实行之上自己的计算——日后调整指标口径也不会变成
+SDK 的破坏性变更。
+
+```ts
+pi.usage.listTurns(input?: {
+  fromMs?: number      // 含端点的窗口起点（epoch ms）；默认 toMs - 30 天
+  toMs?: number        // 含端点的窗口终点（epoch ms）；默认当前时间
+  projectId?: number | null
+  sessionId?: string
+  cursor?: string      // 上一次 nextCursor 返回的不透明分页游标
+  limit?: number       // 1..=500 行；默认 200
+}): Promise<{
+  turns: Array<{
+    turnId: string; sessionId: string; sessionTitle: string | null
+    projectId: number | null; providerId: string | null; modelId: string | null
+    startedAt: number; endedAt: number
+    inputTokens: number; outputTokens: number
+    cacheReadTokens: number; cacheWriteTokens: number; reasoningTokens: number
+  }>
+  nextCursor: string | null
+}>
+```
+
+语义：
+
+- 只列出未删除会话的已完成 turn。用户删除的会话会从列表中消失。
+- 行按 `endedAt` 升序 + keyset 游标排列，窗口填充时翻页依然稳定；仪表盘
+  展示的排名是插件自己的排序，不是宿主的。
+- 窗口跨度至多 365 天；`limit` 为 1..=500（默认 200）。Electron 侧先校验，
+  宿主 RPC 边界按同样界限再次校验。缺省与 `null` 边界等价；空会话标题返回
+  `null`。
+- `usage_json` 缺失或畸形时 cache/reasoning 计数记 0——绝不返回残缺行。
+
 ### 会话协作（需要 `desktop.control`）
 
 官方 Session Orchestrator 组合了已审查的 desktop-control 目录；这不是第二套 session API，

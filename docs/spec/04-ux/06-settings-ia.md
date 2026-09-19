@@ -64,8 +64,10 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   When search filters the directory, empty clusters and their headings disappear.
 - Loaded plugin Settings entries may appear only in a final **Extensions** group
   after all core groups. The host owns their ordering, search result, titlebar
-  and fallback to General. Their content is a sandboxed plugin page measured
-  into the content pane; it never covers the rail or titlebar.
+  and fallback to General. The rail icon is the destination's host token
+  (scenic themes: Lucide `Palette` via `pluginViewIcon`), never plugin markup
+  and never a generic Skills book glyph. Their content is a sandboxed plugin
+  page measured into the content pane; it never covers the rail or titlebar.
 - Main content pane on primary surface with large section title + elevated
   rounded cards of rows. Its content uses the full width available after the
   fixed rail and pane gutters, and resizes continuously with the window.
@@ -143,12 +145,34 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   command shell selection, Link open destination, context usage display
   (remaining or used), thinking display mode, Enter-to-send control, and the large text paste
   threshold. Link open destination uses the Work panel browser by default
-  and can route plain HTTP(S) link clicks to the system browser. Context
+  and routes chat, transcript, and plugin HTTP(S) clicks to the system
+  browser when set to Default OS browser. Plugin/settings clicks that want
+  the work panel return to chat first so the dock is visible, without
+  recording a navigation hop; a missing session falls back to the OS
+  browser. Workspace HTML preview, BrowserPreview, OAuth, and Feedback
+  keep their existing destinations. Context
   usage display controls whether the composer toolbar context ring and its
   popover lead with the remaining or the used capacity figure; the default
   is remaining. The threshold controls when a text-only paste becomes a
   temporary session-scratch file; it defaults to 600 characters and accepts
   integer values from 1 through 1,000,000.
+- **Prompt enhancement** is a card controlling the Composer's Enhance prompt
+  action (ADR 0121). It carries a `Use a custom template` switch and the settings
+  icon button the subagent rows use for editing, which opens an editor sheet
+  (the subagent editor's pattern). The switch gates whether a stored template
+  applies, is disabled until one is saved, and turns on when a template is
+  saved; turning it off keeps the stored text. The sheet holds the user-template
+  editor, which shows the built-in default text when no override is stored and
+  offers an insert action for the draft variable; a save that would leave the
+  template without that variable is refused. The system prompt is built in and
+  exposes no field. The same card also has a `Default model` row using the same
+  anchored, searchable menu as the Models tab's default-model row; empty means
+  "follow the Composer's current model". Two rows therefore read `Default
+  model`, distinguished by their card headings (Prompt enhancement vs Models
+  Defaults). The reasoning row is a menu select listing the levels the selected
+  model actually supports (the row is disabled when it supports none), defaults
+  to Off, and has no follow-the-session entry. Settings search indexes the card,
+  its switch, the template row, the default-model row, and the reasoning row.
 - **Thinking display mode** uses a menu select with Detailed (default) and
   Compact. Detailed retains reasoning text; Compact shows only an active
   thinking indicator and hides finished thought rows. The global preference
@@ -174,11 +198,11 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   Manual `/compact` remains available from the command palette for an idle
   session; the transcript shows where each compaction happened and the context
   usage inspector shows whether a checkpoint is installed.
-- **Voice** card: default ASR and TTS bindings (`AppSettings.speech`). Each
-  role picks an existing provider, a protocol (`openai_audio` /
-  `openai_chat_audio` plus plugin adapters), and a model id. TTS may set a
-  voice. Unconfigured roles disable the matching Composer action. Whisper / TTS
-  models do not appear in the chat model picker. See spec `20-speech.md`.
+Speech bindings (`AppSettings.speech`) are **not a Settings surface** (ADR
+0291). The host keeps the speech capability and the `speech/*` IPC for plugins
+and for bindings that are already stored, but nothing here picks a
+transcription or speech provider, protocol, model, or voice, and search indexes
+no speech keys.
 
 ### Usage statistics (no Settings destination)
 
@@ -435,9 +459,11 @@ system while preserving their different data ownership:
   Enablement flips locally first and reverts only if the host refuses, and
   busy state is scoped to the row that is working — one pending request never
   disables the rest of the page. Empty states are quiet centered
-  glyph-and-copy blocks inside the panel; an empty level offers the same
-  primary action rather than being a dead end, and a search with no matches
-  says so and suggests widening the level filter.
+  glyph-and-copy blocks inside the panel. The glyph is a host Lucide icon
+  (`IconBookOpen` / `IconServer` / `IconBot`) inside a chip wrapper; do not
+  pad or resize the SVG itself, because Lucide already sets inline size.
+  An empty level offers the same primary action rather than being a dead end,
+  and a search with no matches says so and suggests widening the level filter.
 - When the viewport is narrow the toolbar stacks: the segmented control spans
   the width with evenly divided segments, search sits below it, and the
   actions wrap left-aligned. Group headers drop the resolved path so row copy
@@ -518,14 +544,19 @@ system while preserving their different data ownership:
   menu and are resolved after the global layer.
 
 ### Import
-- Scan supported local agent stores for **sessions** and **model configuration**
-  through two independent cards on the same destination. Neither scan runs
-  automatically (D007 / D342).
+- Scan supported local agent stores for **sessions**, **model configuration**,
+  **skills**, and **MCP servers** through one workbench per kind behind the
+  page's kind switcher. Every kind keeps its own explicit scan: none of them
+  runs automatically, and switching kinds never starts one (D007 / D342).
 - Sessions: review candidates through `SessionImportPanel`. Source and
   project-path grouping behavior follows
-  [08-component-spec §18](08-component-spec.md#18-sessionimportpanel).
+  [08-component-spec §18](08-component-spec.md#18-import-destination).
   The Group-by control is the same in-app menu select as the Appearance and
-  Permissions pickers, not a platform-drawn `<select>`.
+  Permissions pickers, not a platform-drawn `<select>`. A Codex archive larger
+  than `CODEX_SCAN_MAX_FILES` (250) is truncated to the newest session files by
+  `YYYY/MM/DD` path date; the workbench shows a localized cap note, and omitted
+  Codex files are not in that candidate list.
+
 - Model configuration: review provider drafts through
   `ModelConfigImportPanel`
   ([08-component-spec §18.5](08-component-spec.md#185-modelconfigimportpanel)).
@@ -536,13 +567,16 @@ system while preserving their different data ownership:
   (same normalized base URL, API style, and credential) is skipped; profiles
   with different credentials at one endpoint remain separate. If the app has
   no default model yet, the first newly created provider becomes the default.
+- Skills and MCP servers reuse the agent capability scanners and their source
+  labels. The skills kind carries the import mode (copy or symlink); the MCP
+  kind writes into the same MCP list the MCP destination manages.
 
 ### Project archive
 - Reuses the durable Projects index as a settings-scale management surface
 - Always includes archived records; archived rows are grouped, never hidden, so
   the destination still has no visibility toggle
-- Supports project search, add, activate, project-session expansion, pin,
-  archive/restore, and close
+- Supports project search, add, select, activate, pin, archive/restore, and
+  close
 - A successful session import bound to an archived project restores that
   project's renderer presentation state after the session refresh, making the
   imported session visible in the default sidebar. Ordinary refreshes and
@@ -552,44 +586,59 @@ system while preserving their different data ownership:
   is the primary root of one logical project, and the remaining folders are
   retained as roots of that same project rather than separate project tabs.
   Chats, project instructions, and project memory are shared by the group.
-- The destination is one workbench, not a stack of bands (D267, revising D168):
-  a quiet intro line above a single toolbar above a single elevated panel. It
-  reuses the same composition, control height, and row rhythm as the agent
-  capability pages (D257) and adds no page-specific chrome.
-  1. **Intro line** — one quiet description line, the same shape as the
-     capability pages' intro. The destination shows no page-level totals: there
-     is no hero block, decorative gradient, counter banner, or inline counter
-     run. The per-group counts on the panel's header strips are the only totals,
-     so a number is never repeated in two places
-  2. **Toolbar** — one row carrying the Recent/Name sort as the shared
+- The destination is one workbench (D267), revised by D455 into a one-column
+  list with an in-row inspector, and revised again into an inset grouped index
+  in the iOS sense: the selected row is the header of its own card, so the
+  detail opens under the row and repeats nothing the row already states. One
+  toolbar leads the page and nothing is expanded in it: like the capability and
+  Import destinations, the destination carries no description line, so no
+  sentence sits between the page title and the controls. It reuses the same
+  composition, control height, and row rhythm as the agent capability pages
+  (D257) and adds no page-specific chrome.
+  1. **Toolbar** — one row carrying the Recent/Name sort as the shared
      segmented control, the search field with a clear affordance and a match
-     count while searching, and the primary Add project action right-aligned
-  3. **Panel** — one settings panel holds every group. The always-visible
-     sections run Pinned, All projects, Archived as non-interactive in-panel
-     header strips, each carrying its label and row count. Every section is a
-     labelled region wrapping its own list, so the strip is never a non-list
-     child of a list and each row keeps its group name in the accessibility
-     tree; rows follow with hairline separators. Empty sections are omitted,
-     and an index with no rows renders one quiet in-panel empty state instead
-     of the panel groups
-- Row anatomy: disclosure control, color glyph, project name with state tags
-  (Active, Open, pinned tag, Archived), one meta line carrying the shortened
-  monospace path, branch, and session count, a relative last-active time, and a
-  hover/focus-revealed action pair (New task, row menu). The colored glyph uses
-  Folder for ordinary projects and a filled Star for pinned projects, while the
-  pinned tag remains as the localized text cue.
-- The row menu groups create/edit actions above pin, archive/restore, and the
-  destructive Close action, and closes on Escape or any outside press
-- The row menu includes Project memory. Its editor is a compact viewport-level
-  dialog with a list of editable memory cards. Each card supports an optional
-  title, multiline content, and removal; the dialog also supports adding
-  entries, shows an empty state, and keeps Cancel/Save actions. Saved entries
-  are scoped to that project's path and are available in later chats for the
-  project.
-- Project search also matches session titles. Matching a session retains and
-  expands its owning project; expanded sessions are ordered by latest activity,
-  show a count and relative update time, and reveal additional rows in batches
-  of eight rather than silently truncating the history
+     count while searching, and the primary Add project action right-aligned.
+     The destination shows no page-level totals: there is no hero block,
+     decorative gradient, counter banner, or inline counter run. The per-group
+     counts on the index sections are the only totals, so a number is never
+     repeated in two places
+  2. **Workbench** — one column. The always-visible index sections run Pinned,
+     All projects, Archived as non-interactive header lines, each carrying its
+     label and row count. Every section is a labelled region wrapping its own
+     list, so the header is never a non-list child of a list and each row keeps
+     its group name in the accessibility tree. Clicking a row opens its card
+     under that row at full content width, and that row's disclosure indicator
+     turns down while the card is open. Empty sections are omitted, and an index
+     with no rows renders one quiet empty state instead of the workbench
+- Row anatomy reads left to right as identity and right to left as detail: the
+  color glyph, the project name with one status tag (Active, Open, or
+  Archived), and the shortened monospace path that tells two same-named
+  projects apart, then the right-aligned session count and relative last-active
+  time, closed by the row's disclosure indicator. The colored glyph uses Folder
+  for ordinary projects and a filled Star for pinned projects. Rows are tiles
+  separated by the row gap, never by rules. The index starts closed: clicking a
+  row opens its card and keeps Settings open, clicking that row again closes the
+  card, and clicking any other row moves the open card to it. The disclosure
+  indicator turns down only while the card is open, so it never claims a closed
+  card is open. Double-click or Enter activates the project and returns to chat
+- The card under the selected row is the detail panel, and it repeats nothing
+  the row already states — no second copy of the name, the path, or the status
+  tag. It opens with an action bar (New task, Open while the project is not the
+  live workspace, and the overflow menu), continues with the read-only folder
+  and branch facts and the sessions count, and ends with the chats themselves.
+  The overflow menu groups create/edit actions above pin, archive/restore, and
+  the destructive Close action, and closes on Escape or any outside press
+- The inspector menu includes Project memory. Its editor is a compact
+  viewport-level dialog with a list of editable memory cards. Each card
+  supports an optional title, multiline content, and removal; the dialog also
+  supports adding entries, shows an empty state, and keeps Cancel/Save
+  actions. Saved entries are scoped to that project's path and are available
+  in later chats for the project.
+- Project search also matches session titles. Matching a session keeps its
+  owning project in the index; opening that project lists the matching sessions
+  ordered by latest activity, shows a count and relative update time, and reveals
+  additional rows in batches of eight rather than silently truncating the
+  history
 - Activating a project or project session returns to chat; archive and close
   actions keep Project archive open even when the active workspace changes
 
@@ -686,7 +735,11 @@ system while preserving their different data ownership:
 6. General shows the host-backed Appearance card; the AI destination shows
    Permissions and Defaults, including the Command shell row; the
    Shortcuts destination shows the Keyboard shortcuts card; Info shows the
-   Developer card. No additional settings destinations are rendered. Token
+   Developer card. Plugin-contributed destinations, when present, appear after
+   every core group under Extensions. Each destination is a renderer-composited
+   sandboxed surface: it preserves the existing Settings rail, titlebar,
+   Windows/Linux minimize/maximize controls, native drag/resize regions, and
+   content geometry. Token
    usage lives in plugin `pi.token-insights`, not Settings.
 7. Provider secrets never display raw key values
 8. Model configuration shows compact Defaults, separate vendor accounts, the
@@ -701,12 +754,13 @@ system while preserving their different data ownership:
     the page does not gain horizontal overflow
 12. Project archive always exposes archived records and can restore them without
     duplicating the index in the app shell
-13. Project archive renders one quiet description line — no hero, banner, or
-    page-level counter run — above one search + sort toolbar and one panel
-    containing the Pinned / All projects / Archived group strips; each strip's
-    count agrees with its rendered rows, sorting reorders rows inside every
-    section without hiding any, and clearing the search restores the complete
-    index
+13. Project archive renders no description line — no hero, banner, or page-level
+    counter run — above one search + sort toolbar and a list + one-column
+    workbench whose index holds the Pinned / All projects / Archived section
+    headers; each header's count agrees with its rendered rows, the index starts
+    with nothing expanded and a click opens one row's card without leaving
+    Settings, sorting reorders rows inside every section without hiding any, and
+    clearing the search restores the complete index
 14. Info renders disabled, checking, up-to-date, available, downloading,
     downloaded, and error update states without adding another destination
 15. Native select option lists remain readable in both light and dark themes,

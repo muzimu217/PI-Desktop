@@ -64,7 +64,7 @@ test("a tool row and a tool result row open a file where the message body does",
   assert.match(hook, /const openFileRef = useOpenChatFileRef\(\);/);
   assert.match(
     hook,
-    /target\.kind === "file" \? openFileRef\(target\.path\) : openUrl\(target\.url\)/,
+    /target\.kind === "file" \? openFileRef\(target\.path\) : openHttpUrl\(target\.url\)/,
   );
   assert.doesNotMatch(hook, /openFile\(target\.path\)/);
   // Both surfaces still call that opener, and neither reaches the host viewer's
@@ -78,4 +78,19 @@ test("a tool row and a tool result row open a file where the message body does",
     2,
   );
   assert.doesNotMatch(toolDetails, /openFileInWorkPanel/);
+});
+
+test("user-message bare paths wait for fs/resolveRef before becoming chips", async () => {
+  const [verified, files] = await Promise.all([
+    read("../src/hooks/use-verified-chat-text.ts"),
+    read("../src/lib/verified-chat-files.ts"),
+  ]);
+  assert.match(transcript, /useVerifiedChatText\(text, attachments\)/);
+  assert.match(transcript, /attachments=\{message\.attachments\}/);
+  assert.match(verified, /useAppStore\(\(s\) => s\.workspace\?\.path\)/);
+  assert.doesNotMatch(verified, /useAppStore\(\(s\) => s\.workspace\)(?!\?)/);
+  assert.match(verified, /api\.fsResolveRef\(/);
+  assert.match(files, /MAX_MESSAGE_CANDIDATES = 32/);
+  assert.match(files, /MAX_CONCURRENT_LOOKUPS = 4/);
+  assert.match(files, /!segment\.text\.startsWith\("@\"\)/);
 });

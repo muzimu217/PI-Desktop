@@ -168,15 +168,44 @@ recency only breaks ties between equally relevant matches.
   window from the taskbar/dock window list while the Electron process and
   background work remain alive. It does not persist a minimized geometry or
   dispose the host/sidecar.
-- Clicking or double-clicking the PI-Desktop tray icon, choosing Show from its
-  menu, or activating the app from the macOS dock restores and focuses the
+- Double-clicking the PI-Desktop tray icon (or single-clicking on Windows/Linux),
+  choosing Open, or activating the app from the macOS dock restores and focuses the
   existing window. If the window was closed, the same action creates a fresh
   window.
 - The tray menu is localized with the active shipped shell locale and
-  exposes Show PI-Desktop plus an explicit Quit PI-Desktop action. Quit uses
+  exposes Open, bounded session groups, and an explicit Quit action. Quit uses
   the existing ordered shutdown path. What closing the window does is the
   user's own choice on Windows/Linux (ADR 0090) and a Dock-lifecycle close on
   macOS; the tray icon itself is created once at startup either way.
+
+### 1.5.2 Tray session navigation (issue #293)
+
+- The native menu shows Running, Unread, and Pinned in that order, at most
+  nine sessions in total. Every non-empty group keeps up to three rows; the
+  share smaller groups leave unused goes to the groups that still overflow,
+  in priority order, so one busy group can fill all nine while the others are
+  empty. Membership is assigned before applying limits; higher-priority
+  overflow never spills into a lower group.
+- Empty groups are hidden. Archived sessions/projects and deleted sessions
+  are excluded. Running/Pinned follow sidebar sorting; Unread follows the
+  latest unread result per session, newest first, including failed results.
+- Long titles use one line capped at 32 display columns including the
+  ellipsis; an East Asian wide or emoji code point counts as two, so a CJK
+  row stays as wide as a Latin one. An overflowing group offers View more to
+  restore the window and expand session navigation. A session row
+  restores/focuses its exact conversation, activating its project through the
+  existing selection flow.
+- macOS single-click opens the menu without restoring/focusing a conversation
+  or marking it read. Entering a conversation uses normal acknowledgement.
+  Open and double-click restore the window; Quit keeps its confirmation and
+  ordered shutdown. Group/action labels follow the active shipped locale.
+- Start/finish, read, pin, rename, archive, delete, and backend restart update
+  the menu. The menu remains available when the main window is hidden or
+  closed, without creating another window until an explicit activation.
+- macOS does not listen for tray mouse-enter: that event replaces the native
+  status item and hides the extra. Windows/Linux still retry a failed Host
+  read on hover/right-click; macOS retries from the next session or inbox event.
+
 
 ### 1.6 Sidebar project and conversation organization
 
@@ -302,6 +331,12 @@ may be retained while exactly one workspace supplies the visible shell context.
 - A first-opened session settles at its newest turn. A revisited pane returns to
   the offset the user left, and a pane still pinned re-anchors to the bottom;
   activation no longer resets manual-scroll state for a revisit (ADR 0137).
+  History continuation (D269) does not page earlier rows from a collapsed
+  scroller or from a pinned overflowing transcript whose `scrollTop` has been
+  reset to 0; a real gesture in the near-top band still continues history. An
+  empty first paint does not spend the first-commit hydration gate, so a later
+  long page is still bounded and re-bottomed in the layout phase, before the
+  browser paints it.
 - Selecting a project-scoped conversation activates its project as part of the
   store-owned selection transaction. Selecting a Temporary conversation clears
   the visible workspace. Project-scoped new-session actions pass their target
@@ -468,10 +503,13 @@ may be retained while exactly one workspace supplies the visible shell context.
   divider updates the renderer-owned panel target from 244px upward, capped by
   the live three-column budget, while native window edges resize only the fixed
   application window (ADR 0151).
-- A successful workspace Write/Edit creates or activates Review in its
-  originating session. Failed and scratch writes do not. Background-session
-  artifacts update only their retained context and never open, activate, resize,
-  focus, or change the visible panel.
+- No tool result creates or activates a work-panel tab. Review opens only from
+  an explicit user action — its `+` launcher row, or the retained context the
+  viewport-fixed toggle and `Cmd/Ctrl + J` reveal — so a successful workspace
+  Write/Edit never takes the panel away from what the user was reading. Failed
+  and scratch writes behave the same. Background-session events update only
+  their retained context and never open, activate, resize, focus, or change the
+  visible panel.
 - Each successful workspace Write/Edit tool result carries one durable review
   snapshot. Its compact InlineReviewCard is rendered in the same activity
   disclosure, immediately after its tool row; it is never moved to the
@@ -486,8 +524,8 @@ may be retained while exactly one workspace supplies the visible shell context.
   denied, and unstructured results do not render a card. A background
   session's card remains with its own transcript and becomes visible only
   after that session is selected; its event never renders in the currently
-  visible session. Successful workspace artifacts may still create or
-  activate the singleton Review tab.
+  visible session. A successful workspace artifact cannot create or activate
+  the singleton Review tab; it appears only after the user opens it.
 - Each session retains `{open, tabs, activeTabId, browserResource}` in renderer
   memory. Selecting another session swaps the visible context atomically and
   switching back restores it; selecting a workspace without an active
@@ -510,10 +548,10 @@ may be retained while exactly one workspace supplies the visible shell context.
 - Settings → Info and application-menu checks share one typed update state.
   Manual checks expose up-to-date or error feedback; automatic failures do not
   open a toast or ambient banner.
-- Manual delivery (`darwin`, non-AppImage Linux, and Windows portable runs
+- Manual delivery (non-AppImage Linux and Windows portable runs
   with `PORTABLE_EXECUTABLE_FILE`) stops at `available` and
-  offers the fixed GitHub Releases page. In-app delivery (Windows NSIS and
-  Linux AppImage readiness builds) automatically advances through
+  offers the fixed GitHub Releases page. In-app delivery (packaged macOS,
+  Windows NSIS, and Linux AppImage) automatically advances through
   `downloading` to the stable `downloaded` state.
 - `downloaded` remains actionable until Restart to update or normal app quit;
   later scheduled/manual checks do not replace it with `checking`.
@@ -536,9 +574,9 @@ may be retained while exactly one workspace supplies the visible shell context.
   The current release and a discovered available release are identified with
   compact badges. The list scrolls independently, closes by its close control,
   Escape, or the backdrop, and restores focus to the invoking control.
-- D126 tag releases publish all platform manifests and installers. Windows
-  NSIS and Linux AppImage therefore use the in-app lane; macOS and Linux deb/rpm
-  remain notify-and-link delivery modes.
+- D126 tag releases publish all platform manifests and installers. Packaged
+  macOS, Windows NSIS, and Linux AppImage use the in-app lane; Linux deb/rpm
+  and Windows portable remain notify-and-link delivery modes.
 
 ## 2. Streaming message behavior
 
@@ -845,6 +883,9 @@ Agent calls a permission-gated tool (including Plan/Goal Bash under Ask or Accep
    `.pi/plan/*.md` or `.pi/goal/*.md` artifact, records its path/hash/size and structured
    title/question, and the renderer displays the shared contract approval card with
    only the title and artifact opener; the question remains host-side contract data.
+   The opener hands that path to the bundled file view when it is launchable and to
+   the host file tab otherwise, so the artifact opens beside the conversation in the
+   same view the user's other project files use (D452).
 4. Approve requires Ask / Accept edits / Auto selection. The renderer remembers
    the last selected mode on this device and uses it as the next approval's
    default. Host-core commits the approval, `mode = agent`, permission mode,
@@ -1012,7 +1053,8 @@ Work-panel and application-window resizing are implemented in MVP:
 - The inner divider's target clamps to the shared three-column budget
   (`client width - 450px - expanded sidebar`, with no fixed pixel cap); pointer movement is
   frame-coalesced and release commits the preferred width. Escape, pointer
-  cancellation, and lost capture restore the press-time panel width.
+  cancellation, and lost capture restore the press-time panel width. A
+  double-click restores the default 360px width inside those same live bounds.
 - Opening and closing animate the dock's `width` and `flex-basis` together with
   the bounded opacity/transform feedback, so MainChat reflows continuously
   inside the existing client area without crossing its 450px minimum instead of
@@ -1042,9 +1084,10 @@ Work-panel and application-window resizing are implemented in MVP:
   Native pointer clicks must operate the controls and dragging empty header
   space must move the window; DOM/CDP clicks alone do not establish native hit testing.
 
-The expanded sidebar is fixed at 275px. Collapse/open changes only whether the
-column is present; the historical resize handle is hidden and legacy width
-preferences are ignored.
+The expanded sidebar is user-resizable from 240px to 520px (default 275px) via
+the right-edge handle. Pointer motion below 160px collapses the sidebar and
+keeps the preferred expanded width. Keyboard Arrow/Home/End resize without collapsing.
+Double-clicking the handle restores the 275px default inside the live budget.
 
 Project ordering is implemented for retained project groups. There is no
 reorder grip. Pressing the project title and moving 8px starts a project drag,

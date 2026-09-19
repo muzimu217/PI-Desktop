@@ -40,8 +40,8 @@ destination, chat as the home surface, tools and permissions inline.
   non-destructive pin/archive actions, an independent conversation-branch
   command, and sortable views. Projects not retained in the sidebar remain
   discoverable through Settings → Project archive.
-  Collapsible to an icon rail (Cmd/Ctrl+B). Its expanded column is fixed at
-  275px; persisted resize preferences from older builds are ignored.
+  Collapsible to an icon rail (Cmd/Ctrl+B). Its expanded column is user-resizable
+  from 240px to 520px (default 275px); dragging below 160px collapses it.
 - **Product identity**: runtime shell copy uses `PI-Desktop`; the home hero and
   sidebar reuse the derived `src/assets/brand/logo-*.png` marks, while composer prompt
   rows have no leading brand icon and session-creation controls use a dedicated
@@ -73,7 +73,14 @@ destination, chat as the home surface, tools and permissions inline.
   left and accessible minimize / maximize-or-restore / close controls at the
   right edge of the conversation pane when the panel is closed (D129). When
   the work panel is open, those controls stay viewport-fixed over the panel
-  header rather than travelling with MainPane. Destination history is
+  header rather than travelling with MainPane. One window-level control band
+  stays outside pane stacking contexts across panel open, preview, restore,
+  and Settings transitions. Its background follows the adjacent titlebar surface
+  (dock header when open, conversation surface when closed) in both themes.
+  Boot splash, search, and toasts stay above that band.
+  Preview navigation must also remain above the panel;
+  macOS keeps native traffic lights and its existing fullscreen insets.
+  Destination history is
   shortcut-first (`Cmd/Ctrl+[` and `Cmd/Ctrl+]`) with no dedicated back/forward
   chrome; while Extensions is active, the footer Plugins button performs one
   Back step as the only pointer affordance. The main titlebar has no
@@ -107,9 +114,10 @@ destination, chat as the home surface, tools and permissions inline.
   revealing it without creating a resource tab and collapsing it without
   discarding one; the create trigger remains unavailable while the panel is
   closed. Closing the final tab keeps the panel open and shows the New launcher.
-  A
-  successful active-session workspace Write/Edit artifact opens Review;
-  scratch, failed, and background-session writes never steal focus. The inner
+  No agent or tool result opens, activates, or resizes the panel: Review is
+  reached only through an explicit user action, so a successful workspace
+  Write/Edit leaves the panel exactly as the user left it and shows its
+  evidence as a transcript card instead. The inner
   divider resizes the panel through the shared three-column budget; moving it
   left takes space until MainChat reaches 450px, at which point the expanded
   sidebar yields immediately, and moving it right gives space back. A manual

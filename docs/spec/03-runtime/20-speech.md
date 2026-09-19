@@ -31,7 +31,8 @@ when the file is larger than 8 MiB. Input is capped at 25 MiB
 ```
 
 Protocol ids match `^[a-z][a-z0-9._-]{0,63}$`. Absent/empty speech is a valid
-unconfigured state: Composer actions stay disabled.
+unconfigured state. No app surface reads it: callers are plugins and IPC
+consumers (ADR 0291).
 
 ## 3. Built-in protocols
 
@@ -68,8 +69,9 @@ unregisters.
 
 ## 6. Product
 
-Settings → AI **Voice** card: ASR and TTS each pick provider × protocol × model
-(TTS also voice). Composer: transcribe attached audio into the draft; read the
-draft aloud. Whisper / TTS models must not appear in the chat model picker.
+Settings exposes **no** speech surface (ADR 0291). A binding is written by a
+caller through the host settings API; plugins and the `speech/*` IPC are its
+only consumers, and the renderer has no transcription or speech control.
+Whisper / TTS models must not appear in the chat model picker.
 
 v1 does not implement microphone capture, Realtime, or agent tools.

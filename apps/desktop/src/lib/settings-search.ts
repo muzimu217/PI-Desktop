@@ -250,6 +250,9 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "index.card.size",
       "index.action.rebuild",
       "index.action.clear",
+    ],
+  },
+  {
     id: "remoteHosts",
     labelKey: "settings.nav.remoteHosts",
     titleKey: "settings.remoteHosts.title",

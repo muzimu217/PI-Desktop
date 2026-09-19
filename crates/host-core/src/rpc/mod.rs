@@ -4020,22 +4020,22 @@ async fn handle_request(
                 // set that predates the write.
                 let needs_index_for_invalidation =
                     matches!(p.tool_name.as_str(), "Write" | "Edit" | "Bash");
-                let (index_store, index_grep_boost) = if p.tool_name == "Grep" || needs_index_for_invalidation
-                {
-                    let st = state.lock().await;
-                    let settings = st
-                        .db
-                        .get_setting("app")
-                        .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
-                    let boost = if p.tool_name == "Grep" {
-                        index_grep_boost_enabled(settings.as_ref())
+                let (index_store, index_grep_boost) =
+                    if p.tool_name == "Grep" || needs_index_for_invalidation {
+                        let st = state.lock().await;
+                        let settings = st
+                            .db
+                            .get_setting("app")
+                            .map_err(|e| rpc_err(1000, e.to_string(), "INTERNAL"))?;
+                        let boost = if p.tool_name == "Grep" {
+                            index_grep_boost_enabled(settings.as_ref())
+                        } else {
+                            false
+                        };
+                        (Some(st.index.clone()), boost)
                     } else {
-                        false
+                        (None, false)
                     };
-                    (Some(st.index.clone()), boost)
-                } else {
-                    (None, false)
-                };
 
                 let mut result = if tools::is_desktop_dispatched(&p.tool_name) {
                     // Plugin dispatch keeps its existing bounded default timeout;
@@ -9100,8 +9100,6 @@ mod tests {
             .unwrap();
         assert_eq!(remaining, 0);
     }
-
-
 
     #[tokio::test]
     async fn index_rebuild_and_clear_are_audited() {

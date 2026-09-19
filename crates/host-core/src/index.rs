@@ -584,7 +584,7 @@ fn scan_root(
         // ingesting — not whether it exists. A filtered file still gets a row
         // (with `content_indexed = 0`) so the stored set keeps matching the set
         // Grep can reach; the fast path then re-scans it instead of losing it.
-        let body = if size <= limits.max_file_bytes && !is_binary_extension(entry.path()) {
+        let body = if size <= limits.max_file_bytes && !fts::is_binary_extension(entry.path()) {
             match std::fs::read_to_string(entry.path()) {
                 Ok(body) => Some(body),
                 Err(_) => {
@@ -622,23 +622,6 @@ fn scan_root(
         })?;
     }
     Ok(result)
-}
-
-/// Binary/archival extensions the index never ingests. This is a *content*
-/// filter, not a visibility rule: such files stay visible to Grep and are
-/// simply not worth indexing. Vendor/ignore visibility lives in
-/// `crate::tools::ignore_rules`.
-fn is_binary_extension(path: &Path) -> bool {
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| {
-            matches!(
-                extension.to_ascii_lowercase().as_str(),
-                "7z" | "a" | "bmp" | "class" | "dll" | "dmg" | "exe" | "gif" | "ico" | "jar"
-                    | "jpeg" | "jpg" | "mov" | "mp3" | "mp4" | "o" | "obj" | "pdf" | "png"
-                    | "so" | "tar" | "wasm" | "webp" | "woff" | "woff2" | "zip"
-            )
-        })
 }
 
 /// A per-file writer into an open rebuild transaction. Files stream straight

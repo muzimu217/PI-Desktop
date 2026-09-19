@@ -25,7 +25,11 @@ import {
   collectDelegationStatuses,
   collectDelegationTimings,
 } from "../../../lib/subagent-topology";
-import { projectTurnProcess } from "../../../lib/turn-process";
+import {
+  projectTurnProcess,
+  resolveThinkingDisplayMode,
+  shouldGroupTurnProcess,
+} from "../../../lib/turn-process";
 import { useAppStore } from "../../../stores/app-store";
 import { Markdown } from "../../../components/Markdown";
 import { IconBranch, IconReview } from "../../../components/icons";
@@ -275,6 +279,11 @@ export const AssistantTurn = memo(function AssistantTurn({
   );
   statusesRef.current = turnDelegationStatuses;
   timingsRef.current = turnDelegationTimings;
+  const groupProcess = useAppStore((state) =>
+    shouldGroupTurnProcess(
+      resolveThinkingDisplayMode(state.settings?.thinkingDisplayMode),
+    ),
+  );
   const { process, responses } = projectTurnProcess(entry);
   const activePart = isActive ? entry.parts.at(-1) : undefined;
 
@@ -320,10 +329,16 @@ export const AssistantTurn = memo(function AssistantTurn({
       aria-label={t("chat.assistantMessage")}
     >
       <div className="message-col">
-        <TurnProcess processParts={process} turnParts={entry.parts} isActive={isActive}>
-          {process.map(renderPart)}
-        </TurnProcess>
-        {responses.map(renderPart)}
+        {groupProcess ? (
+          <>
+            <TurnProcess processParts={process} turnParts={entry.parts} isActive={isActive}>
+              {process.map(renderPart)}
+            </TurnProcess>
+            {responses.map(renderPart)}
+          </>
+        ) : (
+          entry.parts.map(renderPart)
+        )}
         {!isActive && metaMessage ? (
           <MessageMeta
             modelId={modelId}

@@ -191,8 +191,6 @@ PI-Desktop 不得把用户永久限制在一份简短的固定模型列表上。
    一开始就是选中的。非推理或未知模型显示同样的选项但不选中，并附一行简短的
    手动覆盖说明。`defaultThinkingLevel` 从 `omit` 加上该 binding 已启用的级别
    中选取，因此存下来的默认值要么是 `omit`，要么属于那个显式集合。
-PUT 296.=296:
-  defaultThinkingLevel: SessionThinkingLevel | null
 9. `supportsImages` 与 `supportsDocuments` 是三态覆盖。缺省或 `null` 表示跟随
    已发布的 models.dev 模态，因此目录的更正仍然能作用到已保存的 binding；
    `true` 或 `false` 是用户的显式回答，并在目录变动后继续有效。与思考级别

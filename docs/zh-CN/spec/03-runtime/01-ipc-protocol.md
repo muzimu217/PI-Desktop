@@ -794,9 +794,10 @@ type SessionDetail = SessionSummary & {
 
 Electron 主进程用该会话精确 provider/API URL 与 model 的本地 models.dev
 记录，丰富 session list/get/create/fork/configure 结果中的有效推理能力。
-未固定 `providerId`/`modelId` 的会话仅在此丰富步骤继承应用默认供应商/模型；
-持久化 id 保持为空，以便之后的默认模型变更仍然生效。快照中没有该 ID、或
-会话无法解析出默认目标时，得到 `supportsReasoning: false` 和 `off`；缓存/
+未固定 `providerId`/`modelId` 的会话仅在此丰富步骤继承应用默认供应商/模型。
+桌面创建会话时会把当时的默认（或 Composer 草稿覆盖）写入持久化 id；之后改
+默认模型不会改写已创建会话。没有会话的首页草稿仍跟随当前默认。快照中没有该
+ID、或会话无法解析出默认目标时，得到 `supportsReasoning: false` 和 `off`；缓存/
 供应商声明不能取代目录语义。Rust 主机仅对持久化的 `thinkingLevel` 权威。
 
 全局插件启动器使用仅 Electron 允许的通道：

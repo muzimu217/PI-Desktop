@@ -174,6 +174,7 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | D267 | Project archive is one workbench, not three bands | *(row anatomy and inline expansion superseded by D455)* **Revise D168's band layout: Settings → Project archive renders the D257 one-workbench composition — a quiet intro line carrying only the page description, one toolbar (Recent/Name sort on the shared `settings-segment` primitive, search with clear affordance and live match count, primary Add project), and one settings panel whose always-visible Pinned / All projects / Archived groups are non-interactive in-panel header strips with per-section counts instead of one panel per section. The decorative gradient hero band is removed together with the four page-level overview counters it carried, retiring the `project.statProjects`, `project.statOpen`, `project.statArchived`, and `project.statSessions` keys; the per-group counts on the panel's header strips are now the only totals. The external uppercase section labels are removed as well; row geometry matches the capability rows (32px controls, 14px list gap, 28px row glyph). Beyond dropping the four retired counter keys this is presentation only: D168's row anatomy, row menu grouping, search matching, session batching, activation semantics, and accessibility semantics are unchanged, and no ADR is required.** | D168's overview banner used a decorative gradient and `--text-xl` counter tiles, which the design system forbids, and its per-section panels repeated the same elevated frame three times. Demoting the counters to an inline run kept the clutter without earning it: every total they showed is already legible from the per-group strip counts, so restating them above the toolbar duplicated numbers and gave the destination a header no sibling page has. Dropping them leaves the durable index looking and behaving like the agent capability pages. |
 | D455 | Project archive is a list + inspector | *(row anatomy superseded by the same-day "Project archive reads as an inset grouped card list" entry)* **Revise D267's expanding rows: Settings → Project archive keeps the quiet intro and toolbar, then a one-column workbench. The index remains Pinned / All projects / Archived with per-section counts and no visibility toggle (D133). Compact rows show glyph, name, one status tag, session count, and relative time. A click selects and stays in Settings; double-click, Enter, or the inspector Open action activates and returns to chat. Folders, chats (batches of eight), and the row menu open under the selected row at full width. Search still matches session titles and selects the owning project. Presentation only: no IPC, storage, or host change. See ADR 0294 and E2E-038.** | Inline expansion and per-row menus made a long durable index hard to scan, and clicking a name left Settings instead of managing the project. |
 | D456 | Session thinking-parameter omission | **Amend ADR 0194 / ADR 0144 / ADR 0221: session `thinkingLevel` accepts `omit` in addition to the seven canonical levels. Composer prepends `omit` on a reasoning model. Settings `defaultThinkingLevel` also accepts `omit` when the binding enables any reasoning level. Runtime bookkeeping stays `off` and uses the low-level provider stream so no thinking override is synthesized. Binding/catalog capability lists stay canonical. Schema v19 widens the session CHECK to include `omit`. Handshake protocol version is unchanged. See ADR 0295 and E2E-203a.** | Explicit `off` still serializes a disable; users need a session-level do-not-send matching subagents. |
+| D458 | Composer reasoning slider on the menu root | **Amend the combined model × reasoning menu: when more than one level is listed, a native range slider with one labeled stop per level sits under the Reasoning level entry. Slider and tick commits persist the last pending level through `configureActiveSession` without leaving the root; the entry still opens the classic radio list. Tick labels are not tab stops. Renderer only. See issue #417, `04-ux/08-component-spec.md`, and E2E-050.** | Switching a level required a submenu trip; a Codex-style slider keeps the radio list while making quick adjustments one drag. |
 
 ## E. M5 hardening decisions (0.4.0)
 
@@ -5537,6 +5538,7 @@ that was sitting at the bottom — including after the turn had finished.
   and no new default. `project.deleteRunningBlocked` keeps its meaning, copy,
   and every translation. See ADR 0251, D421, and
   E2E-PROJECT-delete-running-sessions-are-named-and-stopped.
+
 ## 2026-09-16 — Plugin `workspace` fs roots follow the calling session (D432)
 
 - Every plugin `pi.fs.*` call whose mode root is `workspace` resolved the one
@@ -6322,3 +6324,30 @@ that was sitting at the bottom — including after the turn had finished.
 - Presentation only: no IPC, storage, host-protocol, or activation-semantics
   change. Search still matches session titles and keeps the owning project in
   the index. See `04-ux/06-settings-ia.md`.
+
+## 2026-09-20 — The menu root carries the reasoning slider (#417, D458)
+
+- The Composer's Reasoning level selection lived only inside a vertical radio
+  list one submenu deep. Issue #417 asked for a Codex-desktop-style slider
+  while keeping the existing click-to-list interaction.
+- The combined model × reasoning menu root now shows a native range input with
+  one stop per enabled level plus a clickable tick label per stop, directly
+  beneath the Reasoning level entry. Dragging the slider or clicking a tick
+  commits the level immediately through the same `configureActiveSession`
+  path and leaves the menu where it is, so quick adjustments never cost a
+  submenu trip. The Reasoning level entry itself still opens the classic
+  radio list, which keeps its radio semantics, trailing check,
+  Up/Down/Enter/Left contract, and root-return behavior.
+- The slider owns its arrow/Home/End/Enter keys while focused, so those keys
+  adjust the level instead of driving menu navigation, while Escape still
+  closes the menu. Dragging across several stops keeps only the last pending
+  level; commits serialize latest-wins so an in-flight idle persist cannot
+  land an intermediate stop, and a session or model change invalidates
+  pending work. A local drag lead keeps the controlled input from snapping
+  back while the store confirmation lands. Tick labels are clickable but not
+  tab stops. A binding with a single enabled level hides the slider entirely.
+- Level values remain untranslated canonical strings, including session
+  `omit` (D456) when the binding exposes enabled canonical levels. The
+  seven-level ladder, provider filtering, and clamping rules are unchanged.
+  Renderer only: no protocol, storage, host, permission, or migration change.
+  See `04-ux/08-component-spec.md`, `04-ux/07-ui-design-system.md`, and E2E-050.

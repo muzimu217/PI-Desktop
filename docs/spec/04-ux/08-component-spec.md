@@ -804,20 +804,22 @@ reading surface of the workstation.
 
 ### Turn process and thinking display
 
-Each assistant-turn entry has one process disclosure containing reasoning,
-tools and intermediate assistant text in transcript order. Its trailing answer
-streams outside the disclosure. Later activity moves a provisional answer into
-the process without altering the stored message. Assistant errors and trailing
-aborted partial replies stay visible. Compaction and user/system boundaries are
-unchanged.
+Compact mode projects each assistant-turn entry into one process disclosure
+containing reasoning, tools and intermediate assistant text in transcript
+order. Its trailing answer streams outside the disclosure. Later activity
+moves a provisional answer into the process without altering the stored
+message. Detailed mode does not wrap that process: the same parts stay in
+place. Assistant errors and trailing aborted partial replies stay visible.
+Compaction and user/system boundaries are unchanged.
 
-Completed process areas start collapsed; detailed mode opens the active process.
-Manual choices and search reveals own the disclosure until unmount. Failed tools
-open an unclaimed active process and keep their invocation-level error presentation.
-The header shows elapsed time and the visible process step count. Its thinking
-label applies only while the latest activity is streaming reasoning without answer
-text; streamed answers use the processing label. Delegation
-cards and individual tool details remain available inside the process.
+Compact mode starts completed process areas collapsed. Manual choices and
+search reveals own the disclosure until unmount. Failed tools open an
+unclaimed active process even in compact mode and keep their invocation-level
+error presentation. The compact header shows elapsed time and the visible
+process step count. Its thinking label applies only while the latest activity
+is streaming reasoning without answer text; streamed answers use the
+processing label. Delegation cards and individual tool details remain
+available inside the compact process.
 
 `thinkingDisplayMode` defaults to `detailed`. In `compact`, reasoning text and
 excerpts are absent, active reasoning has a status indicator, and completed
@@ -2744,19 +2746,24 @@ reasoning-level control.
   live discovery updates them in the background without replacing a configured
   alias with the wire ID or a second visible name.
 - The combined model × reasoning menu opens at `bottom: calc(100% + 8px)` with
-  `role="menu"`. Its root has exactly two `role="menuitem"` entries. The Model
-  submenu has a search input and sticky provider headings, while the Reasoning
-  level submenu starts with `Current model <model> supports these reasoning
-  levels` and lists `omit` then the selected model binding's enabled levels in
-  canonical order. `omit` persists as the session thinking level and sends no
-  provider thinking override (ADR 0295).
+  `role="menu"`. Its root has exactly two `role="menuitem"` entries and, when
+  the menu lists more than one level, a drag slider with one labeled stop per
+  level directly beneath the Reasoning level entry (D458). Tick labels are
+  clickable but not tab stops; the range input is the accessible control.
+  The Model submenu has a search input and sticky provider headings, while
+  the Reasoning level submenu starts with `Current model <model> supports
+  these reasoning levels` and lists `omit` then the selected model binding's
+  enabled levels as the classic radio rows. `omit` persists as the session
+  thinking level and sends no provider thinking override (ADR 0295).
   Model-row reasoning badges use published reasoning metadata; vision badges
   use the effective image-input capability for the row's provider binding
   (`supportsImages` when explicitly set, published image input otherwise).
   Rows use `role="menuitemradio"`, `aria-checked`, active-row styling, and a
-  trailing check. Selecting a concrete model or level persists the complete
-  session config, clears model filtering, and returns to the root without
-  dismissing the menu. Closing and reopening always starts at the root.
+  trailing check. Selecting a concrete model, or a level from the radio list,
+  persists the complete session config, clears model filtering, and returns
+  to the root without dismissing the menu; slider and tick commits persist
+  the last pending level while the menu stays where it is. Closing and
+  reopening always starts at the root.
 - Unknown Custom/OpenAI-compatible models remain at `off` until the user
   explicitly enables a level in Settings. The menu never auto-infers reasoning
   support; after an explicit binding selection it renders the configured level.

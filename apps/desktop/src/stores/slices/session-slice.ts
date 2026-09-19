@@ -19,6 +19,10 @@ import {
   sessionIsReusableEmpty,
 } from "../../lib/session-create";
 import {
+  pinnedSessionModelBinding,
+  sessionNeedsModelPin,
+} from "../../lib/session-model";
+import {
   retainSessionPane,
 } from "../../lib/session-panes";
 import {
@@ -392,6 +396,42 @@ export function createSessionSlice({
         rememberSessionCompactions(id, detail.session);
         void get().restorePendingPlan(id);
         void get().acknowledgeSessionOutcome(id);
+        const selected = get().sessions.find((session) => session.id === id);
+        if (
+          selected &&
+          sessionNeedsModelPin(selected) &&
+          get().pendingPlans[id]?.status !== "pending"
+        ) {
+          const pin = pinnedSessionModelBinding({
+            session: selected,
+            messages: selectedMessages,
+            settings: get().settings,
+            providers: get().providers,
+          });
+          if (pin.providerId && pin.modelId) {
+            set((state) => ({
+              sessions: state.sessions.map((session) =>
+                session.id === id
+                  ? applyOptimisticSessionConfiguration(session, pin)
+                  : session,
+              ),
+            }));
+            if (get().activeSessionId === id) {
+              void get().configureActiveSession({
+                mode: selected.mode,
+                providerId: pin.providerId,
+                modelId: pin.modelId,
+                thinkingLevel: selected.thinkingLevel,
+              });
+            } else {
+              void api.configureSession(id, {
+                mode: selected.mode,
+                providerId: pin.providerId,
+                modelId: pin.modelId,
+              });
+            }
+          }
+        }
       } finally {
         if (runtime.isCurrentSessionSelection(selection)) {
           runtime.clearSessionSelection(selection);

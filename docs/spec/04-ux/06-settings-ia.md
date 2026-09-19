@@ -174,8 +174,10 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
   to Off, and has no follow-the-session entry. Settings search indexes the card,
   its switch, the template row, the default-model row, and the reasoning row.
 - **Thinking display mode** uses a menu select with Detailed (default) and
-  Compact. Detailed retains reasoning text; Compact shows only an active
-  thinking indicator and hides finished thought rows. The global preference
+  Compact. Detailed shows reasoning, tools and intermediate text in place
+  without grouping them into a process; Compact groups that work into a
+  process, collapses completed processes, shows only an active thinking
+  indicator, and hides finished thought rows. The global preference
   persists as `thinkingDisplayMode` in host-owned settings; missing values use
   Detailed. It affects presentation only, not model reasoning configuration.
   Settings search indexes the row and both mode names.

@@ -438,8 +438,12 @@ identify the platform validation still needed.
   provider name and exact model ID beneath the Default model label; its quiet
   Change action does not repeat the current value. The picker groups
   model-level entries by provider, marks the exact current model, and a newly
-  created session inherits that exact model and its owning provider.
-  Searching by provider or model filters locally, the result list scrolls without moving the settings card, and an unmatched query shows an empty state.
+  created session inherits that exact model and its owning provider. Changing
+  the default later does not rewrite an already created session's stored
+  provider/model; only a new session or the unpersisted home draft follows the
+  live default. Searching by provider or model filters locally, the result list
+  scrolls without moving the settings card, and an unmatched query shows an empty
+  state.
 - **Specs linked**: `03-runtime/13-model-catalog-and-selection.md`
 - **Acceptance**: B (model selection)
 - **Milestone**: M6
@@ -3213,20 +3217,30 @@ identify the platform validation still needed.
 - **Preconditions**: One catalogued reasoning model, one non-reasoning model,
   and one unknown free-form model id.
 - **Steps**: 1) Open the Composer model × reasoning chip. 2) Confirm the root
-  contains only Model and Reasoning level entries with current values. 3) Open
-  Model, search for a model, and select a model from a provider group. 4) Confirm
-  the menu remains open at the root, then open Reasoning level and choose multiple
-  supported levels. 5) Repeat with a non-reasoning provider and an unknown
-  free-form model id; exercise Escape, outside click, Up/Down, Enter, and Left.
+  contains the Model and Reasoning level entries with current values, plus a
+  slider with one labeled stop per supported level directly beneath the
+  Reasoning level entry. 3) Drag and click the slider across multiple
+  supported levels and click a tick label, confirming the chip updates while
+  the menu stays at the root. 4) Open Model, search for a model, and select a
+  model from a provider group; confirm the menu remains open at the root.
+  5) Open Reasoning level and choose a level from the radio list. 6) Repeat
+  with a non-reasoning provider and an unknown free-form model id; exercise
+  Escape, outside click, Up/Down, Enter, Left, and the slider's arrow keys.
 - **Expected**: The chip is in the right toolbar with a Bot icon, before the
   standalone prompt-enhancement Sparkles action and Send/Abort; Off omits the
   level text. The single anchored menu replaces its root
   with an in-place back row and submenu, never opens tabs or a second popover,
   and always reopens at the root. Model search filters sticky provider groups;
-  reasoning rows come from the selected model's explicit binding levels in
-  canonical order, use radio semantics and a trailing check, and show the
-  current model support note. Selecting either value immediately updates the
-  chip and root value, clears model filtering, and keeps the menu open. A
+  reasoning levels come from `omit` then the selected model binding's enabled
+  levels in canonical order. The root carries a drag slider with one labeled
+  stop per level directly beneath the Reasoning level entry when more than
+  one level is listed (a single-level binding hides the slider). Dragging
+  across several stops persists only the last pending level; tick labels are
+  not tab stops. Slider and tick commits update the chip immediately while
+  the menu stays at the root. The Reasoning level entry opens the radio list,
+  which uses radio semantics, a trailing check, and the current model support
+  note. Selecting either value immediately updates the chip and root value,
+  clears model filtering, and keeps the menu open. A
   non-reasoning or unknown model starts at `off`, but an explicit Settings
   binding can make its configured levels available; discovery never promotes it
   automatically. Refreshing discovered model data cannot overwrite the binding.
@@ -3239,7 +3253,7 @@ identify the platform validation still needed.
   `03-runtime/13-model-catalog-and-selection.md`, ADR 0018, ADR 0027
 - **Acceptance**: B (model config), Quality
 - **Milestone**: M5
-- **Status**: Unit-covered (`thinking-ui.test.mjs`, `composer-model-thinking-menu.test.mjs`, agent-runtime capability tests); full UI scenario Draft
+- **Status**: Unit-covered (`thinking-ui.test.mjs`, `composer-model-thinking-menu.test.mjs`, `thinking-commit-queue.test.mjs`, agent-runtime capability tests); full UI scenario Draft
 
 #### E2E-051: Thinking level persists with the session
 
@@ -12150,7 +12164,7 @@ browser milestones are scheduled.
   only reachable with a password; the user's local SSH agent holds no usable key
   for it. A GitHub Releases fixture serves the `pi-host` bundle for that platform
   at the desktop's version. A second machine accepts the user's key only.
-- **Steps**: 1) In Settings → Remote Hosts, install over SSH with key
+- **Steps**: 1) In Settings → Remote Hosts, open the Add form's SSH tab and install over SSH with key
   authentication and confirm the form shows the identity-file field.
   2) Switch the authentication mode to password, confirm the identity-file field
   is replaced by a masked password field, and reveal it once.
@@ -12185,6 +12199,27 @@ browser milestones are scheduled.
 - **Status**: Draft; remote harness with a password-only Linux SSH target
   required. The credential seam itself is covered offline by
   `apps/desktop/test/remote-host-ssh-password.test.mjs`.
+
+
+#### E2E-REMOTE-HOST-settings-compact-inventory
+
+- **Preconditions**: The desktop Settings window can open. No paired remote
+  host is required.
+- **Steps**: 1) Open Settings. 2) Confirm Remote Hosts shows an Experimental
+  badge on the rail. 3) Open it and confirm the page title carries the same
+  badge, with a host inventory and one Add form (SSH / Pair) and no
+  instructional copy. 4) Switch Add to Pair and back to SSH; confirm both
+  forms stay filled.
+- **Expected**: The whole destination is marked Experimental. Field labels
+  and placeholders remain; overview, body, and hint copy are absent. There
+  is no Experimental switch list. SSH stays the default Add tab. Pairing and
+  SSH bootstrap keep their existing success and failure toasts.
+- **Specs linked**: `06-delivery/07-remote-control-rollout.md` §2 R2,
+  `02-architecture/05-remote-agent-control.md` §5.2
+- **Acceptance**: D (surfaces), Quality
+- **Milestone**: Post-MVP (rollout R2b)
+- **Status**: Draft; covered offline by
+  `apps/desktop/test/settings-remote-hosts.test.mjs`.
 
 #### E2E-232: The outbound messaging integration relays events and commands
 
@@ -13632,8 +13667,9 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 - **Steps:** Stream the turn; finish it; expand/collapse its process; search an
   intermediate message; switch display modes through Settings → AI → Defaults.
   Repeat with a stopped partial answer, an assistant error and a failed tool.
-- **Expected:** Completed work has one collapsed process plus its final answer.
-  Manual choices survive updates; search reveals its target; live answer text
+- **Expected:** In detailed mode, thinking, tools and intermediate text stay
+  in place with no process wrapper. Compact mode keeps that process collapsed
+  until expanded. Manual choices survive updates; search reveals its target; live answer text
   stays readable. Errors and stopped trailing text stay visible. Compact mode
   exposes no reasoning text or excerpt, shows a live indicator, and leaves no
   completed thinking-only header. Tools and progress remain accessible. Switching

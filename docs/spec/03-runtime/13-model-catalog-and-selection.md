@@ -203,10 +203,14 @@ a creation default only and never rewrites an existing session's stored choice.
 
 Unpinned sessions still advertise that inherited default model's reasoning
 capability on session list/get/create/fork/configure. Enrichment does not pin
-`providerId`/`modelId`. The Composer never treats a `supportsReasoning: false`
-or empty thinking-level snapshot as authoritative when the selected
-catalog/binding model exposes levels, so a mid-turn thinking or model pick
-cannot collapse the menu to Off-only.
+`providerId`/`modelId`; desktop session create does, by writing the then-current
+app default (or Composer draft override) into the durable ids. Later Settings
+default-model changes do not rewrite an already created session. Opening a
+legacy row whose ids are still empty snapshots the last used turn, else the
+current default, so it stops following Settings. The Composer never treats a
+`supportsReasoning: false` or empty thinking-level snapshot as authoritative
+when the selected catalog/binding model exposes levels, so a mid-turn thinking
+or model pick cannot collapse the menu to Off-only.
 
 ## 5. Capability warnings
 
@@ -370,7 +374,9 @@ App-level default:
 - if none configured, onboarding checklist requires provider setup before first agent run
 
 Session-level:
-- inherits app default at creation
+- inherits app default at creation and stores that `providerId`/`modelId` pair
+- later Settings default-model changes apply only to new sessions and the
+  unpersisted home draft, not to already created sessions
 - initializes thinking to the highest level enabled by the inherited model's
   binding; published levels seed a new binding, while an empty or `off`-only
   binding starts at `off`
@@ -499,6 +505,7 @@ same model to the check mark, the toggle and the duplicate guard.
       refresh keeps the cached picker populated
 - [ ] capability badges visible
 - [ ] session model change applies to next turn only
+- [ ] a newly created session stores the then-current default provider/model, and later default-model changes do not rewrite that session
 - [ ] a new session defaults a reasoning-capable inherited model to that
       binding's stored default thinking level (clamped onto the enabled set;
       strongest-enabled only when unset) and otherwise defaults to `off`

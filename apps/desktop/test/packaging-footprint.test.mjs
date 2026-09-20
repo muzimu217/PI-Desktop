@@ -95,7 +95,7 @@ test("legacy font fallback stripping only removes redundant fallback sources", (
     'src:url(a.woff2) format("woff2");',
   );
 
-  // The bundled faces use woff2-variations and must survive untouched.
+  // A variable face declaring only woff2-variations must survive untouched.
   const variations = 'src: url("../f.woff2") format("woff2-variations");';
   assert.equal(strip(variations), variations);
 

@@ -155,3 +155,12 @@ test("font size presets use Starbucks-style cup names", () => {
   assert.equal(chinese["settings.fontSizeLarge"], "超大杯");
   assert.equal(chinese["settings.fontSizeXl"], "超超大杯");
 });
+
+test("chat context-menu copy stays user-facing", () => {
+  assert.equal(english["chat.copyFailed"], "Couldn't copy to the clipboard");
+  assert.equal(english["chat.messageMenu"], "Message actions");
+  assert.equal(english["chat.copyConversation"], "Copy conversation");
+  assert.equal(chinese["chat.copyFailed"], "复制到剪贴板失败");
+  assert.equal(chinese["chat.copyConversation"], "复制整个对话");
+  assert.equal(chinese["chat.selectMessageText"], "选中消息文本");
+});

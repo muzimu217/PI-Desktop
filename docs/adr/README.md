@@ -104,7 +104,7 @@ Each ADR includes:
 | 0080 | Prewarm the global plugin launcher after boot | Accepted |
 | 0081 | Host-owned cross-platform plugin panel chrome | Accepted |
 | 0082 | Localized and page-adaptive plugin panel chrome | Accepted |
-| 0083 | Custom global UI font | Accepted |
+| 0083 | Custom global UI font | Superseded in part by 0298 |
 | 0084 | Defer new-task session creation until the first message | Accepted |
 | 0085 | Make the work panel shortcut a toggle | Accepted (amends 0068) |
 | 0086 | Keep macOS on the regular activation policy | Accepted |
@@ -325,5 +325,6 @@ Each ADR includes:
 | 0295 | [Session thinking-parameter omission](0295-session-thinking-parameter-omission.md) | Accepted (D456; amends ADR 0194 / ADR 0144 / ADR 0221) |
 | 0296 | [Signed macOS DMG is a two-icon install](0296-macos-signed-dmg-two-icon-install.md) | Accepted (D457; amends ADR 0232 / ADR 0204) |
 | 0297 | [Provider-hosted web search as an adapter capability](0297-provider-hosted-web-search-adapter-capability.md) | Accepted |
+| 0298 | [The app ships no fonts](0298-remove-bundled-fonts.md) | Accepted (D598; amends ADR 0083 / D232) |
 | turn-process-and-thinking-display | [Turn process and thinking presentation](turn-process-and-thinking-display.md) | Accepted |
 | provider-display-order | [Provider display order](provider-display-order.md) | Accepted |

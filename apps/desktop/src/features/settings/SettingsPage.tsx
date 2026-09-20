@@ -9,8 +9,9 @@ import type {
 import { useAppStore } from "../../stores/app-store";
 import { api } from "../../lib/api";
 import {
-  SETTINGS_NAV,
+  isSettingsDestinationHidden,
   SETTINGS_NAV_GROUP_LABELS,
+  visibleSettingsNav,
   type SettingsNavGroupId,
 } from "../../lib/settings-search";
 import { pluginViewIcon } from "../../lib/plugin-view-icons";
@@ -85,6 +86,12 @@ export function SettingsPage() {
   const refreshProviders = useAppStore((s) => s.refreshProviders);
   const platform = (window.piDesktop?.platform ?? "darwin") as ShortcutPlatform;
 
+  // Developer-only destinations (Remote Hosts) exist only while developer
+  // mode is on; the rail, the page, and settings search drop them together.
+  const developerMode = settings?.developerMode === true;
+  const navEntries = useMemo(() => visibleSettingsNav(developerMode), [developerMode]);
+  const tabHidden = isSettingsDestinationHidden(tab, developerMode);
+
   const [query, setQuery] = useState("");
   const [recoveringSettings, setRecoveringSettings] = useState(!settings);
   const [settingsRecoveryFailed, setSettingsRecoveryFailed] = useState(false);
@@ -103,6 +110,14 @@ export function SettingsPage() {
       setSettingsTab("general");
     }
   }, [activeExtension, extensions, setSettingsTab]);
+
+  // A hidden destination must not keep rendering: leave the page the rail no
+  // longer offers (for example Remote Hosts once developer mode is switched
+  // off) and fall back to General.
+  useEffect(() => {
+    if (!settings || !tabHidden) return;
+    setSettingsTab("general");
+  }, [settings, tabHidden, setSettingsTab]);
 
   const recoverSettings = useCallback(async () => {
     setRecoveringSettings(true);
@@ -195,7 +210,7 @@ export function SettingsPage() {
       remoteHosts: <IconGlobe size={14} />,
       about: <IconInfo size={14} />,
     };
-    return SETTINGS_NAV.map((entry) => ({
+    return navEntries.map((entry) => ({
       id: entry.id,
       labelKey: entry.labelKey,
       titleKey: entry.titleKey,
@@ -203,7 +218,7 @@ export function SettingsPage() {
       group: entry.group,
       keywordKeys: entry.keywordKeys,
     }));
-  }, []);
+  }, [navEntries]);
 
   // Search matches the tab label and the titles of the rows inside it, so
   // typing e.g. "theme" or "主题" surfaces Basics even though the tab is
@@ -328,7 +343,7 @@ export function SettingsPage() {
           <div className="settings-content-enter">
           <h1 className="settings-section-title">
             <span>{activeExtension?.label ?? t(activeTitleKey)}</span>
-            {!activeExtension && tab === "remoteHosts" ? (
+            {!activeExtension && tab === "remoteHosts" && !tabHidden ? (
               <Badge tone="warning">{t("settings.remoteHosts.experimental")}</Badge>
             ) : null}
           </h1>
@@ -489,7 +504,7 @@ export function SettingsPage() {
           {tab === "index" && settings && (
             <IndexPage settings={settings} saveSettings={saveSettings} />
           )}
-          {tab === "remoteHosts" && <RemoteHostsPage />}
+          {tab === "remoteHosts" && !tabHidden && <RemoteHostsPage />}
 
           {tab === "about" && (
             <div className="settings-stack">

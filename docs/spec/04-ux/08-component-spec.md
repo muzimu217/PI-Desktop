@@ -953,10 +953,10 @@ singleton without duplicating it:
   active tab uses the normal active fill, while overflow is handled by the
   strip rather than by a second resource list. Launcher rows use the same
   fast hover/focus feedback as other panel rows.
-- Active tabs, file-tree rows, diff headers, and the resize handle ease hover
-  fills with `--motion-duration-fast` / `--motion-ease-out`. The handle's 2px
-  line is a 50% accent tint while hovered or dragged — the solid accent is pure
-  white on the dark plate, so only keyboard focus paints it
+- Active tabs, file-tree rows, and diff headers ease hover fills with
+  `--motion-duration-fast` / `--motion-ease-out`. The resize handle matches the
+  sidebar: a 32px centered 2px grip that appears on direct hover/focus, with
+  the solid accent reserved for keyboard focus and an in-progress drag
 - Browser URL and empty-tool chrome share the light inset field treatment used
   by Settings controls (D148)
 - Every empty state in the panel — the no-resource body and each tab's own —
@@ -1668,7 +1668,16 @@ Single message render — either user (plaintext) or assistant (markdown streami
   and owns the pager whenever `revisionCount > 1`; replacing the assistant/tool
   tail must not move or detach that pager from the user bubble. The pager is
   part of the message action toolbar: hidden by default and revealed together
-  with Copy on row hover or keyboard focus.
+  with Copy on row hover or keyboard focus. Right-clicking a user message or
+  an assistant turn opens the same action vocabulary as a body-level
+  pointer-anchored menu (Copy, Select text, and the row's own Edit / Delete /
+  Regenerate / Branch / revision items). Right-clicking empty transcript
+  space, a system row, or a permission/outcome card opens a conversation
+  menu: Copy conversation, Select conversation text, Scroll to top, Jump to
+  latest. Quote, Annotate, and Open side chat stay retired (ADR 0268). A
+  streaming or empty assistant turn that would produce no items opens
+  nothing. Copying from the menu reports through the toast host because the
+  surface closes as soon as the item runs.
   Fork creates and activates an independent session whose snapshot ends at the
   selected assistant response, requires an idle source, and leaves that
   source's transcript, live runtime, and provider cache state untouched (D134).
@@ -1792,6 +1801,11 @@ message its checkpoint covers.
   whatever its z-index. When the pane is narrower than the panel, the popover
   narrows with the pane instead of crossing that edge.
 - Timestamps: `aria-label` with full time string, visual shows relative time
+- Right-click menus are `role="menu"` with `role="menuitem"` rows, arrow /
+  Home / End navigation, Escape / Tab / outside-press / scroll-behind
+  dismissal, and an accessible name (`chat.messageMenu` or
+  `chat.conversationMenu`). Focus returns to whatever the right-click
+  interrupted.
 
 ### 8.6 MVP constraints
 

@@ -29,6 +29,10 @@ Default runtime level:
 | audit | sensitive permission, tool, and plugin actions | host-core SQLite `audit_log` table |
 | plugin | per-plugin logs | `~/.pi-desktop/plugins/logs/<id>.log` |
 
+
+The `~/.pi-desktop` paths above are the packaged installation's. A development
+build writes the same tree under `~/.pi-desktop-dev`, and `PI_DESKTOP_DATA_DIR`
+replaces either root (D599).
 `app`, `host`, and `agent` are NDJSON files written by the Electron main
 `Logger` (`apps/desktop/electron/main/logger.ts`). Host and agent stderr lines
 are wrapped into records on their channel. The audit channel is stored in

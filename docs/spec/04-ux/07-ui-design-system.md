@@ -346,12 +346,13 @@ Implementation note: Tailwind v4 supports CSS-first configuration. The `@theme` 
 
 The UI stack is user-overridable from Settings → Basics → Appearance
 (ADR 0083). The Font row persists a CSS stack in `AppSettings.fontFamily`;
-an absent or empty value keeps the token stack above. Bundled open-licensed
-families (Geist, Inter, Noto Sans SC, LXGW WenKai — SIL OFL 1.1) ship locally
-under `apps/desktop/src/assets/fonts/` with license texts, and installed
-system families are enumerated by Electron main. Every custom stack appends a
-CJK fallback tier so Chinese text stays readable. The mono stack
-(`--font-mono`) is not user-configurable.
+an absent or empty value keeps the token stack above. The app ships no font
+files (ADR 0298): the picker offers the System default and the installed
+system families enumerated by Electron main, and a stack saved while a
+removed family existed still appears under Saved. Every generated stack ends
+in the system-only CJK fallback tier (`PingFang SC`, `Hiragino Sans GB`,
+`Microsoft YaHei`, `sans-serif`) so Chinese text stays readable. The mono
+stack (`--font-mono`) is not user-configurable.
 
 The Font size row (D343 / ADR 0180) persists an optional multiplier in
 `AppSettings.fontScale` (default 1, range 0.8–1.5). The renderer sets
@@ -660,7 +661,7 @@ and give plain tool blocks a fill in light only.
 | Selection (theme, language, level) | Deeper tint or raised pill plus the existing check mark; no selected border |
 | Floating layers (menus, popovers, dialogs, tooltips, toasts, hover cards) | `0 0 0 0.5px border-default` + shadow on the container; no rules inside |
 | Focus rings | accent tint, 2px box-shadow |
-| Control affordances (switch off-ring, resize handles) | Allowed; they are the control, not a partition. The work-panel divider paints a 50% accent tint on hover and while dragging (roughly 5.3:1 dark, 3.3:1 light); the solid accent is reserved for keyboard focus |
+| Control affordances (switch off-ring, resize handles) | Allowed; they are the control, not a partition. The sidebar and work-panel dividers paint a 32px centered grip on direct hover/focus, not a full-height rail; keyboard focus and an in-progress drag use the solid accent |
 
 ## 7. Iconography
 

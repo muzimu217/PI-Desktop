@@ -432,10 +432,29 @@ Electron 目标布局。
 | CSS | 0.42 MiB | 0.35 MiB |
 | **`out/renderer` 合计** | **31 MiB** | **24 MiB** |
 
-余下体积主要来自两款随包 CJK 字体（`lxgw-wenkai.woff2` 7.6 MiB、
-`noto-sans-sc.woff2` 7.4 MiB）。它们故意不做子集化：ADR 0083 §2 在每个字体栈
-末尾追加 `Noto Sans SC`，以保证中文在离线状态下依然可读，而子集化会丢掉用户
-提供内容中的字形。压缩它们需要修订 ADR，而不是改构建配置。
+渲染器不再产出任何应用字体面。D598 / ADR 0298 移除了四款内置字体（Geist、
+Inter、Noto Sans SC、LXGW WenKai），因此 `out/renderer` 中只剩 KaTeX 的数学
+字形 `woff2`。以下为本机实测，两次均在干净的 `pnpm install --frozen-lockfile`
+之后构建：
+
+| 渲染器分组 | 含内置字体 | 移除后（D598） |
+|---|---:|---:|
+| JavaScript（121 个 chunk） | 9.04 MiB | 9.04 MiB |
+| `woff2`（23 → 19 个文件） | 15.71 MiB | 0.24 MiB |
+| CSS（1 个文件） | 0.48 MiB | 0.48 MiB |
+| PNG 品牌资源（4 个文件） | 0.08 MiB | 0.08 MiB |
+| GIF（2 个文件） | 0.05 MiB | 0.05 MiB |
+| **`out/renderer` 合计**（152 → 148 个文件） | **25.36 MiB** | **9.89 MiB** |
+
+差异完全来自被删除的四个字体面，以下为构建报告的实际大小：
+`lxgw-wenkai.woff2` 8,016.75 kB、`noto-sans-sc.woff2` 7,782.07 kB、
+`inter.woff2` 352.24 kB、`geist.woff2` 69.65 kB，合计 16,220.71 kB，
+即合计体积下降的全部 15.47 MiB。中文现在由系统字体层
+（`PingFang SC`、`Hiragino Sans GB`、`Microsoft YaHei`）渲染，因此不存在因
+子集化而丢失字形的问题：根本不再随包发布字体面。
+开启，旧 `woff`/`truetype` 剔除仍然保留，因为 KaTeX 仍会声明这些来源。
+
+上表是三控件的 `v0.10.8` 记录，早于本次移除，其 `woff2` 行已不再反映现状。
 
 在干净的轮廓上手动烟雾 (`PI_DESKTOP_DATA_DIR=$(mktemp -d)`)：
 

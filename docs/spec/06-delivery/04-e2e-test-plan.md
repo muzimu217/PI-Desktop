@@ -3585,6 +3585,33 @@ identify the platform validation still needed.
 - **Milestone**: M5
 - **Status**: Unit-covered (`transcript-style.test.mjs`); full visual scenario Draft
 
+#### E2E-CHAT-transcript-context-menu: Right-click a message or the transcript
+
+- **Preconditions**: A session contains a completed user prompt and a
+  completed assistant answer; the conversation pane is focused.
+- **Steps**: 1) Right-click the user plate. 2) Choose Copy, then Select
+  message text. 3) Right-click the assistant turn and choose Copy.
+  4) Right-click empty space below the last turn and choose Copy
+  conversation. 5) Press Escape on an open menu, then Tab. 6) Right-click
+  a markdown link in the answer.
+- **Expected**: The user menu lists Copy, Select message text, Edit, and
+  a separated Delete; the assistant menu lists Copy, Select message text,
+  Regenerate, and Branch. Copy writes the message or the labelled
+  conversation to the clipboard and shows a toast. Select text highlights
+  the bubble. Escape and Tab dismiss the menu without running an item.
+  A link still offers Open in default browser, Open in work panel, and
+  Copy link address. Quote, Annotate, and Open side chat are absent
+  (ADR 0268). The surface is a viewport-fixed body-level layer and does
+  not resize the transcript.
+- **Specs linked**: `04-ux/08-component-spec.md` §8.3 / §8.5,
+  `04-ux/09-interaction-patterns.md` (floating dropdown surfaces),
+  ADR 0268
+- **Acceptance**: C (chat stream), Quality
+- **Milestone**: M5
+- **Status**: Unit-covered (`chat-context-menu.test.mjs`,
+  `chat-context-menu-items.test.mjs`, `chat-context-menu-surface.test.mjs`);
+  full UI scenario Draft
+
 #### E2E-060b: Neutral gray accent across chrome
 
 - **Preconditions**: App running in dark and light themes; plugins page and a
@@ -4908,7 +4935,7 @@ identify the platform validation still needed.
   - Work panel body reads as quiet `#fafafa` inset paper with a white header band.
   - Settings fields, browser URL, segment tracks, and shortcut keycaps use light inset fills; focused fields lift with a neutral ring.
   - Toggle on-state keeps a white knob on the near-black track.
-  - Hover fills on file-tree/diff/resize ease with shared motion tokens, and the divider's 2px line is a 50% accent tint while hovered or dragged, so it never paints a solid white hairline across the dark plate; keyboard focus keeps the full accent.
+  - Hover fills on file-tree/diff/resize ease with shared motion tokens, and the divider matches the sidebar: a 32px centered grip on direct hover/focus, not a full-height hairline; keyboard focus and an in-progress drag use the solid accent.
   - Light dialog scrim is softer than the dark 45% veil (~28% ink).
   - The dock question card paints the composer plate in both palettes — light
     `#ffffff` with the composer shadow, dark 96% `#212121` — and its option rows
@@ -5361,7 +5388,8 @@ identify the platform validation still needed.
      DMG and ZIP artifacts and one merged `latest-mac.yml` feed whose URLs and
      checksums match those generated assets.
   4. Inspect the renderer output for its size controls: emitted JS is minified,
-     no `.woff` or `.ttf` files are present, the KaTeX `woff2` faces remain, and
+     no `.woff` or `.ttf` files are present, only the KaTeX `woff2` faces remain
+     (no application font face is emitted any more), and
      the brand marks are the renderer-sized `assets/brand/logo-*.png` rather
      than the 1024px installer icons.
   5. Configure the loopback fixture provider, disable external egress, and
@@ -5372,8 +5400,8 @@ identify the platform validation still needed.
      host and agent-sidecar health.
   6. Confirm typography and branding survive the stripped font fallbacks: KaTeX
      math renders with its own faces, Chinese text in both the UI chrome and
-     assistant output stays readable under each bundled font selection, and the
-     sidebar plus startup-splash logos render crisply on a HiDPI display.
+     assistant output stays readable through the system CJK fallback tier, and
+     the sidebar plus startup-splash logos render crisply on a HiDPI display.
 - **Expected**: Each macOS package contains exactly one bundled agent sidecar,
   one Rust host matching its declared architecture, and only configured
   Chromium locale packs. The release output contains both native macOS
@@ -5387,9 +5415,10 @@ identify the platform validation still needed.
   a second agent-runtime tree, and reliably excludable non-target native assets
   are absent. Curated Shiki grammars highlight locally while an unknown fence
   stays readable as plain text. The renderer ships minified chunks, carries no
-  legacy `woff`/`truetype` payload, keeps every KaTeX `woff2` face, and imports
-  only renderer-sized brand marks; math, Chinese text under each bundled font,
-  and the chrome logos all render correctly. The offline shell starts and all
+  legacy `woff`/`truetype` payload, emits no application font face (only the
+  KaTeX `woff2` faces remain), and imports only renderer-sized brand marks;
+  math, Chinese text under the CJK fallback tier, and the chrome logos all
+  render correctly. The offline shell starts and all
   fixture capabilities use local packaged assets; provider/update network
   failures do not block startup.
 - **Specs linked**: `02-architecture/01-architecture.md`,
@@ -8920,16 +8949,21 @@ This test plan spec is accepted when:
   both the window and the process list. 2) Minimize the window into the tray,
   then launch again. 3) On Windows/Linux with close behavior `tray`, close the
   window, then launch again. 4) While the app is running, launch a build with
-  `PI_DESKTOP_DATA_DIR` set to an empty directory. 5) Quit the app, confirm no
-  process remains, and launch once more.
+  `PI_DESKTOP_DATA_DIR` set to an empty directory. 5) Still while the packaged
+  app is running, start a development build (the `dev` script, with no
+  `PI_DESKTOP_DATA_DIR`). 6) Quit the app, confirm no process remains, and
+  launch once more.
 - **Expected**: Steps 1–3 never create a second window, tray icon, host-core,
   agent sidecar, or log file: the existing window is restored and focused, the
   duplicate process exits, and the running instance's session list, in-flight
   turn, and `pi.sqlite` are untouched. Step 4 starts normally as an independent
-  instance against its own data directory. Step 5 starts a clean single
-  instance, proving the lock is released on exit and never leaves a stale block.
+  instance against its own data directory. Step 5 also starts normally: the
+  development build takes its own `userData` and `~/.pi-desktop-dev`, so it
+  neither waits for nor disturbs the running packaged app. Step 6 starts a clean
+  single instance, proving the lock is released on exit and never leaves a stale
+  block.
 - **Specs linked**: `03-runtime/07-process-model.md`,
-  `08-meta/decisions-log.md` (D236, D002), ADR 0094
+  `08-meta/decisions-log.md` (D236, D599, D002), ADR 0094
 - **Acceptance**: A (app lifecycle), Quality
 - **Milestone**: M6+
 - **Status**: Unit/source-contract covered; native cross-platform relaunch
@@ -8968,44 +9002,50 @@ This test plan spec is accepted when:
 #### E2E-126: Appearance card selects a global UI font
 
 - **Preconditions**: App running on macOS with an installed system font
-  distinct from the bundled families (for example PingFang SC); a clean
+  distinct from the built-in token stack (for example PingFang SC); a clean
   `~/.pi-desktop` profile.
 - **Steps**:
   1) Open Settings → Basics and confirm the Appearance card shows a Font row
      below Theme and Language with a trigger labeled "System default".
-  2) Open the Font picker and confirm it lists System default, the bundled
-     open-licensed families (Geist, Inter, Noto Sans SC, LXGW WenKai) marked
-     with their license, and installed system families; confirm the search
-     input filters families and the current selection shows a check badge;
-     confirm the menu opens as a floating layer above the card (not clipped or
-     squeezed inside it) and stays readable when the card is near the bottom
-     edge of the window; with many installed families, confirm the list opens
-     without an input stall and scrolls immediately (only the visible rows
-     are rendered, with an overscan buffer).
-  3) Select Geist and confirm the trigger label and the whole UI re-render in
-     Geist without a reload, including CJK fallback rendering for Chinese text.
-  4) Select an installed system family and confirm the UI switches to it; the
-     family stays selected after reopening the picker.
-  5) Restart the app, reopen Settings, and confirm the selected font is still
-     applied (persisted `AppSettings.fontFamily`).
-  6) Select System default and confirm the UI returns to the built-in token
-     stack immediately; restart, reopen Settings, and confirm the default is
-     still applied (the override is cleared, persisting an empty
+  2) Open the Font picker and confirm it lists System default followed by
+     installed system families only — no bundled open-licensed families and no
+     license badge on any row; confirm the search input filters families and the
+     current selection shows a check badge; confirm the menu opens as a floating
+     layer above the card (not clipped or squeezed inside it) and stays readable
+     when the card is near the bottom edge of the window; with many installed
+     families, confirm the list opens without an input stall and scrolls
+     immediately (only the visible rows are rendered, with an overscan buffer).
+  3) Select an installed system family (for example PingFang SC) and confirm the
+     trigger label and the whole UI re-render in that family without a reload,
+     including CJK fallback rendering for Chinese text.
+  4) Reopen the picker and confirm the family is still selected, then select
+     System default and confirm the UI returns to the built-in token stack
+     immediately.
+  5) Restart the app and reopen Settings and confirm the default is still
+     applied (the override is cleared, persisting an empty
      `AppSettings.fontFamily`).
+  6) With a profile whose stored stack names a formerly bundled family (for
+     example `"Geist", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+     sans-serif`), confirm the Font row shows that family under the Saved group,
+     that no font file is loaded from the app, and that the UI renders through
+     the system CJK fallback tier.
 - **Expected**: The Font row is a searchable picker whose trigger previews the
-  current family in that face; options are System default, bundled OFL families,
-  and installed system families enumerated by Electron main via
+  current family in that face; options are System default and the installed
+  system families enumerated by Electron main via
   `pi-desktop/app/systemFonts` (cached 60 s, hidden `.`-prefixed families
-  excluded); selection persists as a CSS stack in `AppSettings.fontFamily` and
-  overrides `--font-sans` live; Chinese text stays readable through the CJK
-  fallback tier; the menu is a body-level floating layer that is never clipped
-  by the settings card; the option list is windowed with fixed row heights
-  and an overscan buffer so only the visible slice is in the DOM, keeping
+  excluded); the app ships no font files, so no bundled group and no license
+  badge appear, and a stored stack that matches no option stays listed first
+  under Saved; selection persists as a CSS stack in `AppSettings.fontFamily` and
+  overrides `--font-sans` live; Chinese text stays readable through the
+  system-only CJK fallback tier; the menu is a body-level floating layer that is
+  never clipped by the settings card; the option list is windowed with fixed row
+  heights and an overscan buffer so only the visible slice is in the DOM, keeping
   opening, scrolling, and typing responsive regardless of how many families
   are installed; System default clears the override by persisting an empty
   stack.
+
 - **Specs linked**: `04-ux/06-settings-ia.md`, `04-ux/07-ui-design-system.md`,
-  `03-runtime/01-ipc-protocol.md`, ADR 0083
+  `03-runtime/01-ipc-protocol.md`, ADR 0083, ADR 0298
 - **Acceptance**: A (core shell), H (localization)
 - **Milestone**: M5+
 - **Status**: Documented
@@ -12159,7 +12199,8 @@ browser milestones are scheduled.
 
 #### E2E-REMOTE-HOST-ssh-password-authentication
 
-- **Preconditions**: A Linux test machine runs `sshd` with
+- **Preconditions**: Developer mode is enabled (Settings → Info → Developer),
+  so the Remote Hosts destination exists. A Linux test machine runs `sshd` with
   `PasswordAuthentication yes` and `PubkeyAuthentication no`, so the login is
   only reachable with a password; the user's local SSH agent holds no usable key
   for it. A GitHub Releases fixture serves the `pi-host` bundle for that platform
@@ -12204,22 +12245,30 @@ browser milestones are scheduled.
 #### E2E-REMOTE-HOST-settings-compact-inventory
 
 - **Preconditions**: The desktop Settings window can open. No paired remote
-  host is required.
-- **Steps**: 1) Open Settings. 2) Confirm Remote Hosts shows an Experimental
-  badge on the rail. 3) Open it and confirm the page title carries the same
-  badge, with a host inventory and one Add form (SSH / Pair) and no
-  instructional copy. 4) Switch Add to Pair and back to SSH; confirm both
-  forms stay filled.
-- **Expected**: The whole destination is marked Experimental. Field labels
-  and placeholders remain; overview, body, and hint copy are absent. There
-  is no Experimental switch list. SSH stays the default Add tab. Pairing and
-  SSH bootstrap keep their existing success and failure toasts.
-- **Specs linked**: `06-delivery/07-remote-control-rollout.md` §2 R2,
+  host is required. Developer mode is off in persisted settings.
+- **Steps**: 1) Open Settings and confirm the rail has no Remote Hosts row and
+  that searching settings for it returns nothing. 2) Enable developer mode in
+  Info → Developer and confirm Remote Hosts appears on the rail between
+  Projects and Info with an Experimental badge. 3) Open it and confirm the page
+  title carries the same badge, with a host inventory and one Add form
+  (SSH / Pair) and no instructional copy. 4) Switch Add to Pair and back to
+  SSH; confirm both forms stay filled. 5) Disable developer mode while the
+  destination is open and confirm the page returns to General and the rail row
+  is gone.
+- **Expected**: The whole destination is marked Experimental and is reachable
+  only while developer mode is on; the rail row, the page, and settings search
+  add and drop it together. Field labels and placeholders remain; overview,
+  body, and hint copy are absent. There is no Experimental switch list. SSH
+  stays the default Add tab. Pairing and SSH bootstrap keep their existing
+  success and failure toasts.
+- **Specs linked**: `04-ux/06-settings-ia.md` §1, §3,
+  `06-delivery/07-remote-control-rollout.md` §2 R2,
   `02-architecture/05-remote-agent-control.md` §5.2
 - **Acceptance**: D (surfaces), Quality
 - **Milestone**: Post-MVP (rollout R2b)
 - **Status**: Draft; covered offline by
-  `apps/desktop/test/settings-remote-hosts.test.mjs`.
+  `apps/desktop/test/settings-remote-hosts.test.mjs` and
+  `apps/desktop/test/settings-developer-only-destinations.test.mjs`.
 
 #### E2E-232: The outbound messaging integration relays events and commands
 

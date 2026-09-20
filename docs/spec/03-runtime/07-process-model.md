@@ -37,6 +37,13 @@ run pointed at its own `PI_DESKTOP_DATA_DIR` (E2E harnesses, the capture rig, a
 side-by-side profile) shares no database, outbox, or logs with the default
 installation and stays launchable while one is running (D236, ADR 0094).
 
+A development build is its own installation rather than a second process of
+the same one: it runs under `PI-Desktop Dev` in the OS application-data root
+and reads `~/.pi-desktop-dev`. `pnpm dev` therefore starts while a packaged app
+holds its lock, and the two never share a database, an outbox, or a log tree
+(D599, ADR 0094). An explicit `--user-data-dir` is honored instead, because the
+E2E harnesses point a build at a throwaway profile with it.
+
 1. Electron main starts
 2. Load English locale defaults
 3. Spawn Rust host-core

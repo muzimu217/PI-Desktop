@@ -1122,15 +1122,6 @@
   white-space: nowrap;
 }
 
-.settings-font-item-license {
-  flex: 0 0 auto;
-  color: var(--ds-text-muted);
-  font-size: var(--text-2xs);
-  font-weight: var(--font-weight-strong);
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
-}
-
 .settings-font-check {
   flex: 0 0 auto;
   color: var(--ds-accent);

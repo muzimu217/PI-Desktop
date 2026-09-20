@@ -144,7 +144,9 @@ Deliverables:
   the remote machine; and
 - the Settings → Remote Hosts destination: a compact host inventory and one
   Add form with SSH and Pair tabs, no instructional copy, marked Experimental
-  on the settings rail and page title because the topology may still fail.
+  on the settings rail and page title because the topology may still fail, and
+  shown — with its settings-search hits — only while developer mode is on
+  (`04-ux/06-settings-ia.md` §1, §3).
 
 Design decisions (D375, recorded 2026-09-10):
 

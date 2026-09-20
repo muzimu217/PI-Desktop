@@ -36,6 +36,12 @@ PI-Desktop.app
 截图装置、并行 profile）与默认安装不共享数据库、outbox 或日志，在已有实例运行时
 仍可启动（D236、ADR 0094）。
 
+开发构建本身就是独立安装，而不是同一安装的第二个进程：它运行在操作系统应用
+数据根目录下的 `PI-Desktop Dev`，数据目录为 `~/.pi-desktop-dev`。因此正式打包版
+持有锁时 `pnpm dev` 仍可启动，两者不会共享数据库、outbox 或日志树（D599、
+ADR 0094）。显式 `--user-data-dir` 仍然优先，E2E 装置正是用它把构建指向临时
+profile。
+
 1. Electron 主启动
 2. 加载英文语言环境默认值
 3. 生成 Rust host-core

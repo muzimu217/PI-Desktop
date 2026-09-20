@@ -17,7 +17,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | [ADR 0010：Rust host core](/adr/0010-rust-backend-host-core) | 特权进程、RPC 与持久化的宿主边界 |
 | [ADR 0053：Plan checkpoint](/adr/0053-plan-checkpoint-artifact-and-execution-epoch) | 计划审批、artifact 和执行 epoch |
 | [ADR 0079：VitePress 文档站](/adr/0079-vitepress-documentation-site) | 双语文档站的结构与部署方式 |
-| [ADR 0083：自定义全局界面字体](/adr/0083-custom-global-ui-font) | 设置字体选择器、内置开源字体与系统字体枚举 |
+| [ADR 0083：自定义全局界面字体](/adr/0083-custom-global-ui-font) | 设置字体选择器与系统字体枚举（内置字体已由 ADR 0298 移除） |
 | [ADR 0089：主动后台子代理委托](/adr/0089-proactive-background-subagent-delegation) | 非阻塞 Task、TaskWait/TaskList/TaskStop 生命周期与权限作用域 |
 | [ADR 0090：用户可配置的关闭行为](/adr/0090-user-configurable-close-behavior-close-to-tray) | 首次关闭只问一次，关闭到托盘或退出，设置里可改 |
 | [ADR 0095：用厂商账户登录](/adr/0095-vendor-account-oauth-login) | 用订阅账户代替 API 密钥，凭据留在主进程，sidecar 按请求取短时令牌 |
@@ -150,7 +150,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | 0080 | [启动后预热全局插件启动器](/adr/0080-prewarm-global-plugin-launcher) | 已接受 |
 | 0081 | [宿主拥有的跨平台插件面板外壳](/adr/0081-host-owned-plugin-panel-chrome) | 已接受 |
 | 0082 | [本地化且随页面自适应的插件面板外壳](/adr/0082-localized-plugin-panel-chrome) | 已接受 |
-| 0083 | [自定义全局界面字体](/adr/0083-custom-global-ui-font) | 已接受 |
+| 0083 | [自定义全局界面字体](/adr/0083-custom-global-ui-font) | 部分被 ADR 0298 取代 |
 | 0084 | [推迟新任务会话创建直到首条消息](/adr/0084-deferred-new-task-session-creation) | 已接受 |
 | 0085 | [让工作面板快捷键成为开关](/adr/0085-work-panel-shortcut-toggle) | 已接受（修订 ADR 0068） |
 | 0086 | [macOS 保持常规激活策略](/adr/0086-macos-regular-activation-policy) | 已接受 |
@@ -303,6 +303,7 @@ ADR 记录那些不应被静默改变的架构选择。中文入口与英文索�
 | 0295 | [会话思考参数不发送](/adr/0295-session-thinking-parameter-omission) | 已接受（D456；修订 ADR 0194 / ADR 0144 / ADR 0221） |
 | 0296 | [已签名 macOS DMG 改为双图标安装](/adr/0296-macos-signed-dmg-two-icon-install) | 已接受（D457；修订 ADR 0232 / ADR 0204） |
 | 0297 | [提供商托管联网搜索作为适配器能力](/adr/0297-provider-hosted-web-search-adapter-capability) | 已接受 |
+| 0298 | [应用不再随包发布任何字体](/adr/0298-remove-bundled-fonts) | 已接受（D598；修订 ADR 0083 / D232） |
 
 ## 什么时候看 ADR
 

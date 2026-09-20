@@ -511,11 +511,32 @@ against the same tree at `v0.10.8`:
 | CSS | 0.42 MiB | 0.35 MiB |
 | **Total `out/renderer`** | **31 MiB** | **24 MiB** |
 
-The two bundled CJK faces (`lxgw-wenkai.woff2` 7.6 MiB, `noto-sans-sc.woff2`
-7.4 MiB) dominate the remainder. They stay unsubset on purpose: ADR 0083 §2
-appends `Noto Sans SC` to every font stack so Chinese text stays readable
-offline, and subsetting would drop glyphs from user-supplied content. Reducing
-them requires an ADR revision, not a build-config change.
+The renderer no longer emits any application font face. D598 / ADR 0298 removed
+the four bundled families (Geist, Inter, Noto Sans SC, LXGW WenKai), so the only
+`woff2` files left in `out/renderer` are KaTeX's math glyphs. Measured on this
+machine from a clean `pnpm install --frozen-lockfile`, with and without the
+removal:
+
+| Renderer group | Bundled fonts | After D598 |
+|---|---:|---:|
+| JavaScript (121 chunks) | 9.04 MiB | 9.04 MiB |
+| `woff2` (23 → 19 files) | 15.71 MiB | 0.24 MiB |
+| CSS (1 file) | 0.48 MiB | 0.48 MiB |
+| PNG brand assets (4 files) | 0.08 MiB | 0.08 MiB |
+| GIF (2 files) | 0.05 MiB | 0.05 MiB |
+| **Total `out/renderer`** (152 → 148 files) | **25.36 MiB** | **9.89 MiB** |
+
+The entire difference is the four deleted faces, at the sizes the build reports:
+`lxgw-wenkai.woff2` 8,016.75 kB, `noto-sans-sc.woff2` 7,782.07 kB,
+`inter.woff2` 352.24 kB, and `geist.woff2` 69.65 kB — 16,220.71 kB, which is the
+whole 15.47 MiB drop in the total. Chinese text now renders from the system tier
+(`PingFang SC`, `Hiragino Sans GB`, `Microsoft YaHei`), so no glyph coverage is
+lost to subsetting: no face ships.
+The other two controls are unchanged: minification stays explicit, and the
+legacy `woff`/`truetype` strip stays because KaTeX still declares those sources.
+
+The three-controls table above is the `v0.10.8` record and predates the removal,
+so its `woff2` row is no longer current.
 
 Manual smoke on a clean profile (`PI_DESKTOP_DATA_DIR=$(mktemp -d)`):
 

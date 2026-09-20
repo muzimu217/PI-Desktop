@@ -20,13 +20,12 @@ const zhLocale = await readFile(
 
 // D335 / ADR 0173 stands, and the #478 call settles the follow-up: the dashboard
 // ships as the pi.token-insights plugin, so the whole stats UI layer is gone
-// from the app. Core keeps the turns / usage / stats RPCs and their shared
-// types — that is the surface a plugin calls.
+// from the app, and the summary/topSessions RPC surface ships in its own
+// change rather than this one.
 //
-// This guards the boundary in both directions. It fails if the usage
-// destination quietly creeps back into the sidebar or its copy resurfaces in
-// the catalogs, and it fails if the stats RPCs the plugin depends on get
-// swept away as dead code.
+// This guards the boundary: it fails if the usage destination quietly creeps
+// back into the sidebar, if its copy resurfaces in the catalogs, or if the
+// stats RPCs and their typings come back with it.
 test("usage statistics is not a settings destination", () => {
   assert.doesNotMatch(search, /id: "usage"/);
   assert.doesNotMatch(search, /settings\.nav\.usage/);

@@ -185,12 +185,6 @@ type ToolBudgetHealth = {
 - `workspace.set`
 - `workspace.clear`
 
-### 使用统计
-- `stats.summary({rangeDays: 7|30, projectId?})` —— 从非删除会话的已完成回合聚合
-  指标卡、诊断、每日总量、按模型序列、模型/项目用量占比与 365 天热力图；按
-  （范围、项目、时区、口径版本、最后回合结束时间）做 TTL 缓存。
-- `stats.topSessions({rangeDays, projectId?, limit?})` —— 最高消耗会话，供跳转卡。
-
 ### 工作区索引
 - `index.status({rootPath?})` 返回 host 所有、可丢弃的工作区索引生命周期状态，不暴露文件内容。
 - `index.rebuild({rootPath?})` 将所选工作区扫描进独立的

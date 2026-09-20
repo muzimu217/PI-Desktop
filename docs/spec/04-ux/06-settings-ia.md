@@ -219,11 +219,10 @@ no speech keys.
 ### Usage statistics (no Settings destination)
 
 D335 / ADR 0173 stands, and the interim re-introduction was withdrawn per the #478 call: no `usage` destination
-ships, and no group is reserved for one. The host-owned aggregation
-(`stats.summary` / `stats.topSessions`, over the durable completed-turn
-history) stays on the Core surface alongside `stats.getTokenUsageHistory`.
-The cross-tool dashboard remains the `pi.token-insights` plugin, which ships
-its own UI and cannot import app internals.
+ships, and no group is reserved for one. Completed-turn usage history stays
+host-owned (`session.endTurn.usage`, `stats.getTokenUsageHistory`). The
+cross-tool dashboard remains the `pi.token-insights` plugin, which ships its
+own UI and cannot import app internals.
 
 ### Shortcuts (`shortcuts` tab)
 - **Keyboard shortcuts** card:

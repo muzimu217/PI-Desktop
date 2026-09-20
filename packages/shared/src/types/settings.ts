@@ -22,6 +22,12 @@ export type ThemePreference = "system" | "light" | "dark" | `plugin:${string}`;
 export type CloseBehavior = "ask" | "tray" | "quit";
 
 export type AppSettings = {
+  /**
+   * Workspace group. One switch, default off: it owns the whole lifecycle of
+   * the workspace index — on, newly opened workspaces get indexed in the
+   * background so the Index page can report status; off, nothing builds one.
+   */
+  indexGrepBoost: boolean;
   defaultProviderId?: string;
   defaultModelId?: string;
   /** Host speech bindings. Absent means voice actions stay disabled. */

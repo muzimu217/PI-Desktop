@@ -2579,7 +2579,7 @@
 
 /*
   Build progress row at the top of the index health card: thin determinate bar
-  + file counter + the always-true "Grep is unaffected" reassurance.
+  + file counter + a quiet "you can keep working" note.
 */
 .idx-progress {
   display: flex;
@@ -2627,16 +2627,6 @@
 }
 
 /*
-  Fast-path value line inside the status tile's caption: a second quiet line
-  with tabular digits, so the health grid stays 4 cards.
-*/
-.idx-tile-metrics {
-  display: block;
-  margin-top: 2px;
-  font-variant-numeric: tabular-nums;
-}
-
-/*
   One-time local-only note at the bottom of the index page. Same soft-tile
   treatment as the trust notice above; `role="note"` keeps it out of the
   critical path, so muted ink and a ghost dismiss.
@@ -2672,7 +2662,13 @@
     justify-content: flex-start;
   }
 }
+.extension-prompt-dialog {
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+}
+
 .extension-prompt-message {
+  overflow-wrap: anywhere;
   margin: 0 0 12px;
   color: var(--ds-text-primary);
   font-size: var(--text-sm);
@@ -2687,6 +2683,7 @@
 }
 
 .extension-prompt-option {
+  overflow-wrap: anywhere;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2697,12 +2694,15 @@
   cursor: pointer;
 }
 
+.extension-prompt-option input {
+  flex-shrink: 0;
+}
+
 .extension-prompt-source-path {
   display: block;
   margin-top: 2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
   font-size: var(--text-3xs);
 }
 

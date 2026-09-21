@@ -53,6 +53,7 @@ they cover are specified in
 | `e2e-plan.mjs` | `pnpm test:e2e:plan` | Plan state, checkpoint artifact, and approval transitions |
 | `e2e-plan-ui.mjs` | `pnpm test:e2e:plan-ui` | Plan approval through the rendered UI |
 | `e2e-electron-boot.mjs` | `pnpm test:e2e:boot` | Electron boot probe |
+| `e2e-provider-recovery.mjs` | `node scripts/e2e-provider-recovery.mjs` | Isolated desktop with a localhost fault-injection provider: socket failures, interrupted streams, Responses recovery, exhausted retries, Continue, and recovery across eleven real Read calls. Requires a built desktop/runtime and host binary (`PI_DESKTOP_HOST_BIN` when outside the checkout); retains screenshots and JSON under `.artifacts/issue-699/` |
 | `e2e-supervision.mjs` | `pnpm test:e2e:supervision` | Process supervision and restart behavior |
 | `e2e-subagents.mjs` | `pnpm test:e2e:subagents` | Subagent registry over RPC, then through the real loader (D202) |
 | `e2e-agent-live.mjs` | `node scripts/e2e-agent-live.mjs` | Live streaming chat through agent-runtime + host-core. Requires `PI_DESKTOP_TEST_API_KEY`, `PI_DESKTOP_TEST_BASE_URL`, and `PI_DESKTOP_TEST_MODEL` (no defaults), so it has no `pnpm` alias |
@@ -71,7 +72,8 @@ and on manual dispatch, skipping both when a change touches only `docs/**` or
 `.github/workflows/docs-check.yml` covers the paths `ci.yml` ignores: it runs
 `pnpm docs:check` (the docs locale pair check) when `docs/**`, the READMEs, the
 shared changelog sources, or the check scripts change. `check:release-docs` is
-deliberately not in CI because it fails on rc versions by design.
+deliberately not in CI because release branches must pass it with the stable
+version explicitly supplied for a prerelease preview.
 
 `.github/workflows/release.yml` builds on a `v*.*.*` tag. A `verify` job first
 repeats the `ci.yml` checks (a tag push does not trigger `ci.yml`), and the
@@ -86,3 +88,13 @@ the publish job assembles the GitHub Release. Tag builds Developer ID-sign,
 notarize, and staple macOS artifacts; `workflow_dispatch` may set
 `sign_macos: false` only for unsigned debug artifacts. See the [release
 runbook](../docs/spec/06-delivery/06-release-runbook.md).
+
+### Provider certificate regression
+
+- `node scripts/e2e-provider-certificates.mjs`: real desktop launcher and
+  bundled sidecar against a loopback TLS model; tests trust, terminal failure,
+  inherited extra CA, and hostname validation. Requires installed Electron.
+- `node scripts/e2e-provider-certificate-ui.mjs`: production transcript error
+  component, localized guidance and detail disclosure. Requires built desktop
+  styles. Optional `PI_CERTIFICATE_EVIDENCE_DIR` saves a review screenshot;
+  `--baseline` renders the `origin/main` error component for comparison.

@@ -1006,6 +1006,8 @@ sklm: {
     "proxyUrlPlaceholder": "chaussettes5://127.0.0.1:1080",
     "proxyBypass": "Contourner",
     "proxyBypassDesc": "Hôtes qui ignorent le proxy.",
+    proxyFakeIp: "Autoriser les fake-IP du proxy pour les sources du marché",
+    proxyFakeIpDesc: "À activer uniquement avec un proxy transparent de routeur/TUN. Les autres adresses privées restent bloquées.",
     "proxyInvalid": "Saisissez une URL http, https ou chaussettes5 avec un hôte.",
     "proxySaveError": "Impossible d'enregistrer le proxy.",
     "proxyTest": "Test",

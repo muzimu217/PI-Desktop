@@ -1624,6 +1624,7 @@
   flex: none;
 }
 
+/* A plugin-declared row lets the plugin provide its fields; a key entry belongs
    to the plugin, so the user supplies only the key. */
 .model-provider-key-entry {
   display: flex;

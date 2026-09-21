@@ -1006,6 +1006,8 @@ sklm: {
     proxyUrlPlaceholder: "socks5://127.0.0.1:1080",
     proxyBypass: "繞過列表",
     proxyBypassDesc: "不走代理的主機。",
+    proxyFakeIp: "允許市場來源使用代理 fake-IP",
+    proxyFakeIpDesc: "僅在路由器/TUN 透明代理下開啟；其他私有位址仍會被阻止。",
     proxyInvalid: "請輸入帶主機名的 http、https 或 socks5 URL。",
     proxySaveError: "無法儲存代理設定。",
     proxyTest: "測試",

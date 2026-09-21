@@ -5586,8 +5586,9 @@ identify the platform validation still needed.
   - Non-429 transient failures share one bounded budget of ten retries after
     the initial attempt, for eleven provider attempts total, shared by request
     setup and stream delivery. Each retry waits for an abortable bounded
-    backoff, removes the failed assistant from model context, and produces no
-    duplicate assistant bubble or terminal error notification.
+    backoff, removes the entire failed assistant suffix from model context,
+    and produces no duplicate assistant bubble or terminal error notification. A retry never
+    calls native continuation while an assistant remains the last model message.
   - A mid-stream 502 is retried rather than surfacing immediately. The
     mixed-phase fixture spends one counter across both phases and makes eleven
     attempts in total, not one retry per phase. A complete successful response
@@ -8061,6 +8062,7 @@ identify the platform validation still needed.
 | C — Conversation & stream (delegate context budget) | E2E-SUBAGENT-context-overflow-compacts-before-failing, E2E-SUBAGENT-context-overflow-reports-actionable-failure, E2E-SUBAGENT-resume-seeds-within-context-budget |
 | Quality (delegate context budget) | E2E-SUBAGENT-context-overflow-compacts-before-failing, E2E-SUBAGENT-context-overflow-reports-actionable-failure, E2E-SUBAGENT-resume-seeds-within-context-budget |
 | M6+ (delegate context budget) | E2E-SUBAGENT-context-overflow-compacts-before-failing, E2E-SUBAGENT-context-overflow-reports-actionable-failure, E2E-SUBAGENT-resume-seeds-within-context-budget |
+| C / F / Quality — The context estimate stays safe (calibration) | E2E-CONTEXT-estimate-calibration-stays-safe |
 | C — Conversation & stream (unique tool-call ids) | E2E-RUNTIME-unique-tool-call-ids-per-request |
 | Quality (unique tool-call ids) | E2E-RUNTIME-unique-tool-call-ids-per-request |
 | G — Plugin host lifecycle (crash report) | E2E-PLUGIN-crash-report-names-the-exit-code |
@@ -13506,7 +13508,7 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 
 | ID | Scenario | Verification |
 |---|---|---|
-| E2E-MCP-MARKET-NET-BOUNDARY | URL guard rejects credentials, loopback, private, special-use IPv4, v4-mapped, ULA, site-local and link-local bypass forms (trailing dot included); Main pins the checked public address and rechecks HTTPS redirects | deterministic guard assertions; source-contract coverage for DNS pin and bounded responses |
+| E2E-MCP-MARKET-NET-BOUNDARY | URL guard rejects credentials, loopback, private, special-use IPv4, v4-mapped, ULA, site-local and link-local bypass forms (trailing dot included); direct/unknown routes pin the checked public address by default, while a fully proxied route uses the session transport and an explicit `allowFakeIp` opt-in can cover transparent-router fake-IP sources without allowing real private answers | deterministic guard assertions; source-contract coverage for DNS pin, proxy route selection, explicit fake-IP scope and bounded responses |
 | E2E-MCP-MARKET-SEMANTICS | Registry records map to install templates preserving package versions, named/positional runtime/package arguments and required/optional env variables; a remote header variable is recognized in both the registry's `{name}` and the catalog's `${NAME}` spelling, prompts for declared editable values, preserves unbound brace literals, and resolves header-local defaults, fixed values, and optional flags without merging same-named inputs across headers (ADR registry-header-variable-spelling) | deterministic mapping assertions |
 | E2E-MCP-MARKET-INSTALL | Builtin catalog entry resolves through `resolveCatalogEntry` and installs via the host `mcp.upsert` RPC; record lands in `~/.agents/servers/` | real host binary, isolated temp HOME |
 | E2E-MCP-MARKET-HEADER-SCOPE | Registry header-local `{token}` resolves only in its header; same-named URL path/query tokens remain literal through mapping, resolution, host upsert/list and persistence. URL templates retain only legacy `${NAME}` substitution. When `headerBindings` exists (even empty or partial), unbound tokens in every header stay literal and never consume another header's input or default | shared regressions plus real host binary with isolated temporary storage; remote entry disabled, no network call |
@@ -14219,6 +14221,27 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **Limits:** OS-root inclusion is checked without installing a root. The TLS
   success fixture uses a child-only extra CA; it does not reproduce a specific
   antivirus installation or claim native macOS/Linux verification.
+
+### E2E-CONTEXT-estimate-calibration-stays-safe
+
+- **Preconditions:** Deterministic provider fixture whose reported usage can be
+  scripted; a session whose occupancy is close to the hard boundary; no real
+  provider credentials.
+- **Steps:** Report usage below the prediction repeatedly and confirm the
+  displayed occupancy never falls below the floor and compaction still fires;
+  report usage far outside the plausible band and confirm the value does not
+  move; run a CJK-heavy session and compare the displayed occupancy with the
+  reported usage.
+- **Expected:** The calibrated occupancy stays within 0.85×–6× of the raw
+  estimate, moves up as soon as there is evidence, moves down only after
+  agreeing samples, and a projection at 1.18× the hard limit still compacts.
+  Misreports move it in neither direction. CJK text no longer reads at a
+  quarter of its measured cost.
+- **Specs linked:** `03-runtime/02-agent-runtime.md` §5.1,
+  `08-meta/decisions-log.md` D606
+- **Acceptance:** C (chat and stream), F (persistence), Quality
+- **Status:** Unit-covered (`context-calibration.test.ts`, including the CJK and
+  boundary cases); desktop E2E pending
 
 ### E2E-RUNTIME-unique-tool-call-ids-per-request
 

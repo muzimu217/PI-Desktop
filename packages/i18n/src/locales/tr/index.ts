@@ -1019,6 +1019,8 @@ sklm: {
     proxyUrlPlaceholder: "socks5://127.0.0.1:1080",
     proxyBypass: "Muaf tut",
     proxyBypassDesc: "Vekili atlayan ana makineler.",
+    proxyFakeIp: "Pazar kaynakları için proxy fake-IP adreslerine izin ver",
+    proxyFakeIpDesc: "Yalnızca şeffaf yönlendirici/TUN proxy için açın. Diğer özel adresler engellenmeye devam eder.",
     proxyInvalid: "Ana makineli bir http, https veya socks5 URL’si girin.",
     proxySaveError: "Vekil kaydedilemedi.",
     proxyTest: "Dene",

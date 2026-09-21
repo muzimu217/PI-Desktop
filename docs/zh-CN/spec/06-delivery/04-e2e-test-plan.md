@@ -5331,6 +5331,7 @@ eleven-tool-round desktop paths are verified by
 | C — 对话和直播（委托上下文预算） | E2E-SUBAGENT-context-overflow-compacts-before-failing、E2E-SUBAGENT-context-overflow-reports-actionable-failure、E2E-SUBAGENT-resume-seeds-within-context-budget |
 | 品质（委托上下文预算） | E2E-SUBAGENT-context-overflow-compacts-before-failing、E2E-SUBAGENT-context-overflow-reports-actionable-failure、E2E-SUBAGENT-resume-seeds-within-context-budget |
 | M6+（委托上下文预算） | E2E-SUBAGENT-context-overflow-compacts-before-failing、E2E-SUBAGENT-context-overflow-reports-actionable-failure、E2E-SUBAGENT-resume-seeds-within-context-budget |
+| C / F / 品质 —— 上下文估算保持安全（校准） | E2E-CONTEXT-estimate-calibration-stays-safe |
 | C — 对话与流式（工具调用 id 唯一） | E2E-RUNTIME-unique-tool-call-ids-per-request |
 | 品质（工具调用 id 唯一） | E2E-RUNTIME-unique-tool-call-ids-per-request |
 | G — 插件宿主生命周期（崩溃上报） | E2E-PLUGIN-crash-report-names-the-exit-code |
@@ -7945,7 +7946,7 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 
 | ID | 场景 | 验证 |
 |---|---|---|
-| E2E-MCP-MARKET-NET-BOUNDARY | URL guard 拒绝凭据、回环、私网、special-use IPv4、v4-mapped、ULA、site-local 和 link-local 及尾点绕过形态；Main 固定已检查的公网地址并逐跳复核 HTTPS 重定向 | 确定性 guard 断言；DNS pin 与响应上限 source-contract 覆盖 |
+| E2E-MCP-MARKET-NET-BOUNDARY | URL guard 拒绝凭据、回环、私网、special-use IPv4、v4-mapped、ULA、site-local 和 link-local 及尾点绕过形态；direct/unknown 默认固定已检查的公网地址，完整 proxied 线路使用 session 传输，显式 `allowFakeIp` 可覆盖透明路由器 fake-IP 源但不允许真实私网答案 | 确定性 guard 断言；DNS pin、代理线路选择、fake-IP 选项范围与响应上限 source-contract 覆盖 |
 | E2E-MCP-MARKET-SEMANTICS | Registry 记录映射为安装模板时保留包版本、named/positional runtime/package 参数与 required/optional 环境变量语义；远端 header 变量同时识别注册表的 `{name}` 与目录的 `${NAME}` 两种写法，仅为已声明的可编辑值显示输入，保留未声明花括号字面量，并按各 header 的作用域处理默认值、固定值与可选标记，不合并不同 header 的同名输入（ADR registry-header-variable-spelling） | 确定性映射断言 |
 | E2E-MCP-MARKET-INSTALL | 内置目录条目经 `resolveCatalogEntry` 解析并通过宿主 `mcp.upsert` RPC 安装；记录落盘 `~/.agents/servers/` | 真实宿主二进制，隔离临时 HOME |
 | E2E-MCP-MARKET-HEADER-SCOPE | Registry header-local `{token}` resolves only in its header; same-named URL path/query tokens remain literal through mapping, resolution, host upsert/list and persistence. URL templates retain only legacy `${NAME}` substitution. When `headerBindings` exists (even empty or partial), unbound tokens in every header stay literal and never consume another header's input or default | shared regressions plus real host binary with isolated temporary storage; remote entry disabled, no network call |
@@ -8383,6 +8384,16 @@ the latest destination. These assertions measure work counts, not device FPS.
   定位不在本次范围内，保持原有搜索行为。
 - **规格：** 04-ux/06-settings-ia、04-ux/08-component-spec、
   04-ux/09-interaction-patterns；ADR turn-process-and-thinking-display。
+
+### E2E-CONTEXT-estimate-calibration-stays-safe
+
+- **先决条件：** 可脚本化上报用量的确定性提供商夹具；占用接近硬边界的会话；不使用真实凭据。
+- **步骤：** 连续上报低于预测的用量，确认显示占用不低于下限且压缩仍然触发；上报远离合理区间的用量，确认数值不动；跑一个
+  中文为主的会话，比较显示占用与上报用量。
+- **预期：** 校准后的占用保持在原始估算的 0.85×–6× 之内；有证据即上调；只有方向一致的样本才下调；处在硬限制 1.18× 的
+  投影仍触发压缩；误报不产生任何方向的移动；中文文本不再只有实测成本的四分之一。
+- **规格：** 03-runtime/02-agent-runtime §5.1、08-meta/decisions-log D606。**验收：** C（对话与流）、F（持久化）、品质。
+  **状态：** 单元测试覆盖（含中文与边界用例）；桌面 E2E 待补。
 
 ### E2E-RUNTIME-unique-tool-call-ids-per-request
 

@@ -1006,6 +1006,8 @@ sklm: {
     "proxyUrlPlaceholder": "calcetines5://127.0.0.1:1080",
     "proxyBypass": "Omitir",
     "proxyBypassDesc": "Hosts que omiten el proxy.",
+    proxyFakeIp: "Permitir fake-IP del proxy para fuentes del mercado",
+    proxyFakeIpDesc: "Actívalo solo con un proxy transparente de router/TUN. Las demás direcciones privadas siguen bloqueadas.",
     "proxyInvalid": "Ingrese una URL http, https o Socks5 con un host.",
     "proxySaveError": "No se pudo guardar el proxy.",
     "proxyTest": "Prueba",

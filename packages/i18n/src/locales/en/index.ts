@@ -1018,6 +1018,8 @@ sklm: {
     proxyUrlPlaceholder: "socks5://127.0.0.1:1080",
     proxyBypass: "Bypass",
     proxyBypassDesc: "Hosts that skip the proxy.",
+    proxyFakeIp: "Allow proxy fake-IP for market sources",
+    proxyFakeIpDesc: "Only enable this for a transparent router/TUN proxy. Other private addresses remain blocked.",
     proxyInvalid: "Enter an http, https, or socks5 URL with a host.",
     proxySaveError: "Couldn't save the proxy.",
     proxyTest: "Test",

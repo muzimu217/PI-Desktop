@@ -1006,6 +1006,8 @@ sklm: {
     "proxyUrlPlaceholder": "sock5://127.0.0.1:1080",
     "proxyBypass": "Bypass",
     "proxyBypassDesc": "Hosts, die den Proxy überspringen.",
+    proxyFakeIp: "Proxy-Fake-IP für Marktquellen zulassen",
+    proxyFakeIpDesc: "Nur für einen transparenten Router-/TUN-Proxy aktivieren. Andere private Adressen bleiben blockiert.",
     "proxyInvalid": "Geben Sie eine http-, https- oder sock5-URL mit einem Host ein.",
     "proxySaveError": "Der Proxy konnte nicht gespeichert werden.",
     "proxyTest": "Test",

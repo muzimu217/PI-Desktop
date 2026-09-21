@@ -1332,6 +1332,21 @@ unit/integration 测试；代码 pull request 使用有选择且高价值的 E2E
 - **接受**：G（MCP 桥）+ E（工具和权限）+ 安全
 - **状态**：单位覆盖（`plugin-mcp.test.mjs` stdio + HTTP 存根）；面向代理的场景草稿
 
+#### E2E-MCP-stdio-windows-cmd：Windows stdio MCP 经 COMSPEC 启动 .cmd 脚本（issue #571）
+
+- **先决条件**：Windows；MCP 目录中有基于 npx 的条目（PATH 上的 `npx` 实际解析为
+  `npx.cmd`）；MCP 条目可点"测试连接"。
+- **步骤**： 1) 从 MCP 市场安装一个 npx 型服务器。 2) 测试连接。 3) 检查启动的进程树。
+- **预期**：裸命令名先经 `where.exe` 解析，命中（`npx.cmd`）时经
+  `%COMSPEC% /d /s /c <解析路径>` 启动，服务器参数保持为独立 argv 项（`shell` 始终为
+  `false`）。真实可执行文件（`.exe`）直接启动。无法解析的名字保持既有的
+  `command not found` 报告。解析逻辑由
+  `apps/desktop/test/plugin-mcp-windows.test.mjs` 覆盖。
+- **链接规格**：`03-runtime/03-tools-and-permissions.md`
+- **接受**：质量
+- **里程碑**：M6+
+- **状态**：解析逻辑已自动化（`plugin-mcp-windows.test.mjs`）；Windows 端到端启动自动化待补
+
 #### E2E-024L：常驻插件服务受监督且可见
 
 - **先决条件**：在授予 `background.service` 的情况下启用 `examples/plugins/hello`。

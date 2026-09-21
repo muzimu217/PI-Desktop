@@ -1,4 +1,4 @@
-import { spawn as nodeSpawn, type ChildProcess } from "node:child_process";
+import { spawn as nodeSpawn, spawnSync as nodeSpawnSync, type ChildProcess } from "node:child_process";
 import { isAbsolute, resolve, sep } from "node:path";
 import type { PluginMcpServerContrib } from "@pi-desktop/plugin-sdk";
 import { userLookupPath } from "./user-login-path.ts";
@@ -126,6 +126,63 @@ export function resolveMcpCommand(
   return target;
 }
 
+/**
+ * Windows: npm's `npx` is `npx.cmd`, a batch script — `CreateProcess` cannot
+ * execute it, so a bare `spawn("npx", …, { shell: false })` always fails with
+ * `ENOENT` no matter what PATH says (issue #571; overlaps #686). Resolve the
+ * bare name through `where.exe`, and when the hit is a `.cmd`/`.bat` script,
+ * launch it via `%COMSPEC% /d /s /c <script>` so arguments stay separate argv
+ * entries — never `shell: true`, so nothing is re-interpreted by a shell.
+ * Returns null when no wrapper is needed (non-Windows, real executables,
+ * unresolvable names keep the existing ENOENT flow).
+ */
+export type WindowsCommandLaunch = { command: string; argsPrefix: string[] };
+
+export function resolveWindowsCommandLaunch(
+  command: string,
+  opts: {
+    platform?: string;
+    lookup?: (name: string) => string | null;
+    comspec?: string;
+  } = {},
+): WindowsCommandLaunch | null {
+  const platform = opts.platform ?? process.platform;
+  if (platform !== "win32") return null;
+  const comspec = opts.comspec ?? process.env.ComSpec ?? "cmd.exe";
+  if (/\.(cmd|bat)$/i.test(command)) {
+    return { command: comspec, argsPrefix: ["/d", "/s", "/c", command] };
+  }
+  if (/\.(exe|com)$/i.test(command) || /[\\/]/.test(command)) return null;
+  let found: string | null = null;
+  try {
+    found = (opts.lookup ?? whereLookup)(command);
+  } catch {
+    return null;
+  }
+  if (found && /\.(cmd|bat)$/i.test(found)) {
+    return { command: comspec, argsPrefix: ["/d", "/s", "/c", found] };
+  }
+  return null;
+}
+
+function whereLookup(name: string): string | null {
+  try {
+    const result = nodeSpawnSync("where.exe", [name], {
+      shell: false,
+      windowsHide: true,
+    });
+    if (result.status !== 0) return null;
+    const first = result.stdout
+      .toString()
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line.length > 0);
+    return first ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function createStdioTransport(
   options: {
     rootPath: string;
@@ -138,17 +195,29 @@ function createStdioTransport(
   handlers: McpTransportHandlers,
 ): McpTransport {
   const spawnImpl = options.spawnImpl ?? nodeSpawn;
-  const child: ChildProcess = spawnImpl(
-    resolveMcpCommand(options.rootPath, options.command, options.commandPolicy),
-    options.args,
-    {
-      cwd: options.rootPath,
-      env: options.env,
-      stdio: ["pipe", "pipe", "pipe"],
-      // Never route through a shell: arguments stay literal.
-      shell: false,
-    },
+  const resolvedCommand = resolveMcpCommand(
+    options.rootPath,
+    options.command,
+    options.commandPolicy,
   );
+  // Windows batch-script resolution (npx → npx.cmd): launches through
+  // %COMSPEC% with arguments kept as separate argv entries.
+  const windowsLaunch = resolveWindowsCommandLaunch(resolvedCommand);
+  const child: ChildProcess = windowsLaunch
+    ? spawnImpl(windowsLaunch.command, [...windowsLaunch.argsPrefix, ...options.args], {
+        cwd: options.rootPath,
+        env: options.env,
+        stdio: ["pipe", "pipe", "pipe"],
+        // Never route through a shell: arguments stay literal.
+        shell: false,
+      })
+    : spawnImpl(resolvedCommand, options.args, {
+        cwd: options.rootPath,
+        env: options.env,
+        stdio: ["pipe", "pipe", "pipe"],
+        // Never route through a shell: arguments stay literal.
+        shell: false,
+      });
 
   let closed = false;
   let buffer = "";

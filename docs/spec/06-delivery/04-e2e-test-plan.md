@@ -1961,6 +1961,24 @@ identify the platform validation still needed.
 - **Status**: Automated (`apps/desktop/test/user-login-path.test.mjs`,
   `apps/desktop/test/plugin-mcp.test.mjs`)
 
+#### E2E-MCP-stdio-windows-cmd: Windows stdio MCP launches .cmd scripts through COMSPEC (issue #571)
+
+- **Preconditions**: Windows; an npx-based MCP catalog entry (`npx` resolves to
+  `npx.cmd` on the PATH); Test connection available on the MCP entry.
+- **Steps**: 1) Install an npx-based server from the MCP market. 2) Test
+  connection. 3) Inspect the launched process tree.
+- **Expected**: The bare command is resolved through `where.exe`, and the hit
+  (`npx.cmd`) is launched via `%COMSPEC% /d /s /c <resolved>` with the server
+  arguments as separate argv entries (`shell` stays `false`). A real
+  executable (`.exe`) is spawned directly. An unresolvable name keeps the
+  existing `command not found` reporting. The resolution logic is covered by
+  `apps/desktop/test/plugin-mcp-windows.test.mjs`.
+- **Specs linked**: `03-runtime/03-tools-and-permissions.md`
+- **Acceptance**: Quality
+- **Milestone**: M6+
+- **Status**: Resolution logic automated (`plugin-mcp-windows.test.mjs`);
+  end-to-end Windows spawn automation pending
+
 ### Session Persistence
 
 #### E2E-020: Session survives restart

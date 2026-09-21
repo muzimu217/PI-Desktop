@@ -335,6 +335,12 @@ tool/protocol 名称，请求中单独携带固定的 shell ID。
   否则，`~/.zshrc` / `~/.zprofile` 对代理命令将不可见。
   探测是尽力而为：缺少 shell、非零退出或超时回退
   主机 PATH 不变。 Agent 命令保留 POSIX bash (D181 / ADR 0045)。
+  Electron 主进程对 stdio MCP 启动（市场里的 `uvx`/`npx`）应用同样的查找，
+  使 Finder/Dock 启动也能找到它们（D600 / issue #571）。Windows 上 npm 系
+  命令是 `.cmd`/`.bat` 批处理脚本，`CreateProcess` 无法执行，因此 stdio MCP
+  启动会先用 `where.exe` 解析裸命令名，命中脚本时改经 `%COMSPEC% /d /s /c`
+  启动、服务器参数保持为独立 argv 项——绝不使用 `shell: true`，不会经过
+  shell 重新解释（issue #571）。
 - 安装程序中没有捆绑 bash：Windows 的 Git 是 Windows 的先决条件（无论如何，该应用程序都需要 git）
 - 解决失败返回稳定的 `SHELL_NOT_FOUND` 并提供安装指导
 - Windows PowerShell 和 cmd 使用其本机非交互式调用。

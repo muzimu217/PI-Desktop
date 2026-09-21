@@ -70,7 +70,8 @@ and on manual dispatch, skipping both when a change touches only `docs/**` or
 `.github/workflows/docs-check.yml` covers the paths `ci.yml` ignores: it runs
 `pnpm docs:check` (the docs locale pair check) when `docs/**`, the READMEs, the
 shared changelog sources, or the check scripts change. `check:release-docs` is
-deliberately not in CI because it fails on rc versions by design.
+deliberately not in CI because release branches must pass it with the stable
+version explicitly supplied for a prerelease preview.
 
 `.github/workflows/release.yml` builds on a `v*.*.*` tag. A `verify` job first
 repeats the `ci.yml` checks (a tag push does not trigger `ci.yml`), and the
@@ -85,3 +86,13 @@ the publish job assembles the GitHub Release. Tag builds Developer ID-sign,
 notarize, and staple macOS artifacts; `workflow_dispatch` may set
 `sign_macos: false` only for unsigned debug artifacts. See the [release
 runbook](../docs/spec/06-delivery/06-release-runbook.md).
+
+### Provider certificate regression
+
+- `node scripts/e2e-provider-certificates.mjs`: real desktop launcher and
+  bundled sidecar against a loopback TLS model; tests trust, terminal failure,
+  inherited extra CA, and hostname validation. Requires installed Electron.
+- `node scripts/e2e-provider-certificate-ui.mjs`: production transcript error
+  component, localized guidance and detail disclosure. Requires built desktop
+  styles. Optional `PI_CERTIFICATE_EVIDENCE_DIR` saves a review screenshot;
+  `--baseline` renders the `origin/main` error component for comparison.

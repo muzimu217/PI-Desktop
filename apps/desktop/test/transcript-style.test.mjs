@@ -396,7 +396,7 @@ test("assistant context inspector keeps a compact summary and retry action wired
   assert.match(inspectorSource, /contextOccupancyTokens\(usage\)/);
   assert.match(inspectorSource, /usage\.cacheReadTokens/);
   assert.doesNotMatch(inspectorSource, /turnUsage\.cacheReadTokens/);
-  assert.match(inspectorSource, /createPortal\(popover, document\.body\)/);
+  assert.match(inspectorSource, /portalToBody\(popover\)/);
   assert.match(inspectorSource, /getBoundingClientRect\(\)/);
   assert.match(inspectorSource, /addEventListener\("scroll", handleViewportChange, true\)/);
   assert.match(inspectorSource, /ResizeObserver\(updatePopoverPosition\)/);

@@ -29,6 +29,10 @@ const appSource = await readFile(
   new URL("../src/components/ChatSurface.tsx", import.meta.url),
   "utf8",
 );
+const launchErrorSource = await readFile(
+  new URL("../src/lib/chat-launch-error.ts", import.meta.url),
+  "utf8",
+);
 const providerCatalogSource = await readMainModule("runtime/provider-catalog.ts");
 const sessionIpcSource = await readMainModule("ipc/session-ipc.ts");
 const sessionLaunchSource = await readMainModule("runtime/session-launch.ts");
@@ -285,8 +289,9 @@ test("activity headers omit the redundant status capsule", () => {
 });
 
 test("thinking-only assistant streams open the transcript surface", () => {
-  assert.match(appSource, /typeof message\.thinking === "string"/);
-  assert.match(appSource, /hasContent \|\| hasThinking/);
+  assert.match(launchErrorSource, /typeof message\.thinking === "string"/);
+  assert.match(launchErrorSource, /hasContent \|\| hasThinking/);
+  assert.match(appSource, /messageHasTranscriptContent\(message\)/);
 });
 
 test("provider settings persist model-local limits and thinking configuration", () => {

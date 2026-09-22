@@ -8289,6 +8289,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | C / G / Quality — Plugins navigation | E2E-NAV-plugins-button-goes-back |
 | C / D / Quality — Sidebar row states | E2E-LAYOUT-sidebar-row-states |
 | A / C / Quality — Sidebar material and settings return | E2E-LAYOUT-sidebar-settings |
+| A / H / Quality — Renderer process crash recovery | E2E-RUNTIME-renderer-crash-recovery |
 | B / F / Security — Provider copy | E2E-PROVIDER-copy-config-without-credentials |
 | B / F / Quality — Selected model order | E2E-MODEL-selected-order-persists |
 | A — App startup | E2E-001, E2E-002, E2E-003, E2E-004, E2E-067, E2E-076, E2E-079, E2E-092, E2E-097, E2E-143, E2E-150, E2E-168, E2E-204 |
@@ -13700,7 +13701,10 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   1. In dark/light palettes and darwin/win32/linux CSS branches, compare the
      home sidebar and Settings rail color, image layers, size and position.
      Inspect transparent ancestors and opaque settings content/titlebar.
-  2. Return through Back to app while tracing sidebar insertion, width and
+  2. Before entering Settings, retain the current .chat-surface DOM node. While
+     Settings is open, verify the chat shell is hidden, inert, and still
+     contains that connected node. Return through Back to app and verify the
+     same node is revealed while tracing sidebar insertion, width and
      animationstart events. Repeat quick round trips, a previously collapsed
      sidebar, and settings navigation interrupting an entrance.
   3. Explicitly reopen a collapsed sidebar, then repeat settings return with
@@ -13715,6 +13719,9 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   stays at 275px without sidebar-in events; a collapsed sidebar stays absent.
   A real reopen still produces sidebar-in and a width ramp. Legacy theme color
   input remains supported for both rails, and a canonical override wins.
+  Portaled layers owned by the hidden chat surface stay hidden while Settings is
+  open; the shared app-level search, toast, and extension-prompt layers remain
+  available.
 - **Specs linked**: `04-ux/06-settings-ia.md`, `04-ux/07-ui-design-system.md`,
   `04-ux/08-component-spec.md` §1.4 and §1.7
 - **Acceptance**: A, C, Quality
@@ -13728,9 +13735,29 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   Windows/Linux or OS material/theme validation. Optional
   `PI_DESKTOP_LAYOUT_ARTIFACT_DIR` captures renderer screenshots. State tests in
   `sidebar-settings-return.test.mjs` cover initial presentation, both interrupted
-  phases, hidden-state changes and reversals. `settings-dialog-overlay.test.mjs`
+  phases, hidden-state changes and reversals. The CDP layout journey verifies
+  that Settings preserves the same chat surface node across round trips.
+  `settings-dialog-overlay.test.mjs`
   covers the full-window overlay contract. `pnpm test:e2e:theme-surfaces`
   verifies the opaque fallback and legacy theme override in real Chromium.
+
+#### E2E-RUNTIME-renderer-crash-recovery
+
+- **Preconditions**: Built desktop with an isolated profile, the main window
+  ready on chat, and CDP enabled by the E2E harness.
+- **Steps**: Set a renderer-only sentinel, trigger `Page.crash`, then reconnect
+  to the existing page target if the renderer's CDP connection closes. Wait for
+  the chat surface to return and inspect the isolated diagnostics log.
+- **Expected**: The renderer document is recreated in the same app window, the
+  chat surface becomes usable, and `renderer.process.gone` records the exit
+  reason, exit code, and reload decision. The app does not open a second window.
+- **Specs linked**: `03-runtime/07-process-model.md`,
+  `03-runtime/09-logging-and-observability.md`
+- **Acceptance**: A, H, Quality
+- **Milestone**: Post-M6 desktop shell maintenance
+- **Status**: Automated by `pnpm test:e2e:layout` with CDP `Page.crash`; the
+  deterministic `renderer-recovery.test.mjs` covers clean exit, accepted close,
+  app shutdown, stale windows, destroyed contents, and future Electron reasons.
 
 #### E2E-AGENT-alt-enter-steers-active-turn: Enter follows up and Alt+Enter steers the active turn
 

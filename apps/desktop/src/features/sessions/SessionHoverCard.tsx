@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { portalToBody } from "../../lib/portal-visibility";
 import { useTranslation } from "react-i18next";
 import type { ProjectWorkspace, SessionCollaborationSummary, SessionReference } from "@pi-desktop/shared";
 import { api } from "../../lib/api";
@@ -99,7 +99,7 @@ export function SessionHoverCard({
     void onOpenSession(reference.sessionId);
   };
 
-  return createPortal(
+  return portalToBody(
     <div
       ref={elementRef}
       id={`session-hover-${session.id}`}
@@ -248,6 +248,5 @@ export function SessionHoverCard({
         </div>
       </div>
     </div>,
-    document.body,
   );
 }

@@ -92,7 +92,7 @@ errors remain readable instead of becoming replacement characters.
 
 | Crash | Policy |
 |---|---|
-| Renderer crash | reload window, keep host/agent processes; same-host reload restores only live pending Plan/Goal approvals and their deadlines, not terminal cards |
+| Renderer crash | reload the current window after an unexpected renderer exit, unless the window is closing or the app is quitting; keep host/agent processes; same-host reload restores only live pending Plan/Goal approvals and their deadlines, not terminal cards |
 | Rust host crash | mark app degraded, interrupt pending/queued/running approval work, keep pending sessions in their contract mode (Plan or Goal) and already-approved sessions in Agent, attempt restart host, and fail active sessions closed |
 | Node agent crash | abort active turns and live approval waiters/queue entries, keep pending sessions in their contract mode, preserve already-approved Agent mode in Rust, restart sidecar, and never replay an execution |
 | Electron main crash | full app exit |
@@ -100,6 +100,9 @@ errors remain readable instead of becoming replacement characters.
 Crashpad is started local-only (`uploadToServer: false`) before `ready`, and
 dumps are stored under `<data_dir>/crash-dumps` (D602) so a
 `PI_DESKTOP_DATA_DIR` profile does not share dumps with another installation.
+An unexpected renderer exit records its reason and exit code, then reloads the
+current main window when it is still live. A clean renderer exit and an accepted
+window close do not trigger recovery.
 The next launch that holds the single-instance lock writes one diagnostics
 line for dumps newer than `crash-dumps.json`. Crashpad records
 Chromium-process crashes (main, renderer, GPU, utility); a renderer crash the

@@ -236,6 +236,9 @@ the main session and its builtin subagents skip only the ten-retry ceiling for
 force. Non-retryable errors, context recovery, compaction, tool execution, and
 one-shot completions are unchanged. The setting can keep billing requests alive
 indefinitely until the user stops the turn.
+Settings reads expose an explicit boolean for this flag: absent or disabled
+values normalize to `false`. Read-modify-write operations on unrelated settings
+must remain valid without enabling retries; non-boolean writes stay invalid.
 Each retry is abortable and reports its current backoff through the normalized
 status event. The `retrying` activity carries the classified error code, the
 bounded/redacted provider message, and the HTTP status when known. The main

@@ -194,6 +194,7 @@ not temporary retry activity. See the English source section 5d and ADR 0206.
 网络/瞬时故障（含 `PROVIDER_RATE_LIMITED`）的次数上限。退避、`Retry-After`、可见重试状态和
 停止路径不变。不可重试错误、上下文恢复、压缩、工具执行和一次性补全仍走原有有界预算。
 开启后可能在用户停止回合前持续消耗 API 用量。
+设置读取对此开关返回明确布尔值：缺省或关闭均规范化为 `false`。修改并保存其他设置不得因此校验失败或启用重试；非布尔值写入仍被拒绝。
 
 当 429 预算耗尽时，最终的助手错误和生命周期 `error` 只发出一次。
 提供程序故障在可用时于 `AppError.details` 中携带有界诊断：

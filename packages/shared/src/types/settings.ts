@@ -28,6 +28,9 @@ export type AppSettings = {
    * background so the Index page can report status; off, nothing builds one.
    */
   indexGrepBoost: boolean;
+  imageGeneration?: import("../image-generation.js").ImageGenerationBinding | null;
+  /** All models marked for image generation; absent falls back to imageGeneration. */
+  imageGenerationModels?: import("../image-generation.js").ImageGenerationBinding[] | null;
   defaultProviderId?: string;
   defaultModelId?: string;
   /** Host speech bindings. Absent means voice actions stay disabled. */

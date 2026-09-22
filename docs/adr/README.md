@@ -328,7 +328,10 @@ Each ADR includes:
 | 0297 | [Provider-hosted web search as an adapter capability](0297-provider-hosted-web-search-adapter-capability.md) | Accepted |
 | 0298 | [The app ships no fonts](0298-remove-bundled-fonts.md) | Accepted (D598; amends ADR 0083 / D232) |
 | 0299 | [Subagent context budget and delegate compaction](0299-subagent-context-budget.md) | Accepted for implementation (amends ADR 0064; extends ADR 0062 / ADR 0279) |
+| 0300 | [Host-owned encrypted portable configuration sync](0300-host-owned-encrypted-portable-configuration-sync.md) | Accepted for implementation |
+| 0301 | [Explicit append-only WebDAV compatibility mode](0301-explicit-append-only-webdav-compatibility-mode.md) | Accepted for implementation |
 | turn-process-and-thinking-display | [Turn process and thinking presentation](turn-process-and-thinking-display.md) | Accepted |
 | provider-display-order | [Provider display order](provider-display-order.md) | Accepted |
 | registry-header-variable-spelling | [Remote header variables accept the registry's `{name}` spelling](registry-header-variable-spelling.md) | Proposed |
 | provider-system-certificates | [Desktop sidecar uses OS-trusted certificates](provider-system-certificates.md) | Accepted |
+| image-generation-capability | [Image generation as a configured Agent capability](image-generation-capability.md) | Accepted |

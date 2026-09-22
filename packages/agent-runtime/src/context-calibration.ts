@@ -201,6 +201,8 @@ export class ContextEstimateCalibration {
   private downwardStreak = 0;
   /** The last value `correct()` returned, for the per-step cap. */
   private lastCorrected: number | null = null;
+  /** Raw scale paired with `lastCorrected`, so the step cap stays scale-free. */
+  private lastRawTokens: number | null = null;
 
   /**
    * Record one request whose estimate was anchored on a known usage.
@@ -222,7 +224,8 @@ export class ContextEstimateCalibration {
     // which is not this series' error to absorb.
     if (!usableNumber(trueTrailing) || !usableNumber(estimatedTrailing)) return;
     const predicted = usageTokens + estimatedTrailing * this.trailingRatio();
-    this.recordResidual(predicted, realTotal);
+    const accepted = this.recordResidual(predicted, realTotal);
+    if (!accepted) return;
     this.recordDownwardEvidence(predicted, realTotal);
     this.push(
       this.trailingRatios,
@@ -242,7 +245,8 @@ export class ContextEstimateCalibration {
     if (!usableNumber(estimate) || !usableNumber(realTotal)) return;
     if (realTotal > estimate * CONTEXT_CALIBRATION_REAL_MAX_RATIO) return;
     const predicted = this.correctUnanchored(estimate);
-    this.recordResidual(predicted, realTotal);
+    const accepted = this.recordResidual(predicted, realTotal);
+    if (!accepted) return;
     this.recordDownwardEvidence(predicted, realTotal);
     this.push(this.unanchored, { estimate, realTotal });
   }
@@ -264,6 +268,7 @@ export class ContextEstimateCalibration {
       : this.correctUnanchored(rawTokens);
     const value = this.clampCorrection(corrected, rawTokens);
     this.lastCorrected = value;
+    this.lastRawTokens = rawTokens;
     return value;
   }
 
@@ -361,10 +366,10 @@ export class ContextEstimateCalibration {
     );
   }
 
-  private recordResidual(predicted: number, realTotal: number): void {
-    if (!usableNumber(predicted) || !usableNumber(realTotal)) return;
+  private recordResidual(predicted: number, realTotal: number): boolean {
+    if (!usableNumber(predicted) || !usableNumber(realTotal)) return false;
     const ratio = realTotal / predicted;
-    if (!Number.isFinite(ratio)) return;
+    if (!Number.isFinite(ratio)) return false;
     // A report this far from the prediction is a misreport. Counting it keeps
     // the downward direction frozen until a usable report arrives; discarding
     // it keeps the series honest. Anomalies never move the value up either:
@@ -374,16 +379,17 @@ export class ContextEstimateCalibration {
       ratio > CONTEXT_CALIBRATION_SAMPLE_MAX_RATIO
     ) {
       this.anomalies += 1;
-      return;
+      return false;
     }
     this.anomalies = 0;
     if (
       ratio < CONTEXT_CALIBRATION_RESIDUAL_MIN ||
       ratio > CONTEXT_CALIBRATION_RESIDUAL_MAX
     ) {
-      return;
+      return false;
     }
     this.push(this.residuals, ratio);
+    return true;
   }
 
   /** Does this sample say the estimate reads high enough to justify a step down? */
@@ -412,12 +418,24 @@ export class ContextEstimateCalibration {
       rawTokens * CONTEXT_CALIBRATION_FACTOR_MAX,
     );
     if (value >= rawTokens) return Math.round(value);
-    // A downward move needs corroboration and may not jump.
+    // A downward move needs corroboration and may not jump. Keep the cap in
+    // normalized factor space: context compaction can make the next raw
+    // estimate much smaller than the previous request.
     if (!this.downwardAllowed()) return rawTokens;
+    const previousFactor =
+      this.lastCorrected !== null &&
+      this.lastRawTokens !== null &&
+      this.lastRawTokens > 0
+        ? this.lastCorrected / this.lastRawTokens
+        : null;
     const stepFloor =
-      this.lastCorrected === null
+      previousFactor === null
         ? value
-        : this.lastCorrected * (1 - CONTEXT_CALIBRATION_DOWNWARD_STEP_MAX);
+        : rawTokens *
+          Math.min(
+            CONTEXT_CALIBRATION_FACTOR_MAX,
+            previousFactor * (1 - CONTEXT_CALIBRATION_DOWNWARD_STEP_MAX),
+          );
     return Math.round(Math.max(value, stepFloor));
   }
 

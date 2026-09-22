@@ -6,6 +6,8 @@ import type {
 } from "@pi-desktop/shared";
 import {
   initialThinkingLevelForBinding,
+  imageGenerationBindings,
+  isImageGenerationModel,
   modelIdsMatch,
 } from "@pi-desktop/shared";
 import { useAppStore } from "../../../../stores/app-store";
@@ -44,6 +46,12 @@ export function useComposerModelMenu({
   controlsBlocked,
 }: UseComposerModelMenuOptions) {
   const providers = useAppStore((s) => s.providers);
+  const imageGeneration = useAppStore((s) => s.settings?.imageGeneration);
+  const imageGenerationModels = useAppStore((s) => s.settings?.imageGenerationModels);
+  const imageGenerationCandidates = useMemo(
+    () => imageGenerationBindings(imageGenerationModels, imageGeneration),
+    [imageGenerationModels, imageGeneration],
+  );
   const providerModels = useAppStore((s) => s.providerModels);
   const loadProviderModels = useAppStore((s) => s.loadProviderModels);
   const configureActiveSession = useAppStore((s) => s.configureActiveSession);
@@ -115,6 +123,7 @@ export function useComposerModelMenu({
           const models = composerModelsForProvider(
             candidate,
             providerModels[candidate.id],
+            imageGenerationCandidates,
           );
           return {
             provider: candidate,
@@ -124,7 +133,7 @@ export function useComposerModelMenu({
           };
         })
         .filter((group) => group.models.length > 0),
-    [providers, providerModels],
+    [providers, providerModels, imageGenerationCandidates],
   );
   const queryNeedle = query.trim().toLowerCase();
   const filteredModelGroups = useMemo(
@@ -247,6 +256,14 @@ export function useComposerModelMenu({
   const selectModel = async (candidate: ProviderPublic, nextModelId: string) => {
     thinkingQueueRef.current?.invalidate();
     await thinkingQueueRef.current?.idle();
+    if (isImageGenerationModel(
+      imageGenerationBindings(
+        useAppStore.getState().settings?.imageGenerationModels,
+        useAppStore.getState().settings?.imageGeneration,
+      ),
+      candidate.id,
+      nextModelId,
+    )) return;
     try {
       const nextModelProvider = thinkingProviderForModel(
         candidate,

@@ -98,7 +98,12 @@ default. When the edited service or account is the app's default provider,
 saving also synchronizes the app-level default model to that first binding,
 as the existing save flow does. The app default is unchanged when editing
 another provider, and an explicitly bound session keeps its stored model
-choice. No storage schema or IPC contract changes are required.
+choice. Adding a provider is not a way to change either app default: the
+default model, and the default image model when the new service brings image
+models, move to it only while nothing resolves for the app — an empty
+selection, or one whose provider or model is gone. A default the user can
+still run stays where it is until they repoint it. No storage schema or IPC
+contract changes are required.
 
 ### Discovery precedence
 
@@ -538,3 +543,10 @@ same model to the check mark, the toggle and the duplicate guard.
 - [ ] compact limit text never reads above the published value, keeps the
       neighbouring 1M-line windows apart (`1M` / `1.05M` / `1.1M`), and never
       renders a `K` mantissa at or above 1000
+
+## Image model binding
+
+The default conversation model has a separate **Image generation model** row below
+it. Model Advanced can select that unique binding; provider form Save commits it,
+Cancel discards it, and replacing it leaves the conversation default unchanged.
+See [image generation and editing](21-image-generation.md) for the tool and batch contract.

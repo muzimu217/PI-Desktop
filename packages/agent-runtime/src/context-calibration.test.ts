@@ -113,6 +113,32 @@ describe("ContextEstimateCalibration", () => {
       calibration.recordUnanchored(1_000_000, 1_000_000);
       expect(calibration.frozen()).toBe(false);
     });
+    it("does not let anomalous reports enter calibration windows", () => {
+      const wild = new ContextEstimateCalibration();
+      for (let i = 0; i < CONTEXT_CALIBRATION_MIN_SAMPLES; i++) {
+        wild.recordUnanchored(1_000_000, 4_000_000);
+      }
+      expect(wild.unanchoredRatio(1_000_000)).toBeNull();
+      expect(wild.overheadTokens()).toBe(0);
+      expect(wild.correct(unanchored(1_000_000))).toBe(1_000_000);
+
+      const mixed = new ContextEstimateCalibration();
+      mixed.recordUnanchored(1_000_000, 100_000);
+      for (let i = 0; i < CONTEXT_CALIBRATION_MIN_SAMPLES - 1; i++) {
+        mixed.recordUnanchored(1_000_000, 700_000);
+      }
+      expect(mixed.unanchoredRatio(1_000_000)).toBeNull();
+      expect(mixed.correct(unanchored(1_000_000))).toBe(1_000_000);
+
+      const anchoredCalibration = new ContextEstimateCalibration();
+      for (let i = 0; i < CONTEXT_CALIBRATION_MIN_SAMPLES; i++) {
+        anchoredCalibration.recordAnchored(1_000_000, 100_000, 3_500_000);
+      }
+      expect(anchoredCalibration.trailingRatio()).toBe(1);
+      expect(anchoredCalibration.correct(anchored(1_000_000, 100_000))).toBe(
+        1_100_000,
+      );
+    });
   });
 
   // ② Ratio versus fixed offset: the same residual, used where it belongs.
@@ -139,9 +165,9 @@ describe("ContextEstimateCalibration", () => {
     it("caps the fixed part so it stays an overhead", () => {
       const calibration = new ContextEstimateCalibration();
       for (let i = 0; i < CONTEXT_CALIBRATION_MIN_SAMPLES; i++) {
-        // A 40k session with a 300k report is inside the sanity band but its
-        // absolute residual is far past a system prompt plus schemas.
-        calibration.recordUnanchored(40_000, 300_000);
+        // A 40k session with a 120k report stays at the 3x sanity boundary,
+        // but its absolute residual is far past a system prompt plus schemas.
+        calibration.recordUnanchored(40_000, 120_000);
       }
       expect(calibration.overheadTokens()).toBe(
         CONTEXT_CALIBRATION_OVERHEAD_CAP,
@@ -164,6 +190,22 @@ describe("ContextEstimateCalibration", () => {
       expect(first).toBe(1_030_000);
       expect(second).toBe(1_400_000);
       expect(second).toBeGreaterThan(first);
+    });
+    it("keeps the downward step cap normalized when raw scale drops", () => {
+      const calibration = new ContextEstimateCalibration();
+      for (let i = 0; i < CONTEXT_CALIBRATION_MIN_SAMPLES; i++) {
+        calibration.recordUnanchored(1_000_000, 600_000);
+      }
+      for (let i = 0; i < CONTEXT_CALIBRATION_MIN_SAMPLES; i++) {
+        calibration.recordUnanchored(100_000, 60_000);
+      }
+
+      expect(calibration.correct(unanchored(1_000_000))).toBe(850_000);
+      const compacted = calibration.correct(unanchored(100_000));
+      expect(compacted).toBe(85_000);
+      expect(compacted).toBeLessThanOrEqual(
+        100_000 * CONTEXT_CALIBRATION_FACTOR_MAX,
+      );
     });
   });
 

@@ -20,6 +20,7 @@ export type SettingsTabId =
   | "import"
   | "projects"
   | "index"
+  | "sync"
   | "remoteHosts"
   | "about";
 
@@ -90,6 +91,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.permissionModeAcceptEdits",
       "settings.permissionModeAuto",
       "settings.defaultsTitle",
+      "settings.imageModel",
       "settings.mode",
       "settings.commandShell",
       "settings.linkOpenTarget",
@@ -253,6 +255,20 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "index.card.size",
       "index.action.rebuild",
       "index.action.clear",
+    ],
+  },
+  {
+    id: "sync",
+    labelKey: "settings.nav.sync",
+    titleKey: "settings.configSync.title",
+    group: "system",
+    keywordKeys: [
+      "settings.configSync.connectionTitle",
+      "settings.configSync.endpoint",
+      "settings.configSync.statusTitle",
+      "settings.configSync.categoriesTitle",
+      "settings.configSync.approvalsTitle",
+      "settings.configSync.syncNow",
     ],
   },
   {

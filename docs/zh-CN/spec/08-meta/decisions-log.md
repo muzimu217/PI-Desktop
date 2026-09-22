@@ -4689,6 +4689,14 @@ that amendment are retired by ADR 0268; the upstream work-panel lifecycle stays.
   `apps/desktop/test/image-generation-default.test.mjs` 固定，
   `provider-model-config.test.mjs` 断言新增分支会走这两个判断。
 
+## 2026-09-21 — 限制 Desktop 可信扩展生命周期等待
+
+- 现有 30 秒处理器预算扩展到通知、启动和关闭事件；模块加载、工厂初始化分别使用
+  同一预算。此前无界的等待变为有界，事件内等待 UI 回答也受此限制。
+- 中止使当前等待失效；销毁拒绝新派发且只执行一次关闭。迟到完成不能向旧派发提供
+  结果。既有失败继续、结果归并、插件归属和权限不变，不强制终止进程内代码。
+- 未接通事件仍可注册，并在现有诊断中显示。参见
+  `07-plugins/16-trusted-extensions.md` §6 与 `E2E-HOOKS-cancel-and-dispose`。
 ## 2026-09-22 —— 指令源不可读时拒绝斜杠提交（D613，issue #795）
 
 - Composer 在发送时读取合并后的指令列表，并把失败吞成 `null`，而提交路径无法把它与

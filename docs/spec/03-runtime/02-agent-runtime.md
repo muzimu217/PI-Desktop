@@ -814,7 +814,9 @@ core set rather than the on-demand catalog of §7.1:
   include definition-only pins, while only the former authorizes cached
   overrides and the model summary. Missing keys default to an empty list;
   successful on-demand resolution is cached separately from launch opt-in and
-  does not rewrite definition pins or runtime reuse matching. On-demand
+  does not rewrite definition pins or runtime reuse matching. Grants expire at
+  each new parent prompt or approved plan/goal execution; late responses from
+  an older turn cannot repopulate the cache. On-demand
   provider matching uses the same unique id/vendor/name rule as pin resolution.
   A changed opt-in list retires the idle runtime on the next launch. Pins remain usable
   by their own definitions when `model` is omitted or when `Task.model` repeats
@@ -953,8 +955,12 @@ Resume is strictly same-session and never queues: resuming a running
 delegation is a tool error telling the parent to converge with `TaskWait`
 first, and a chain has at most one live record at a time. `model` and `resume`
 together are rejected, and a resumed run keeps the chain's recorded binding:
-the `providerId/modelId` key it resolved is preferred, a chain rebuilt from the
-transcript is matched by model id, and when nothing resolves it the run
+the `providerId/modelId` key it resolved is preferred and reauthorized on demand
+when its turn grant has expired. A chain rebuilt from the transcript is matched
+by model id only among the current definition pin/fallbacks, the session binding,
+and currently authorized overrides. Other definitions' private pins are excluded.
+A known key never falls through to another account just because its model id
+matches. When nothing authorized resolves it the run
 continues on the definition's current binding and records the previous model id
 as `modelChangedFrom` in its lifecycle details. Changing models on purpose means
 starting a new delegation. An unknown id, an id belonging to another definition,

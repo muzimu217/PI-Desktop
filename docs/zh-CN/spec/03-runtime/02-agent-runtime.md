@@ -721,6 +721,13 @@ Stop / 运行时销毁。主 Agent 用 `TaskStop` 判断要不要取消；运行
 不可恢复的状态、超出读预算的链，以及行已经不在的链，各自返回一个说明原因的工具错误；
 对未知 id，还会一并列出当前可复用的 id。
 
+On-demand grants expire at each new parent prompt or approved plan/goal execution;
+late responses cannot restore expired grants. Resume reauthorizes a remembered key
+when necessary. Model-id matching is limited to the current definition's pin and
+fallbacks, session inheritance, and current override grants; other definitions'
+private pins are excluded. A denied known key never selects another account by
+model id (#841).
+
 父级通过系统提示发现可复用的链：那里列出每条链最新的 `delegationId`、它的目标，以及它
 读过的文件最多 `MAX_RESUMABLE_LISTED_FILES`（8）个（超出部分带 `(+N more)` 后缀）。
 清单会在委托结算时围绕既有的提示段落重新组装。对 `MAX_SUBAGENT_CONCURRENCY`、

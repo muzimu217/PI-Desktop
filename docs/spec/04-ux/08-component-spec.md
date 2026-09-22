@@ -3550,8 +3550,12 @@ default nor provider configuration. OAuth accounts remain in their separate sect
    groups model-level options by provider, marks the exact current entry, bounds
    its own height so many configured models scroll instead of stretching the
    card, flips above the trigger when there is no room below, and closes on
-   Escape, an outside press, or the trigger scrolling out of view;
-   global operating mode, command shell, and Enter-to-send live in the Settings
+   Escape, an outside press, or the trigger scrolling out of view.
+   A provider is named here the way the Composer model menu names it: an OAuth
+   row uses its non-secret account label when present, so two accounts of one
+   vendor do not collapse into identical group headings, summary lines, or
+   option names; the search matches the account label and the vendor name.
+   Global operating mode, command shell, and Enter-to-send live in the Settings
    AI destination
 2. **Vendor accounts** — section title + primary Add account action and one
    single-level list panel using the same row surface as AI services; one row

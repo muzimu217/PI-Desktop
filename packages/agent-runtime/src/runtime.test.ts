@@ -6532,6 +6532,50 @@ describe("DesktopAgentRuntime subagents", () => {
     await runtime.dispose();
   });
 
+  it("rechecks an on-demand grant after revocation on the next prompt (#841)", async () => {
+    const selected = { ...provider, modelId: "new-model", modelConfig: undefined };
+    const host = { call: vi.fn().mockResolvedValue(selected) };
+    const runtime = createRuntime({ subagents: [explorer], host });
+    const agent = (runtime as unknown as { agent: Agent }).agent;
+    vi.spyOn(agent, "prompt").mockResolvedValue();
+    vi.spyOn(agent, "waitForIdle").mockResolvedValue();
+    subagentRuns.calls.length = 0;
+    subagentRuns.deferred = false;
+    try {
+      await taskTool(runtime).execute("granted", { agent: "explorer", task: "Search.", model: "new/new-model" });
+      expect(subagentRuns.calls).toHaveLength(1);
+      host.call.mockRejectedValue(new Error("model is not enabled for delegation"));
+      expect(runtimeMatches(runtime)).toBe(true);
+      await runtime.prompt("Search again.");
+      const denied = await taskTool(runtime).execute("revoked", { agent: "explorer", task: "Search.", model: "new/new-model" });
+      expect(denied.details.error).toContain("not available for delegation");
+      expect(subagentRuns.calls).toHaveLength(1);
+      expect(host.call).toHaveBeenLastCalledWith("provider.resolveSubagentModel", { key: "new/new-model" });
+    } finally { await runtime.dispose(); }
+  });
+
+  it("discards an on-demand grant returned after its prompt ended (#841)", async () => {
+    let resolveGrant: (value: RuntimeProviderConfig) => void = () => {};
+    const host = { call: vi.fn().mockImplementation(() => new Promise<RuntimeProviderConfig>((resolve) => { resolveGrant = resolve; })) };
+    const runtime = createRuntime({ subagents: [explorer], host });
+    const agent = (runtime as unknown as { agent: Agent }).agent;
+    vi.spyOn(agent, "prompt").mockResolvedValue();
+    vi.spyOn(agent, "waitForIdle").mockResolvedValue();
+    subagentRuns.calls.length = 0;
+    subagentRuns.deferred = false;
+    try {
+      const pending = taskTool(runtime).execute("pending", { agent: "explorer", task: "Search.", model: "new/new-model" });
+      await runtime.prompt("A new turn.");
+      resolveGrant({ ...provider, modelId: "new-model", modelConfig: undefined });
+      const expired = await pending;
+      expect(expired.details.error).toContain("not available for delegation");
+      host.call.mockRejectedValue(new Error("model is not enabled for delegation"));
+      const denied = await taskTool(runtime).execute("revoked", { agent: "explorer", task: "Search.", model: "new/new-model" });
+      expect(denied.details.error).toContain("not available for delegation");
+      expect(subagentRuns.calls).toHaveLength(0);
+    } finally { await runtime.dispose(); }
+  });
+
   it("is the only tool allowed to run in parallel", async () => {
     const runtime = createRuntime({ subagents: [explorer] });
     const catalog = (runtime as any).toolCatalog as Map<string, any>;
@@ -7930,6 +7974,91 @@ describe("DesktopAgentRuntime subagents", () => {
       expect(subagentRuns.calls).toHaveLength(1);
       expect(subagentRuns.calls[0].initialMessages).toBeDefined();
       await runtime.dispose();
+    });
+
+    it.each(["session", "opt-in", "definition", "fallback", "missing"])("resumes only an authorized %s binding with a colliding private pin (#841)", async (source) => {
+      const privatePin = { ...provider, id: "other-account", modelId: "recorded-model", modelConfig: undefined };
+      const authorized = { ...privatePin, id: "authorized-account" };
+      const own = { providerId: authorized.id, modelId: authorized.modelId };
+      const target = {
+        ...explorer,
+        ...(source === "definition" ? { model: own } : {}),
+        ...(source === "fallback" ? { fallbackModels: [own] } : {}),
+      };
+      const runtime = createRuntime({
+        provider: source === "session" ? authorized : provider,
+        subagents: [target],
+        subagentProviders: {
+          "other/recorded-model": privatePin,
+          ...(source !== "missing" ? { "authorized-account/recorded-model": authorized } : {}),
+        },
+        subagentModelKeys: source === "opt-in" ? ["authorized-account/recorded-model"] : [],
+        history: [restartedTaskRow("task-1", "del-1", { status: "completed", modelId: "recorded-model" }), delegateRow("child-1", "task-1")],
+      });
+      subagentRuns.calls.length = 0;
+      subagentRuns.deferred = false;
+      try {
+        const result = await startTask(runtime, "task-2", { agent: "explorer", task: "Continue.", resume: "del-1" });
+        expect(result.details.error).toBeUndefined();
+        expect(subagentRuns.calls[0].provider).toBe(source === "missing" ? provider : authorized);
+        const records = (runtime as unknown as { delegations: Map<string, { modelChangedFrom?: string }> }).delegations;
+        expect(records.get(result.details.delegationId)?.modelChangedFrom).toBe(source === "missing" ? "recorded-model" : undefined);
+      } finally { await runtime.dispose(); }
+    });
+
+    it.each([true, false])("reauthorizes a live resume key after its turn grant expires: allowed=%s (#841)", async (allowed) => {
+      const selected = { ...provider, id: "dynamic", modelId: "dynamic-model", modelConfig: undefined };
+      const host = { call: allowed ? vi.fn().mockResolvedValue(selected) : vi.fn().mockRejectedValue(new Error("revoked")) };
+      const runtime = createRuntime({
+        subagents: [explorer], host,
+        history: [restartedTaskRow("task-1", "del-1", { status: "completed", modelId: selected.modelId }), delegateRow("child-1", "task-1")],
+      });
+      const registry = (runtime as unknown as { delegationChains: { lookup(id: string): { latestModelKey?: string } | undefined } }).delegationChains;
+      const chain = registry.lookup("del-1");
+      if (!chain) throw new Error("fixture chain missing");
+      chain.latestModelKey = "dynamic/dynamic-model";
+      subagentRuns.calls.length = 0;
+      subagentRuns.deferred = false;
+      try {
+        await startTask(runtime, "task-2", { agent: "explorer", task: "Continue.", resume: "del-1" });
+        expect(host.call).toHaveBeenCalledWith("provider.resolveSubagentModel", { key: "dynamic/dynamic-model" });
+        expect(subagentRuns.calls[0].provider).toBe(allowed ? selected : provider);
+      } finally { await runtime.dispose(); }
+    });
+
+    it("does not start a resumed delegate after Stop during authorization (#841)", async () => {
+      let resolveGrant: (value: RuntimeProviderConfig) => void = () => {};
+      const host = { call: vi.fn().mockImplementation(() => new Promise<RuntimeProviderConfig>((resolve) => { resolveGrant = resolve; })) };
+      const runtime = createRuntime({ subagents: [explorer], host,
+        history: [restartedTaskRow("task-1", "del-1", { status: "completed", modelId: provider.modelId }), delegateRow("child-1", "task-1")],
+      });
+      const registry = (runtime as unknown as { delegationChains: { lookup(id: string): { latestModelKey?: string } | undefined } }).delegationChains;
+      const chain = registry.lookup("del-1");
+      if (!chain) throw new Error("fixture chain missing");
+      chain.latestModelKey = "dynamic/local-model";
+      subagentRuns.calls.length = 0;
+      try {
+        const pending = startTask(runtime, "task-2", { agent: "explorer", task: "Continue.", resume: "del-1" });
+        await runtime.abort();
+        resolveGrant(provider);
+        expect((await pending).details.error).toContain("parent turn ended");
+        expect(subagentRuns.calls).toHaveLength(0);
+      } finally { await runtime.dispose(); }
+    });
+
+    it("allows only one parallel resume while model authorization yields (#841)", async () => {
+      const runtime = createRuntime({
+        subagents: [explorer],
+        history: [restartedTaskRow("task-1", "del-1", { status: "completed", modelId: provider.modelId }), delegateRow("child-1", "task-1")],
+      });
+      subagentRuns.calls.length = 0;
+      subagentRuns.deferred = true;
+      try {
+        const results = await Promise.all(["task-2", "task-3"].map((id) => startTask(runtime, id, { agent: "explorer", task: "Continue.", resume: "del-1" })));
+        expect(results.filter((result) => !result.details.error)).toHaveLength(1);
+        expect(results.find((result) => result.details.error)?.details.error).toContain("still running");
+        expect(subagentRuns.calls).toHaveLength(1);
+      } finally { subagentRuns.deferred = false; await runtime.dispose(); }
     });
 
     it("keeps a resumed chain on its recorded model after the session model moved", async () => {

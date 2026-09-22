@@ -13,6 +13,12 @@ pub struct WebDavConfig {
     pub username: String,
     pub password: String,
     pub directory: String,
+    /// Whether the network policy in force allows a plaintext hop to a WebDAV
+    /// endpoint. This is no longer the per-endpoint acknowledgement the sync
+    /// settings used to carry: callers pass `crate::network_policy::relaxed()`,
+    /// so `strict` refuses `http` outright while `relaxed` keeps it for a
+    /// loopback, `.local` or private LAN host. A public `http` host is refused
+    /// in either mode.
     pub allow_insecure_http: bool,
     pub missing_object_status: Option<u16>,
 }
@@ -86,13 +92,19 @@ fn is_lan_http_host(host: &str) -> bool {
     }
 }
 
+/// Validate a WebDAV endpoint and return the base URL to address.
+///
+/// `allow_insecure_http` is the network policy's answer, so a plaintext `http`
+/// endpoint is refused unless the relaxed mode asked for it *and* the host is
+/// the user's own LAN. Public `http` stays refused in every mode: the request
+/// would carry the WebDAV credentials in the clear across the internet.
 fn validate_endpoint(raw: &str, allow_insecure_http: bool) -> Result<Url> {
     let mut url = Url::parse(raw.trim()).context("parse WebDAV endpoint")?;
     if !matches!(url.scheme(), "https" | "http") {
         bail!("CONFIG_SYNC_INVALID: WebDAV endpoint must use HTTPS");
     }
     if url.scheme() == "http" && !allow_insecure_http {
-        bail!("CONFIG_SYNC_INVALID: HTTP requires explicit LAN-risk acknowledgement");
+        bail!("CONFIG_SYNC_INVALID: HTTP requires the relaxed network policy");
     }
     if url.host_str().is_none() || !url.username().is_empty() || url.password().is_some() {
         bail!("CONFIG_SYNC_INVALID: endpoint must not contain userinfo");

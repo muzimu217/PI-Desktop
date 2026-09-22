@@ -1300,6 +1300,7 @@ D193, and D194.
 | D188 | Replace Chat profile with Plan state | *(superseded by D189)* **PI-Desktop has one pi Agent and one product selector: `Agent | Plan`. Plan is that Agent after entering planning state, never a second Agent, planner model, planner service, or permission mode. Agent remains the default. Persisted sessions, app defaults, and scheduled values stored as `chat` migrate to `plan`; the internal `page = "chat"` route may remain as a conversation-surface detail. Plan exposes `Read`, `Glob`, `Grep`, `BrowserPreview`, `Bash`, `CompactContext`, and `ExitPlanMode`; it denies `Write`, `Edit`, plugin tools, and unknown tools. Plan retains permission-mode selection: Bash prompts under `ask` and `accept-edits`, and runs without confirmation under `auto`, so Plan is planning intent rather than a strict read-only security profile.** | Historical pre-checkpoint Plan contract; retained to explain the supersession chain |
 | D189 | Plan checkpoint artifact, approval, and execution epoch | **The same pi Agent uses `Agent | Plan`, with Agent default. Plan calls `SubmitPlan(title, markdown, question)` as the only tool in its assistant batch. Rust host-core writes the submitted Markdown bytes unchanged to a new immutable unique file under `<workspaceRoot>/.pi/plan/*.md`; it stores the relative artifact path, SHA-256, and byte size together with structured title/question fields in the existing `plan_approvals` row. No title/question wrapper is added and no prior artifact is replaced. The approval surface displays title, question, an artifact opener, absolute expiry, and status, and offers only Approve or Reject. Approve requires an explicit `ask`, `accept-edits`, or `auto` permission mode, with Ask selected by default; Reject carries no mode. The approval expires at one absolute 30-minute deadline and uses `PLAN_APPROVAL_TIMEOUT`. The same `plan_approvals` row carries `execution_id` and `execution_state` through `queued → running → completed|interrupted`. A startup transaction marks prior pending approvals and queued/running execution states interrupted before serving RPC; no work is replayed. Pending interruption/rejection/expiry leaves the session Plan; an already-approved queued/running interruption leaves the session Agent. One active turn, idle-only configuration, and one pending approval/queued-or-running execution per session are enforced. Scheduled Plan is rejected before provider, artifact, or queue work with `PLAN_REQUIRES_INTERACTIVE_SESSION`. Protocol v9 and storage schema v10 carry the contract without a serialized process-epoch field.** | Immutable host artifacts preserve the submitted checkpoint while one approval/execution row and a startup process fence prevent restart replay without losing the already-approved Agent state |
 | D190 | Selectable command shell catalog and execution identity | **Host-core exposes stable platform-aware catalog IDs: `windows-powershell`, `cmd`, `git-bash`, and `bash`; the platform catalog contains only IDs supported by that platform. `defaultCommandShell` persists in host settings, and settings writes reject unavailable or wrong-platform IDs. If a persisted choice later becomes unavailable, the effective shell intentionally falls back to the first available platform shell. The `Bash` tool and `tools.execute` protocol name remain unchanged; each turn pins the effective shell ID and dialect, and host rejects a stale ID/dialect before spawn with `COMMAND_SHELL_CHANGED`. Shell identity is the catalog selection, not an executable path hash. Bash streams stdout and stderr separately, uses a mandatory 60-second default timeout with a 1–300 second override, and cancellation/timeout shuts down the complete process tree.** | Users can choose the command language without multiplying protocol tools, while platform validation, explicit fallback, and turn-pinned catalog identity keep execution predictable |
+| D604 | Trust the network endpoints the user enters themselves | **Amend ADR 0243 / 0245 / 0247 for user-supplied URLs; follow ADR 0142 / 0257 / 0300. A URL the person typed into a settings field — a market source, a git remote, an MCP OAuth endpoint, a generated-image URL — is judged by the user-endpoint policy: loopback, RFC1918, CGNAT, link-local, ULA, site-local and `.local` are reachable, and plain `http` is usable. ONE switch decides that: `networkPolicy.mode` (`relaxed` / `strict`), **`relaxed` by default**, which folds in the earlier per-surface acknowledgements — the plaintext flag, the WebDAV `allowInsecureHttp` checkbox and the `networkProxy.allowFakeIp` opt-in are gone, and a stored `allowInsecureUserEndpoints: false` migrates to `strict`. The first plaintext hop to a user endpoint tells the shell once (`insecureNoticeAcknowledged`). Third-party content keeps the public-only rule in either mode, with the checked address pinned: a registry record, a catalog body, a document URL inside a catalog, and every redirect target. Cloud metadata, `unspecified`, multicast, reserved and documentation addresses stay refused on every input. The default proxy bypass list gains `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16`. No host protocol or storage schema bump: `networkPolicy` is one section in the existing app settings, validated on write.** | Refusing a LAN address the user typed did not remove the request — it moved the same work into a shell or a browser next to the app, so the boundary cost the feature without preventing a decision the user had already made. Third-party content is where the SSRF risk lives, so that half of the boundary is unchanged. See ADR 0304. |
 
 ## 2026-08-05 — Agent-only mode
 
@@ -4222,6 +4223,32 @@ D193, and D194.
   in-app download and quit-and-install. Data stays in the existing application
   data directory. Portable requests user execution level.
 - See ADR 0197 and E2E-211.
+
+## 2026-09-22 — Trust the network endpoints the user enters themselves (D604)
+
+- An endpoint the user typed themselves — a model base URL, an MCP server, a
+  market source, a git remote, a generated-image URL — may resolve to loopback,
+  RFC1918, CGNAT, link-local, ULA, site-local or `.local`. Plain `http` to such
+  an endpoint is usable. One host-owned switch decides all of it —
+  `settings.networkPolicy.mode` (`relaxed` | `strict`), **`relaxed` by
+  default** — and it replaces the earlier per-surface acknowledgements
+  (`networkProxy.allowFakeIp`, `configSync.allowInsecureHttp`, the plaintext
+  flag); a stored `allowInsecureUserEndpoints: false` migrates to `strict`. The
+  first plaintext hop shows one informational notice.
+  `https` to a LAN host needs no opt-in.
+- Third-party content is unchanged. A registry record, a market catalog body, a
+  document URL inside a catalog and every HTTP redirect target keep the
+  public-only policy with the checked address pinned to the connection. The
+  shared client takes the origin of each hop, and only the first hop of a request
+  the user started may be `user`.
+- Cloud metadata (`169.254.169.254`, `100.100.100.200`, `fd00:ec2::254`,
+  `metadata.google.internal`, `metadata`, `instance-data`), `unspecified`,
+  multicast, reserved and documentation addresses stay refused everywhere,
+  including in a user-supplied field.
+- The default proxy bypass list gains the private ranges, so a configured proxy
+  no longer swallows a local model server, NAS or MCP endpoint. See
+  `05-security/01-security.md` §4.1/§4.2, `04-ux/06-settings-ia.md`, and
+  ADR 0304.
 
 ## 2026-09-22 — Windows portable delivery uses a normal ZIP (D603)
 

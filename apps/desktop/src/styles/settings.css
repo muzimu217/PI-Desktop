@@ -2779,6 +2779,28 @@
   margin-top: calc(var(--space-2) * -1);
 }
 
+/*
+  Plaintext opt-in for endpoints the user typed themselves: the checkbox sits in
+  the row's control column, and the risk copy arrives only while it is on.
+*/
+.settings-network-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-network-checkbox input {
+  accent-color: var(--ds-accent);
+}
+
+.settings-network-warning {
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--ds-warning) 12%, transparent);
+  color: var(--ds-warning);
+  font-size: var(--text-sm);
+}
+
 /* Agent extension state inside a plugin row (spec 16 §11). */
 .plugins-agent-extension {
   display: flex;

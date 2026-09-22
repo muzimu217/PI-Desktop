@@ -215,7 +215,9 @@ export function ModelConfigPage() {
         };
         await api.setSettings(nextSettings);
         useAppStore.setState({ settings: nextSettings });
-        showToast(t("settings.imageModelSelected"), { variant: "success" });
+        showToast(t(editingProvider ? "settings.providerUpdated" : "settings.providerSaved"), {
+          variant: "success",
+        });
       } else if (copyDraft) {
         showToast(t("settings.providerSaved"), { variant: "success" });
       } else if (!editingProvider) {

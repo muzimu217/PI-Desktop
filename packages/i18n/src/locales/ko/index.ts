@@ -616,7 +616,8 @@ sklm: {
       namePlaceholder: "소스 이름",
       urlHint: "https://…/catalog.json",
       documentTooLarge: "리소스를 첨부한 뒤 문서가 128KB 제한을 초과합니다.",
-      sourceUnsafe: "소스 URL은 공개 https 주소여야 합니다",
+      sourceUnsafe:
+        "소스 URL은 http 또는 https 주소여야 하며 클라우드 메타데이터 주소는 안 됩니다. 내 컴퓨터나 LAN에서 평문 http를 쓰려면 네트워크 설정에서 “네트워크 완화 모드”를 켜세요.",
       pageInfo: "{{page}} / {{pages}} 페이지 · 총 {{total}}개",
       pagePrev: "이전 페이지",
       pageNext: "다음 페이지",
@@ -700,9 +701,6 @@ sklm: {
         "Synchronize portable configuration through an encrypted WebDAV vault. Conversation history, source files, and runtime state are never included.",
       endpoint: "WebDAV URL",
       endpointPlaceholder: "https://dav.example.com/",
-      allowInsecureHttp: "Allow HTTP for a trusted LAN address",
-      allowInsecureHttpWarning:
-        "HTTP does not encrypt WebDAV credentials. Enable only for a trusted LAN address; public HTTP endpoints are rejected.",
       remoteMode: "서버 호환 모드",
       remoteModeHint:
         "엄격 모드는 신뢰할 수 있는 조건부 쓰기를 요구합니다. If-Match/If-None-Match를 무시하는 서버에서만 호환 모드를 사용하세요.",
@@ -984,7 +982,8 @@ sklm: {
       namePlaceholder: "소스 이름",
       urlHint: "https://… (레지스트리 엔드포인트 또는 카탈로그 JSON)",
       officialSource: "공식 레지스트리",
-      sourceUnsafe: "소스 URL은 공개 https 주소여야 합니다",
+      sourceUnsafe:
+        "소스 URL은 http 또는 https 주소여야 하며 클라우드 메타데이터 주소는 안 됩니다. 내 컴퓨터나 LAN에서 평문 http를 쓰려면 네트워크 설정에서 “네트워크 완화 모드”를 켜세요.",
       pageInfo: "{{page}} / {{pages}} 페이지 · 총 {{total}}개",
       pagePrev: "이전 페이지",
       pageNext: "다음 페이지",
@@ -1184,8 +1183,14 @@ sklm: {
     proxyUrlPlaceholder: "socks5://127.0.0.1:1080",
     proxyBypass: "우회",
     proxyBypassDesc: "프록시를 사용하지 않을 호스트입니다.",
-    proxyFakeIp: "마켓 소스에 프록시 fake-IP 허용",
-    proxyFakeIpDesc: "투명한 라우터/TUN 프록시에서만 켜세요. 다른 사설 주소는 계속 차단됩니다.",
+    networkRelaxedMode: "네트워크 완화 모드",
+    networkRelaxedModeDesc:
+      "직접 입력한 주소(이 컴퓨터나 LAN에 있는 모델 서비스, MCP 서버, 마켓 소스, git 원격)에 연결할 수 있고, 평문 HTTP도 허용되며, 투명 프록시의 fake-IP 응답도 허용됩니다.",
+    networkRelaxedModeStrictDesc:
+      "공용 HTTPS 엔드포인트만 연결할 수 있습니다. LAN 주소와 평문 연결은 거부되고, 프록시의 fake-IP 응답도 거부됩니다.",
+    networkInsecureNoticeTitle: "내 네트워크로 나가는 평문 HTTP",
+    networkInsecureNoticeBody:
+      "직접 입력한 이 컴퓨터나 LAN 주소에 암호화되지 않은 HTTP로 접속하고 있습니다. 같은 네트워크 대역에 있는 사람이 그 트래픽의 자격 증명을 읽을 수 있습니다. 네트워크 설정에서 엄격 모드로 바꾸면 이런 연결을 거부합니다.",
     proxyInvalid: "호스트가 포함된 http, https 또는 socks5 URL을 입력하세요.",
     proxySaveError: "프록시를 저장할 수 없습니다.",
     proxyTest: "테스트",

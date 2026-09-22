@@ -616,7 +616,8 @@ sklm: {
       namePlaceholder: "Kaynak adı",
       urlHint: "https://…/catalog.json",
       documentTooLarge: "Kaynaklar eklendikten sonra bu beceri 128 KB belge sınırını aşıyor.",
-      sourceUnsafe: "Kaynak URL'si genel bir https adresi olmalıdır",
+      sourceUnsafe:
+        "Kaynak URL'si http veya https bir adres olmalı, bulut meta veri adresi olmamalıdır. Kendi makinenizde veya LAN'ınızda düz http için Ağ ayarlarında “Esnek ağ modu” seçeneğini açın.",
       pageInfo: "Sayfa {{page}} / {{pages}} · {{total}} skill",
       pagePrev: "Önceki sayfa",
       pageNext: "Sonraki sayfa",
@@ -699,9 +700,6 @@ sklm: {
       connectionDescription: "Şifreli bir WebDAV kasası üzerinden taşınabilir yapılandırmayı senkronize edin.",
       endpoint: "WebDAV URL'si",
       endpointPlaceholder: "https://dav.example.com/",
-      allowInsecureHttp: "Allow HTTP for a trusted LAN address",
-      allowInsecureHttpWarning:
-        "HTTP does not encrypt WebDAV credentials. Enable only for a trusted LAN address; public HTTP endpoints are rejected.",
       remoteMode: "Sunucu uyumluluğu",
       remoteModeHint:
         "Katı mod güvenilir koşullu yazma işlemleri gerektirir. Uyumluluk modunu yalnızca If-Match/If-None-Match'i yok sayan sunucularda kullanın.",
@@ -974,7 +972,8 @@ sklm: {
       namePlaceholder: "Kaynak adı",
       urlHint: "https://… (kayıt uç noktası veya katalog JSON)",
       officialSource: "Resmî kayıt",
-      sourceUnsafe: "Kaynak URL'si genel bir https adresi olmalıdır",
+      sourceUnsafe:
+        "Kaynak URL'si http veya https bir adres olmalı, bulut meta veri adresi olmamalıdır. Kendi makinenizde veya LAN'ınızda düz http için Ağ ayarlarında “Esnek ağ modu” seçeneğini açın.",
       pageInfo: "Sayfa {{page}} / {{pages}} · {{total}} sunucu",
       pagePrev: "Önceki sayfa",
       pageNext: "Sonraki sayfa",
@@ -1174,8 +1173,14 @@ sklm: {
     proxyUrlPlaceholder: "socks5://127.0.0.1:1080",
     proxyBypass: "Muaf tut",
     proxyBypassDesc: "Vekili atlayan ana makineler.",
-    proxyFakeIp: "Pazar kaynakları için proxy fake-IP adreslerine izin ver",
-    proxyFakeIpDesc: "Yalnızca şeffaf yönlendirici/TUN proxy için açın. Diğer özel adresler engellenmeye devam eder.",
+    networkRelaxedMode: "Esnek ağ modu",
+    networkRelaxedModeDesc:
+      "Kendi girdiğiniz adresler erişilebilir: bu makinede veya LAN'ınızda bir model hizmeti, MCP sunucusu, pazar kaynağı ya da git uzak deposu. Düz HTTP'ye izin verilir ve şeffaf bir proxy'nin fake-IP yanıtları hoş görülür.",
+    networkRelaxedModeStrictDesc:
+      "Yalnızca genel HTTPS uç noktaları erişilebilir kalır: LAN adresleri ve düz metin bağlantılar reddedilir, proxy'nin fake-IP yanıtları da reddedilir.",
+    networkInsecureNoticeTitle: "Kendi ağınıza düz HTTP",
+    networkInsecureNoticeBody:
+      "Kendi girdiğiniz bu makine veya LAN adresine şifrelenmemiş HTTP ile erişiyorsunuz. Aynı ağ kesimindeki biri bu trafikteki kimlik bilgilerini okuyabilir. Ağ ayarlarında katı moda geçerek bu tür bağlantıları reddedebilirsiniz.",
     proxyInvalid: "Ana makineli bir http, https veya socks5 URL’si girin.",
     proxySaveError: "Vekil kaydedilemedi.",
     proxyTest: "Dene",

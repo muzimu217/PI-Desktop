@@ -607,7 +607,8 @@ sklm: {
       namePlaceholder: "Nombre de la fuente",
       urlHint: "https://…/catalog.json",
       documentTooLarge: "Esta skill supera el límite de 128 KB del documento tras adjuntar recursos.",
-      sourceUnsafe: "La URL debe ser una dirección https pública",
+      sourceUnsafe:
+        "La URL de origen debe ser http o https, no una dirección de metadatos en la nube. Para usar http sin cifrar en tu equipo o la LAN, activa «Modo de red flexible» en los ajustes de Red.",
       pageInfo: "Página {{page}} de {{pages}} · {{total}} skills",
       pagePrev: "Anterior",
       pageNext: "Siguiente",
@@ -692,9 +693,6 @@ sklm: {
         "Synchronize portable configuration through an encrypted WebDAV vault. Conversation history, source files, and runtime state are never included.",
       endpoint: "WebDAV URL",
       endpointPlaceholder: "https://dav.example.com/",
-      allowInsecureHttp: "Allow HTTP for a trusted LAN address",
-      allowInsecureHttpWarning:
-        "HTTP does not encrypt WebDAV credentials. Enable only for a trusted LAN address; public HTTP endpoints are rejected.",
       remoteMode: "Compatibilidad del servidor",
       remoteModeHint:
         "El modo estricto requiere escrituras condicionales fiables. Usa el modo de compatibilidad solo con servidores que ignoran If-Match/If-None-Match.",
@@ -974,7 +972,8 @@ sklm: {
       namePlaceholder: "Nombre de la fuente",
       urlHint: "https://… (endpoint de registro o JSON de catálogo)",
       officialSource: "Registro oficial",
-      sourceUnsafe: "La URL debe ser una dirección https pública",
+      sourceUnsafe:
+        "La URL de origen debe ser http o https, no una dirección de metadatos en la nube. Para usar http sin cifrar en tu equipo o la LAN, activa «Modo de red flexible» en los ajustes de Red.",
       pageInfo: "Página {{page}} de {{pages}} · {{total}} servidores",
       pagePrev: "Anterior",
       pageNext: "Siguiente",
@@ -1171,8 +1170,14 @@ sklm: {
     "proxyUrlPlaceholder": "calcetines5://127.0.0.1:1080",
     "proxyBypass": "Omitir",
     "proxyBypassDesc": "Hosts que omiten el proxy.",
-    proxyFakeIp: "Permitir fake-IP del proxy para fuentes del mercado",
-    proxyFakeIpDesc: "Actívalo solo con un proxy transparente de router/TUN. Las demás direcciones privadas siguen bloqueadas.",
+    networkRelaxedMode: "Modo de red flexible",
+    networkRelaxedModeDesc:
+      "Las direcciones que escribes tú son accesibles —un servicio de modelos, un servidor MCP, una fuente del mercado o un remoto de git en este equipo o en tu LAN—, se permite el HTTP sin cifrar y se toleran las respuestas fake-IP de un proxy transparente.",
+    networkRelaxedModeStrictDesc:
+      "Solo siguen siendo accesibles los endpoints HTTPS públicos: se rechazan las direcciones de la LAN y las conexiones en claro, y también las respuestas fake-IP del proxy.",
+    networkInsecureNoticeTitle: "HTTP sin cifrar hacia tu propia red",
+    networkInsecureNoticeBody:
+      "Estás accediendo por HTTP sin cifrar a una dirección que escribiste tú, en este equipo o en tu LAN. Alguien en el mismo segmento de red podría leer las credenciales de ese tráfico. Cambia a modo estricto en los ajustes de Red para rechazar esas conexiones.",
     "proxyInvalid": "Ingrese una URL http, https o Socks5 con un host.",
     "proxySaveError": "No se pudo guardar el proxy.",
     "proxyTest": "Prueba",

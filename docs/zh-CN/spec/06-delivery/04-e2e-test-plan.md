@@ -9,6 +9,16 @@
 
 ---
 
+### E2E-IMAGES-provider-save-feedback
+
+- **前提：** 生图配置 UI fixture，中英文界面。
+- **步骤：** 勾选生图模型并保存服务商；从摘要菜单切换默认生图模型；
+  再取消唯一生图模型的标记并保存。
+- **预期：** 服务商编辑确认“服务已更新”，清除生图选择后也不会提示已选择
+  生图模型；摘要菜单切换仍显示生图选择成功提示。绑定保存行为不变。
+- **规格：** 03-runtime/21-image-generation。**验收：** B。
+- **里程碑：** 维护。**状态：** `scripts/e2e-image-generation-ui.mjs` 自动覆盖。
+
 ### E2E-IMAGES-deselect-default
 
 - **前提：** 只有一个服务商、一个模型，且该模型已标记为生图模型。
@@ -7772,12 +7782,12 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 - **里程碑**：M2
 - **状态**：单元覆盖（`packages/shared/src/composer-trigger.test.ts`、`apps/desktop/test/composer-ime.test.mjs`）；渲染桌面旅程为草稿（除非明确要求，不本地运行 E2E）
 
-#### E2E-CLONE-public-hostname-rejects-private
+#### E2E-CLONE-accepts-a-lan-remote-and-rejects-metadata
 
 - **前提条件**：首页项目切换菜单的「克隆 Git 项目」可用。
-- **步骤**：1）输入 `https://127.0.0.1/org/repo.git`、`http://localhost/org/repo.git`、`https://10.0.0.5/org/repo.git` 和 `git@127.0.0.1:org/repo.git`。2）输入 `https://github.com/org/repo.git` 和 `git@github.com:org/repo.git`。
-- **预期**：私网、回环和链路本地远程在 `git clone` 运行前被拒绝。公网 GitHub HTTPS 与 SSH 仍解析出文件夹名。`file:` 和带密码的 URL 继续被拒绝。
-- **链接规格**：`04-ux/01-ui-ia.md`、ADR 0247、D416
+- **步骤**：1）输入 `https://192.168.1.5/org/repo.git`、`http://10.0.0.7/org/repo.git` 和 `git@192.168.1.5:org/repo.git`。2）输入 `https://169.254.169.254/org/repo.git` 和 `https://metadata.google.internal/org/repo.git`。3）输入 `https://github.com/org/repo.git` 和 `git@github.com:org/repo.git`。
+- **预期**：用户自己填写的局域网或回环远端被接受并解析出文件夹名，因为这是用户自己的地址。云元数据主机仍然拒绝，`file:` 与带密码的 URL 也一样，都在 `git clone` 运行前拒绝。公网 GitHub HTTPS 与 SSH 仍解析成功。
+- **链接规格**：`04-ux/01-ui-ia.md`、ADR 0247、ADR 0304、D416
 - **验收**：安全、D（工作区）
 - **里程碑**：M5
 - **状态**：单元覆盖（`apps/desktop/test/git-clone.test.mjs`）
@@ -8042,18 +8052,18 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 
 | ID | 场景 | 验证 |
 |---|---|---|
-| E2E-MCP-MARKET-NET-BOUNDARY | URL guard 拒绝凭据、回环、私网、special-use IPv4、v4-mapped、ULA、site-local 和 link-local 及尾点绕过形态；direct/unknown 默认固定已检查的公网地址，完整 proxied 线路使用 session 传输，显式 `allowFakeIp` 可覆盖透明路由器 fake-IP 源但不允许真实私网答案 | 确定性 guard 断言；DNS pin、代理线路选择、fake-IP 选项范围与响应上限 source-contract 覆盖 |
+| E2E-MCP-MARKET-NET-BOUNDARY | URL guard 拒绝凭据、云元数据、unspecified、multicast、reserved 及尾点绕过形态——即使由用户自己填写；对**第三方跳**（重定向目标、目录正文）拒绝回环、私网、special-use IPv4、v4-mapped、ULA、site-local 与 link-local；同一形态由用户填进源地址字段时被接受，明文 `http` 需 `networkPolicy.allowInsecureUserEndpoints`；direct/unknown 默认固定已检查的地址，完整 proxied 线路使用 session 传输，显式 `allowFakeIp` 可覆盖透明路由器 fake-IP 源但不允许真实私网答案 | 确定性 guard 断言；DNS pin、代理线路选择、fake-IP 选项范围与响应上限 source-contract 覆盖 |
 | E2E-MCP-MARKET-SEMANTICS | Registry 记录映射为安装模板时保留包版本、named/positional runtime/package 参数与 required/optional 环境变量语义；远端 header 变量同时识别注册表的 `{name}` 与目录的 `${NAME}` 两种写法，仅为已声明的可编辑值显示输入，保留未声明花括号字面量，并按各 header 的作用域处理默认值、固定值与可选标记，不合并不同 header 的同名输入（ADR registry-header-variable-spelling） | 确定性映射断言 |
 | E2E-MCP-MARKET-INSTALL | 内置目录条目经 `resolveCatalogEntry` 解析并通过宿主 `mcp.upsert` RPC 安装；记录落盘 `~/.agents/servers/` | 真实宿主二进制，隔离临时 HOME |
 | E2E-MCP-MARKET-HEADER-SCOPE | Registry header-local `{token}` resolves only in its header; same-named URL path/query tokens remain literal through mapping, resolution, host upsert/list and persistence. URL templates retain only legacy `${NAME}` substitution. When `headerBindings` exists (even empty or partial), unbound tokens in every header stay literal and never consume another header's input or default | shared regressions plus real host binary with isolated temporary storage; remote entry disabled, no network call |
 | E2E-MCP-MARKET-partial-header-bindings-stay-literal | Resolve a catalog with only Authorization bound and another header using the same `{token}` / `${token}`; an undeclared `${UNBOUND}` in a third header also remains literal through host upsert/list and disk persistence | real host binary, disabled remote entry, synthetic input and isolated temporary storage; no network call |
 
 
-#### E2E-SKILL-MARKET-NET-BOUNDARY：技能源公网 HTTPS 策略拒绝私网与回环
+#### E2E-SKILL-MARKET-NET-BOUNDARY：用户自填源可达局域网，第三方内容不行
 
 - **前提条件**：共享 public-network helper，以及可注入 fetch/DNS/线路 的主进程公网 HTTPS 客户端。
-- **步骤**：1）分类 trailing-dot localhost、IPv4 回环、IPv4-mapped IPv6、ULA、link-local、RFC1918 与 `http://`。2）将公网主机名解析到私网 A 记录。3）跟随 Location 为 `https://127.0.0.1/` 的 302。4）报告 `proxied` 线路与 TUN fake-IP 答案（`198.18.0.1`），同一答案在 `DIRECT` 线路、读不出线路、以及列表中含 `DIRECT` 的线路上的表现。5）让第一跳为 `proxied`，其重定向目标为 `direct`。
-- **预期**：上述绕过形态全部拒绝；公共 CDN 放行。解析到私网地址或 redirect 到回环会抛出策略错误，且不会请求私网目标。判定型拒绝不重试；本地解析没有返回答案时会重试,并且报为 `NETWORK_RESOLVE_FAILED`（`kind` 为 `unresolved`）,而不是报成地址校验拒绝——守卫并未得出判定,任何文案都不得声称它得出了。本地代理伪造的 fake-IP 答案（如 Clash 默认的 `198.18.0.0/15`）在守卫判定它的线路上——`direct` 或读不出线路——仍被拒绝且不重试,并以 `kind` 为 `fake-ip`、`reason` 为 `non-public-address`、`addressKind` 为 `benchmark` 记录,与真实私网目标（`kind` 为 `policy`、`addressKind` 为 `private`）清楚区分——对后者守卫判定了目标,对前者没有；同一答案在 `proxied` 线路上放行。其余每次拒绝都带上 `NETWORK_POLICY_BLOCKED`（spec 08 §3.1）及其 `reason`、被解析到的地址、地址类别与判定该地址的线路,使安装面板能给出原因并提供重试,而不是让安装按钮无解释地保持禁用；市场列表也能把被拒绝的源与单纯不可达的源区分开。其他所有非公网类别在任何线路上都拒绝；每一个重定向跳都按自己的线路判定（ADR 0272）。
+- **步骤**：1）把 trailing-dot localhost、IPv4 回环、IPv4-mapped IPv6、ULA、link-local、RFC1918 与 `http://` 各分类两次：一次作为用户自己填写的源地址，一次作为目录正文里的文档 URL。2）将公网主机名解析到私网 A 记录。3）跟随 Location 为 `https://127.0.0.1/` 的 302。4）报告 `proxied` 线路与 TUN fake-IP 答案（`198.18.0.1`），同一答案在 `DIRECT` 线路、读不出线路、以及列表中含 `DIRECT` 的线路上的表现。5）让第一跳为 `proxied`，其重定向目标为 `direct`。
+- **预期**：用户自己填写的源地址可以是回环或局域网目录——`https` 始终允许，`http` 仅在 `networkPolicy.allowInsecureUserEndpoints` 打开时允许；而同一地址作为目录内部的文档 URL 或重定向目标时一律拒绝；云元数据、`unspecified`、`multicast`、`reserved` 在任何输入上都拒绝。公共 CDN 放行。用户源解析到私网地址会被正常抓取；第三方跳解析到私网地址会抛出策略错误，且不会请求私网目标。判定型拒绝不重试；本地解析没有返回答案时会重试,并且报为 `NETWORK_RESOLVE_FAILED`（`kind` 为 `unresolved`）,而不是报成地址校验拒绝——守卫并未得出判定,任何文案都不得声称它得出了。本地代理伪造的 fake-IP 答案（如 Clash 默认的 `198.18.0.0/15`）在守卫判定它的线路上——`direct` 或读不出线路——仍被拒绝且不重试,并以 `kind` 为 `fake-ip`、`reason` 为 `non-public-address`、`addressKind` 为 `benchmark` 记录,与真实私网目标（`kind` 为 `policy`、`addressKind` 为 `private`）清楚区分——对后者守卫判定了目标,对前者没有；同一答案在 `proxied` 线路上放行。其余每次拒绝都带上 `NETWORK_POLICY_BLOCKED`（spec 08 §3.1）及其 `reason`、被解析到的地址、地址类别与判定该地址的线路,使安装面板能给出原因并提供重试,而不是让安装按钮无解释地保持禁用；市场列表也能把被拒绝的源与单纯不可达的源区分开。其他所有非公网类别在任何线路上都拒绝；每一个重定向跳都按自己的线路判定（ADR 0272）。
 - **链接规格**：`05-security/01-security.md`、ADR 0243、ADR 0272、`03-runtime/01-ipc-protocol.md` §12b
 - **验收**：Security、Quality
 - **里程碑**：M6+
@@ -8445,6 +8455,10 @@ the latest destination. These assertions measure work counts, not device FPS.
   requests, GPT Image parameter omission, bounded responses, and rejection of
   more than four references before I/O. These are protocol tests, not official
   provider account/live compatibility certification.
+- **Proxy fake-IP:** 明确开启“设置 → 通用 → 网络”的代理 fake-IP 选项后，解析
+  到 Clash 基准测试段的图片 URL 会通过代理感知传输下载；未开启时仍返回
+  `IMAGE_UNSAFE_URL`，真实私网地址在两种情况下都继续阻止。该行为由
+  `packages/agent-runtime/src/image-generation/download.test.ts` 覆盖，不由下面的驱动脚本覆盖。
 - **Status:** Automated in `node scripts/e2e-image-chat.mjs`; optional screenshots
   use `PI_IMAGE_CHAT_EVIDENCE_DIR`. The images are deterministic raster fixtures,
   not evidence of real-model quality or provider compatibility.

@@ -614,7 +614,8 @@ sklm: {
       namePlaceholder: "Source name",
       urlHint: "https://…/catalog.json",
       documentTooLarge: "This skill is larger than the 128 KB document limit after attaching resources.",
-      sourceUnsafe: "Source URL must be a public https address",
+      sourceUnsafe:
+        "Source URL must be an http or https address, and not a cloud metadata address. For plain http on your own machine or LAN, turn on “Relaxed network mode” in Network settings.",
       pageInfo: "Page {{page}} of {{pages}} · {{total}} skills",
       pagePrev: "Previous page",
       pageNext: "Next page",
@@ -846,7 +847,8 @@ sklm: {
       namePlaceholder: "Source name",
       urlHint: "https://… (registry endpoint or catalog JSON)",
       officialSource: "Official registry",
-      sourceUnsafe: "Source URL must be a public https address",
+      sourceUnsafe:
+        "Source URL must be an http or https address, and not a cloud metadata address. For plain http on your own machine or LAN, turn on “Relaxed network mode” in Network settings.",
       pageInfo: "Page {{page}} of {{pages}} · {{total}} servers",
       pagePrev: "Previous page",
       pageNext: "Next page",
@@ -939,9 +941,6 @@ sklm: {
         "Synchronize portable configuration through an encrypted WebDAV vault. Conversation history, source files, and runtime state are never included.",
       endpoint: "WebDAV URL",
       endpointPlaceholder: "https://dav.example.com/",
-      allowInsecureHttp: "Allow HTTP for a trusted LAN address",
-      allowInsecureHttpWarning:
-        "HTTP does not encrypt WebDAV credentials. Enable only for a trusted LAN address; public HTTP endpoints are rejected.",
       remoteMode: "Server compatibility",
       remoteModeHint:
         "Strict mode requires reliable conditional writes. Use compatibility mode only for a server that ignores If-Match/If-None-Match.",
@@ -1186,8 +1185,14 @@ sklm: {
     proxyUrlPlaceholder: "socks5://127.0.0.1:1080",
     proxyBypass: "Bypass",
     proxyBypassDesc: "Hosts that skip the proxy.",
-    proxyFakeIp: "Allow proxy fake-IP for market sources",
-    proxyFakeIpDesc: "Only enable this for a transparent router/TUN proxy. Other private addresses remain blocked.",
+    networkRelaxedMode: "Relaxed network mode",
+    networkRelaxedModeDesc:
+      "Endpoints you enter yourself are reachable — a model service, MCP server, market source, or git remote on this machine or your LAN. Plain HTTP is allowed, and a transparent proxy's fake-IP answers are tolerated.",
+    networkRelaxedModeStrictDesc:
+      "Only public HTTPS endpoints stay reachable: a LAN address or a plaintext connection is refused, and a proxy's fake-IP answers are rejected.",
+    networkInsecureNoticeTitle: "Plain HTTP to your own network",
+    networkInsecureNoticeBody:
+      "You are reaching an address you entered yourself, on this machine or your LAN, over unencrypted HTTP. Anyone on the same network segment may be able to read the credentials in that traffic. Switch to Strict in Network settings to refuse those connections.",
     proxyInvalid: "Enter an http, https, or socks5 URL with a host.",
     proxySaveError: "Couldn't save the proxy.",
     proxyTest: "Test",

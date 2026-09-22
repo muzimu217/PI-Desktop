@@ -607,7 +607,8 @@ sklm: {
       namePlaceholder: "Quellenname",
       urlHint: "https://…/catalog.json",
       documentTooLarge: "Diese Skill überschreitet nach dem Anhängen der Ressourcen das 128-KB-Dokumentlimit.",
-      sourceUnsafe: "Quell-URL muss eine öffentliche https-Adresse sein",
+      sourceUnsafe:
+        "Quell-URL muss eine http- oder https-Adresse sein, keine Cloud-Metadaten-Adresse. Für Klartext-HTTP auf dem eigenen Rechner oder im LAN in den Netzwerkeinstellungen „Lockerer Netzwerkmodus“ einschalten.",
       pageInfo: "Seite {{page}} von {{pages}} · {{total}} Skills",
       pagePrev: "Zurück",
       pageNext: "Weiter",
@@ -692,9 +693,6 @@ sklm: {
         "Synchronize portable configuration through an encrypted WebDAV vault. Conversation history, source files, and runtime state are never included.",
       endpoint: "WebDAV URL",
       endpointPlaceholder: "https://dav.example.com/",
-      allowInsecureHttp: "HTTP für eine vertrauenswürdige LAN-Adresse zulassen",
-      allowInsecureHttpWarning:
-        "HTTP verschlüsselt WebDAV-Anmeldedaten nicht. Nur für eine vertrauenswürdige LAN-Adresse aktivieren; öffentliche HTTP-Endpunkte werden abgelehnt.",
       remoteMode: "Server-Kompatibilität",
       remoteModeHint:
         "Der strikte Modus erfordert zuverlässige bedingte Schreibvorgänge. Verwende den Kompatibilitätsmodus nur für Server, die If-Match/If-None-Match ignorieren.",
@@ -974,7 +972,8 @@ sklm: {
       namePlaceholder: "Quellenname",
       urlHint: "https://… (Registry-Endpunkt oder Katalog-JSON)",
       officialSource: "Offizielle Registry",
-      sourceUnsafe: "Quell-URL muss eine öffentliche https-Adresse sein",
+      sourceUnsafe:
+        "Quell-URL muss eine http- oder https-Adresse sein, keine Cloud-Metadaten-Adresse. Für Klartext-HTTP auf dem eigenen Rechner oder im LAN in den Netzwerkeinstellungen „Lockerer Netzwerkmodus“ einschalten.",
       pageInfo: "Seite {{page}} von {{pages}} · {{total}} Server",
       pagePrev: "Zurück",
       pageNext: "Weiter",
@@ -1171,8 +1170,14 @@ sklm: {
     "proxyUrlPlaceholder": "sock5://127.0.0.1:1080",
     "proxyBypass": "Bypass",
     "proxyBypassDesc": "Hosts, die den Proxy überspringen.",
-    proxyFakeIp: "Proxy-Fake-IP für Marktquellen zulassen",
-    proxyFakeIpDesc: "Nur für einen transparenten Router-/TUN-Proxy aktivieren. Andere private Adressen bleiben blockiert.",
+    networkRelaxedMode: "Lockerer Netzwerkmodus",
+    networkRelaxedModeDesc:
+      "Selbst eingetragene Endpunkte sind erreichbar – ein Modelldienst, MCP-Server, eine Marktquelle oder ein Git-Remote auf deinem Rechner oder im LAN. Klartext-HTTP ist erlaubt, und Fake-IP-Antworten eines transparenten Proxys werden toleriert.",
+    networkRelaxedModeStrictDesc:
+      "Nur öffentliche HTTPS-Endpunkte bleiben erreichbar: eine LAN-Adresse oder eine Klartextverbindung wird abgelehnt, ebenso Fake-IP-Antworten eines Proxys.",
+    networkInsecureNoticeTitle: "Klartext-HTTP in dein eigenes Netz",
+    networkInsecureNoticeBody:
+      "Du erreichst eine selbst eingetragene Adresse – auf deinem Rechner oder im LAN – über unverschlüsseltes HTTP. Wer im selben Netzsegment sitzt, kann die Zugangsdaten in diesem Datenverkehr möglicherweise mitlesen. Stell in den Netzwerkeinstellungen auf „Strict“ um, um solche Verbindungen abzulehnen.",
     "proxyInvalid": "Geben Sie eine http-, https- oder sock5-URL mit einem Host ein.",
     "proxySaveError": "Der Proxy konnte nicht gespeichert werden.",
     "proxyTest": "Test",

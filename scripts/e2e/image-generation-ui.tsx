@@ -170,6 +170,8 @@ globalThis.imageGenerationProbe = async () => {
         (element) => element.textContent?.includes(i18n.t("settings.imageModel")),
       )!;
       assert(imageRow, "saved image model summary missing");
+      assert(useAppStore.getState().toasts.at(-1)?.message === i18n.t("settings.providerUpdated"),
+        "marking models should confirm the provider update");
       const gap = imageRow.getBoundingClientRect().top - defaultRow.getBoundingClientRect().bottom;
       assert(gap >= 11 && gap <= 13, `model defaults should be adjacent rows, got ${gap}px`);
       assert(settings.defaultModelId === "chat-model", "image model changed default chat model");
@@ -229,6 +231,8 @@ globalThis.imageGenerationProbe = async () => {
         "image default provider did not switch",
       );
       assert(settings.defaultProviderId === "chat" && settings.defaultModelId === "chat-model", "image switch changed chat default");
+      assert(useAppStore.getState().toasts.at(-1)?.message === i18n.t("settings.imageModelSelected"),
+        "explicit image default selection lost its specific confirmation");
       assert(row.textContent?.includes("Images B"), "new provider name missing");
       for (const invalid of [
         { ...alternate, enabled: false },
@@ -267,6 +271,8 @@ globalThis.imageGenerationProbe = async () => {
       click(imageModelToggle(i18n.t("settings.imageModelSelected")));
       click(button(i18n.t("settings.saveProvider")));
       await until(() => !document.querySelector(".provider-setup-dialog"), "unmark save did not finish");
+      assert(useAppStore.getState().toasts.at(-1)?.message === i18n.t("settings.providerUpdated"),
+        "unmark save incorrectly claims an image model was selected");
       assert(settings.imageGeneration === null, "unmark kept the old image default");
       assert(settings.imageGenerationModels?.length === 0, "unmark kept image candidates");
       // Remount settings from the saved API value, then reopen the provider.
@@ -388,6 +394,7 @@ globalThis.imageGenerationProbe = async () => {
       ok: true,
       locales: ["en", "zh-CN"],
       scenarios: [
+        "provider-save-feedback-for-image-mark-and-unmark",
         "remove-marked-model-cancel-save-reopen-and-clear",
         "advanced-save-cancel",
         "unmark-only-image-model-save-reopen-chat-selection",

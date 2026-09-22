@@ -114,6 +114,12 @@ transparent router/TUN deployment. Install writes markdown only through
 `skills.create`. The host document cap remains 128 KiB after sibling markdown
 is inlined.
 
+A source URL the user typed is judged by ADR 0304 instead: it may be a loopback
+or LAN catalog, and plain `http` to it is allowed because the relaxed network
+mode is on by default (`networkPolicy.mode`). Every document URL that arrives
+*inside* a catalog, and every redirect target, keeps the public-only policy
+above, in either mode.
+
 ## 4.2 MCP market egress
 
 The MCP market accepts only credentials-free public HTTPS sources and catalog
@@ -133,6 +139,13 @@ redirects do not forward caller headers.
 
 Manual user-owned MCP configuration remains covered by ADR 0142 and may use
 explicit local/LAN endpoints; the market path does not widen that policy.
+
+
+A market source URL the user typed is judged by ADR 0304 as well: it may be a
+loopback or LAN endpoint, with plain `http` behind the relaxed network mode
+(`networkPolicy.mode`, on by default). Everything a source returns —
+registry records, catalog bodies, redirect targets — keeps the public-only
+policy above.
 
 ## 4.3 Portable configuration sync
 

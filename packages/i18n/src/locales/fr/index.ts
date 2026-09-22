@@ -607,7 +607,8 @@ sklm: {
       namePlaceholder: "Nom de la source",
       urlHint: "https://…/catalog.json",
       documentTooLarge: "Cette skill dépasse la limite de 128 Ko une fois les ressources jointes.",
-      sourceUnsafe: "L'URL doit être une adresse https publique",
+      sourceUnsafe:
+        "L'URL source doit être une adresse http ou https, pas une adresse de métadonnées cloud. Pour du HTTP en clair sur votre machine ou votre réseau local, activez « Mode réseau souple » dans les réglages Réseau.",
       pageInfo: "Page {{page}} sur {{pages}} · {{total}} skills",
       pagePrev: "Précédente",
       pageNext: "Suivante",
@@ -692,9 +693,6 @@ sklm: {
         "Synchronize portable configuration through an encrypted WebDAV vault. Conversation history, source files, and runtime state are never included.",
       endpoint: "WebDAV URL",
       endpointPlaceholder: "https://dav.example.com/",
-      allowInsecureHttp: "Allow HTTP for a trusted LAN address",
-      allowInsecureHttpWarning:
-        "HTTP does not encrypt WebDAV credentials. Enable only for a trusted LAN address; public HTTP endpoints are rejected.",
       remoteMode: "Compatibilité du serveur",
       remoteModeHint:
         "Le mode strict exige des écritures conditionnelles fiables. Utilisez le mode de compatibilité uniquement avec un serveur qui ignore If-Match/If-None-Match.",
@@ -974,7 +972,8 @@ sklm: {
       namePlaceholder: "Nom de la source",
       urlHint: "https://… (endpoint de registre ou JSON de catalogue)",
       officialSource: "Registre officiel",
-      sourceUnsafe: "L'URL doit être une adresse https publique",
+      sourceUnsafe:
+        "L'URL source doit être une adresse http ou https, pas une adresse de métadonnées cloud. Pour du HTTP en clair sur votre machine ou votre réseau local, activez « Mode réseau souple » dans les réglages Réseau.",
       pageInfo: "Page {{page}} sur {{pages}} · {{total}} serveurs",
       pagePrev: "Précédente",
       pageNext: "Suivante",
@@ -1171,8 +1170,14 @@ sklm: {
     "proxyUrlPlaceholder": "chaussettes5://127.0.0.1:1080",
     "proxyBypass": "Contourner",
     "proxyBypassDesc": "Hôtes qui ignorent le proxy.",
-    proxyFakeIp: "Autoriser les fake-IP du proxy pour les sources du marché",
-    proxyFakeIpDesc: "À activer uniquement avec un proxy transparent de routeur/TUN. Les autres adresses privées restent bloquées.",
+    networkRelaxedMode: "Mode réseau souple",
+    networkRelaxedModeDesc:
+      "Les adresses que vous saisissez vous-même sont accessibles — un service de modèles, un serveur MCP, une source du marché ou un dépôt git sur cette machine ou votre réseau local. Le HTTP en clair est autorisé et les réponses fake-IP d'un proxy transparent sont tolérées.",
+    networkRelaxedModeStrictDesc:
+      "Seuls les points de terminaison HTTPS publics restent accessibles : une adresse du réseau local ou une connexion en clair est refusée, tout comme les réponses fake-IP du proxy.",
+    networkInsecureNoticeTitle: "HTTP en clair vers votre propre réseau",
+    networkInsecureNoticeBody:
+      "Vous accédez en HTTP non chiffré à une adresse que vous avez saisie, sur cette machine ou votre réseau local. Une personne sur le même segment de réseau peut peut-être lire les identifiants de ce trafic. Passez en mode strict dans les réglages Réseau pour refuser ces connexions.",
     "proxyInvalid": "Saisissez une URL http, https ou chaussettes5 avec un hôte.",
     "proxySaveError": "Impossible d'enregistrer le proxy.",
     "proxyTest": "Test",

@@ -131,15 +131,25 @@ Settings is a **full-window page** that replaces the app sidebar + main chrome (
     `net.fetch`, and the in-app browser). Workspace Bash and the system
     browser used for OAuth are not rewritten.
   - Custom shows a Proxy URL field (`socks5://127.0.0.1:1080` /
-    `http://127.0.0.1:7890`, including `user:pass@` userinfo), a Bypass
-    list defaulting to `localhost,127.0.0.1,::1,<local>` so loopback MCP
-    and local models stay direct, and a Test action that issues one
-    Chromium fetch through the draft proxy. Credentialed URLs are applied
-    to Chromium through a loopback SOCKS5 relay (issue #490). The URL is
-    validated on blur; invalid schemes are rejected.
+    `http://127.0.0.1:7890`, including `user:pass@` userinfo), a Bypass list
+    defaulting to
+    `localhost,127.0.0.1,::1,<local>,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16`
+    so loopback MCP, local models and every LAN service stay direct, and a Test
+    action that issues one Chromium fetch through the draft proxy. Credentialed
+    URLs are applied to Chromium through a loopback SOCKS5 relay (issue #490).
+    The URL is validated on blur; invalid schemes are rejected.
   - The selection persists as optional `AppSettings.networkProxy`
     (`mode` / `url` / `bypass`). Absent means System. No host protocol or
     storage schema version bump (D340 / ADR 0177).
+  - **Relaxed network mode**: one switch persisting as
+    `AppSettings.networkPolicy.mode` (`relaxed` | `strict`), **on by default**.
+    When it is on, an endpoint the user typed themselves — a model base URL, an
+    MCP server, a market source, a git remote — may be a loopback or LAN address,
+    may use plain `http`, and a transparent proxy's fake-IP answers are
+    tolerated. Off returns those endpoints to the public-HTTPS-only boundary.
+    The first plaintext hop to such an endpoint shows one informational notice.
+    The per-surface acknowledgements this replaced (`networkProxy.allowFakeIp`,
+    `configSync.allowInsecureHttp`) are gone (ADR 0304).
 - Platform-specific **Close behavior** remains in General because it changes
   application-window behavior rather than agent behavior.
 - File-open target, menu-bar behavior, and bottom-panel behavior are not

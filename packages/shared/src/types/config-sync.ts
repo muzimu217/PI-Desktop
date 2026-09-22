@@ -78,7 +78,6 @@ export type ConfigSyncPreferences = {
   username: string;
   directory: string;
   deviceLabel: string;
-  allowInsecureHttp?: boolean;
   remoteMode?: ConfigSyncRemoteMode;
   categories: ConfigSyncCategorySelection;
   includeSecrets: boolean;
@@ -138,8 +137,6 @@ export type ConfigSyncState = {
   username?: string;
   directory?: string;
   deviceLabel?: string;
-  /** True only when the configured WebDAV endpoint is an acknowledged LAN HTTP target. */
-  allowInsecureHttp?: boolean;
   remoteMode: ConfigSyncRemoteMode;
   categories: ConfigSyncCategorySelection;
   includeSecrets: boolean;
@@ -163,7 +160,6 @@ export type ConfigSyncConfigureInput = {
   deviceLabel: string;
   /** Required when creating or unlocking the encrypted vault. */
   backupPassword: string;
-  allowInsecureHttp?: boolean;
   remoteMode?: ConfigSyncRemoteMode;
   categories?: Partial<ConfigSyncCategorySelection>;
   includeSecrets?: boolean;

@@ -91,14 +91,12 @@ export function ConfigSyncPage() {
   });
   const [selection, setSelection] =
     useState<ConfigSyncCategorySelection>(DEFAULT_SELECTION);
-  const [allowInsecureHttp, setAllowInsecureHttp] = useState(false);
   const [remoteMode, setRemoteMode] = useState<ConfigSyncRemoteMode>("strict");
 
   const refresh = useCallback(async () => {
     try {
       const next = await api.configSyncGetState();
       setState(next);
-      setAllowInsecureHttp(next.allowInsecureHttp === true);
       setRemoteMode(next.remoteMode ?? "strict");
       if (next.configured) {
         setForm((current) => ({
@@ -142,7 +140,6 @@ export function ConfigSyncPage() {
     void refresh();
     return api.onConfigSyncChanged((next) => {
       setState(next);
-      setAllowInsecureHttp(next.allowInsecureHttp === true);
       setRemoteMode(next.remoteMode ?? "strict");
     });
   }, [refresh]);
@@ -175,7 +172,6 @@ export function ConfigSyncPage() {
           appPassword: form.appPassword || undefined,
           directory: form.directory,
           deviceLabel: form.deviceLabel || t("settings.configSync.defaultDevice"),
-          allowInsecureHttp,
           categories: selection,
           includeSecrets: selection.credentials,
           includeMemory: selection.memory,
@@ -199,7 +195,6 @@ export function ConfigSyncPage() {
           directory: form.directory,
           deviceLabel: form.deviceLabel || t("settings.configSync.defaultDevice"),
           backupPassword: form.backupPassword,
-          allowInsecureHttp,
           categories: selection,
           includeSecrets: selection.credentials,
           includeMemory: selection.memory,
@@ -217,7 +212,6 @@ export function ConfigSyncPage() {
       } else {
         setState(await api.configSyncDisconnect());
         setHistory([]);
-        setAllowInsecureHttp(false);
         setRemoteMode("strict");
         setForm((current) => ({ ...current, appPassword: "", backupPassword: "" }));
         setSelection(DEFAULT_SELECTION);
@@ -379,7 +373,6 @@ export function ConfigSyncPage() {
   const configured = state?.configured === true;
   const locked = state?.locked === true;
   const categories = selection;
-  const isHttpEndpoint = /^http:\/\//i.test(form.endpoint.trim());
   // The report only exists for a sync this page started: an automatic run stays
   // quiet, and no report outlives the request that produced it. Enabling a
   // vault runs the same full sync as "sync now", so both operations are watched.
@@ -398,39 +391,13 @@ export function ConfigSyncPage() {
           <Field label={t("settings.configSync.endpoint")}>
             <Input
               value={form.endpoint}
-              onChange={(event) => {
-                const value = event.target.value;
-                updateForm("endpoint", value);
-                if (!/^http:\/\//i.test(value.trim())) {
-                  setAllowInsecureHttp(false);
-                }
-              }}
+              onChange={(event) => updateForm("endpoint", event.target.value)}
               placeholder={t("settings.configSync.endpointPlaceholder")}
               aria-label={t("settings.configSync.endpoint")}
               autoComplete="url"
               disabled={busy !== null}
             />
           </Field>
-          {isHttpEndpoint ? (
-            <div className="settings-config-sync-http-option">
-              <label className="settings-config-sync-category">
-                <input
-                  type="checkbox"
-                  checked={allowInsecureHttp}
-                  onChange={(event) => setAllowInsecureHttp(event.target.checked)}
-                  aria-describedby="config-sync-http-warning"
-                />
-                <span>{t("settings.configSync.allowInsecureHttp")}</span>
-              </label>
-              <div
-                id="config-sync-http-warning"
-                className="settings-config-sync-warning"
-                role={allowInsecureHttp ? "alert" : undefined}
-              >
-                {t("settings.configSync.allowInsecureHttpWarning")}
-              </div>
-            </div>
-          ) : null}
           <Field
             label={t("settings.configSync.remoteMode")}
             hint={t("settings.configSync.remoteModeHint")}

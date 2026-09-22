@@ -610,7 +610,8 @@ sklm: {
       namePlaceholder: "源名称",
       urlHint: "https://…/catalog.json",
       documentTooLarge: "展开相邻资源后超过 128 KB 文档上限，无法安装。",
-      sourceUnsafe: "源地址必须是公网 https 地址",
+      sourceUnsafe:
+        "源地址必须是 http/https 地址，且不能指向云元数据之类的地址。要用明文 http 访问自己的本机或局域网服务，请在网络设置里开启“网络宽松模式”。",
       pageInfo: "第 {{page}} / {{pages}} 页 · 共 {{total}} 个",
       pagePrev: "上一页",
       pageNext: "下一页",
@@ -689,8 +690,6 @@ sklm: {
       connectionDescription: "通过加密的 WebDAV 保管库同步可移植配置。不会包含对话历史、源文件或运行时状态。",
       endpoint: "WebDAV 地址",
       endpointPlaceholder: "https://dav.example.com/",
-      allowInsecureHttp: "允许在受信任的内网地址使用 HTTP",
-      allowInsecureHttpWarning: "HTTP 不会加密 WebDAV 凭据。仅对你控制的受信任内网地址启用；公网 HTTP 地址会被拒绝。",
       remoteMode: "服务器兼容模式",
       remoteModeHint: "严格模式要求服务器可靠支持条件写入。仅当服务器忽略 If-Match/If-None-Match 时使用兼容模式。",
       remoteModeStrict: "严格 CAS（推荐）",
@@ -959,7 +958,8 @@ sklm: {
       namePlaceholder: "源名称",
       urlHint: "https://…(registry 端点或目录 JSON)",
       officialSource: "官方注册表",
-      sourceUnsafe: "源地址必须是公网 https 地址",
+      sourceUnsafe:
+        "源地址必须是 http/https 地址，且不能指向云元数据之类的地址。要用明文 http 访问自己的本机或局域网服务，请在网络设置里开启“网络宽松模式”。",
       pageInfo: "第 {{page}} / {{pages}} 页 · 共 {{total}} 个",
       pagePrev: "上一页",
       pageNext: "下一页",
@@ -1157,8 +1157,14 @@ sklm: {
     proxyUrlPlaceholder: "socks5://127.0.0.1:1080",
     proxyBypass: "绕过列表",
     proxyBypassDesc: "不走代理的主机。",
-    proxyFakeIp: "允许市场源使用代理 fake-IP",
-    proxyFakeIpDesc: "仅在路由器/TUN 透明代理下开启；其他私网地址仍会被阻止。",
+    networkRelaxedMode: "网络宽松模式",
+    networkRelaxedModeDesc:
+      "你自己填写的地址（本机或局域网里的模型服务、MCP 服务器、市场源、git 远端）都能直连，允许明文 HTTP，也容忍代理的 fake-IP 应答。",
+    networkRelaxedModeStrictDesc:
+      "只允许公网 HTTPS：局域网地址和明文连接都会被拒绝，代理的 fake-IP 应答也会被拒绝。",
+    networkInsecureNoticeTitle: "正在用明文 HTTP 访问你自己的网络",
+    networkInsecureNoticeBody:
+      "你正在通过未加密的 HTTP 访问自己填写的本机/局域网地址。同一网段的人可能读到其中的凭据。到网络设置里改成严格模式即可拒绝这类连接。",
     proxyInvalid: "请输入带主机名的 http、https 或 socks5 URL。",
     proxySaveError: "无法保存代理设置。",
     proxyTest: "测试",

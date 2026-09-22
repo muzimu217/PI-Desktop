@@ -52,11 +52,6 @@ pub(crate) async fn test(state: Arc<Mutex<AppState>>, params: Value) -> Result<V
                     .map(|value| value.directory.as_str())
                     .unwrap_or_default()
             });
-        let allow_insecure = params
-            .get("allowInsecureHttp")
-            .and_then(Value::as_bool)
-            .or_else(|| existing.as_ref().map(|value| value.allow_insecure_http))
-            .unwrap_or(false);
         let remote_mode = params
             .get("remoteMode")
             .and_then(Value::as_str)
@@ -81,7 +76,6 @@ pub(crate) async fn test(state: Arc<Mutex<AppState>>, params: Value) -> Result<V
                 username: username.trim().into(),
                 directory: directory.trim().into(),
                 device_label: "test".into(),
-                allow_insecure_http: allow_insecure,
                 remote_mode,
                 device_id: Uuid::new_v4().to_string(),
                 missing_object_status: None,

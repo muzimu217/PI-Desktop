@@ -610,7 +610,8 @@ sklm: {
       namePlaceholder: "源名稱",
       urlHint: "https://…/catalog.json",
       documentTooLarge: "展開相鄰資源後超過 128 KB 文件上限，無法安裝。",
-      sourceUnsafe: "源位址必須是公網 https 位址",
+      sourceUnsafe:
+        "源位址必須是 http/https 位址，且不能指向雲端中繼資料之類的位址。要用明文 http 存取自己的本機或區域網路服務，請在網路設定中開啟「網路寬鬆模式」。",
       pageInfo: "第 {{page}} / {{pages}} 頁 · 共 {{total}} 個",
       pagePrev: "上一頁",
       pageNext: "下一頁",
@@ -689,8 +690,6 @@ sklm: {
       connectionDescription: "透過加密的 WebDAV 保管庫同步可攜式設定。不會包含對話記錄、原始碼或執行階段狀態。",
       endpoint: "WebDAV 網址",
       endpointPlaceholder: "https://dav.example.com/",
-      allowInsecureHttp: "允許在受信任的內網位址使用 HTTP",
-      allowInsecureHttpWarning: "HTTP 不會加密 WebDAV 憑據。僅對你控制的受信任內網位址啟用；公網 HTTP 位址會被拒絕。",
       remoteMode: "伺服器相容模式",
       remoteModeHint: "嚴格模式要求伺服器可靠支援條件寫入。僅在伺服器忽略 If-Match/If-None-Match 時使用相容模式。",
       remoteModeStrict: "嚴格 CAS（推薦）",
@@ -959,7 +958,8 @@ sklm: {
       namePlaceholder: "源名稱",
       urlHint: "https://…(registry 端點或目錄 JSON)",
       officialSource: "官方註冊表",
-      sourceUnsafe: "源位址必須是公網 https 位址",
+      sourceUnsafe:
+        "源位址必須是 http/https 位址，且不能指向雲端中繼資料之類的位址。要用明文 http 存取自己的本機或區域網路服務，請在網路設定中開啟「網路寬鬆模式」。",
       pageInfo: "第 {{page}} / {{pages}} 頁 · 共 {{total}} 個",
       pagePrev: "上一頁",
       pageNext: "下一頁",
@@ -1157,8 +1157,14 @@ sklm: {
     proxyUrlPlaceholder: "socks5://127.0.0.1:1080",
     proxyBypass: "繞過列表",
     proxyBypassDesc: "不走代理的主機。",
-    proxyFakeIp: "允許市場來源使用代理 fake-IP",
-    proxyFakeIpDesc: "僅在路由器/TUN 透明代理下開啟；其他私有位址仍會被阻止。",
+    networkRelaxedMode: "網路寬鬆模式",
+    networkRelaxedModeDesc:
+      "你自己填寫的位址（本機或區域網路裡的模型服務、MCP 伺服器、市場來源、git 遠端）都能直連，允許明文 HTTP，也容忍代理的 fake-IP 回應。",
+    networkRelaxedModeStrictDesc:
+      "只允許公網 HTTPS：區域網路位址和明文連線都會被拒絕，代理的 fake-IP 回應也會被拒絕。",
+    networkInsecureNoticeTitle: "正在用明文 HTTP 存取你自己的網路",
+    networkInsecureNoticeBody:
+      "你正在透過未加密的 HTTP 存取自己填寫的本機／區域網路位址。同一網段的人可能讀到其中的憑證。到網路設定裡改成嚴格模式即可拒絕這類連線。",
     proxyInvalid: "請輸入帶主機名的 http、https 或 socks5 URL。",
     proxySaveError: "無法儲存代理設定。",
     proxyTest: "測試",

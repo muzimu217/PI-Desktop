@@ -576,6 +576,27 @@ export function useAppShellRuntime() {
     const offPlansChanged = api.onPlansChanged(handlePlansChanged);
     // Host-pushed toasts (plugin runtime etc.) are informational.
     const offToast = api.onToast((message) => showToast(message));
+    // The first plaintext hop to an endpoint the user typed. The shell owns the
+    // wording, and recording `insecureNoticeAcknowledged` keeps it to once; a
+    // failed write only means the notice shows again.
+    const offInsecureEndpoint = api.onInsecureEndpointNotice(() => {
+      showToast(
+        `${t("settings.networkInsecureNoticeTitle")} — ${t("settings.networkInsecureNoticeBody")}`,
+        { variant: "warning", duration: 12_000 },
+      );
+      const current = useAppStore.getState().settings;
+      if (!current) return;
+      void api
+        .setSettings({
+          ...current,
+          networkPolicy: {
+            ...(current.networkPolicy ?? {}),
+            mode: current.networkPolicy?.mode ?? "relaxed",
+            insecureNoticeAcknowledged: true,
+          },
+        })
+        .catch(() => undefined);
+    });
     // Agent-driven HTML preview: surface the browser tab when the agent
     // opens a workspace file in the embedded browser (BrowserPreview tool).
     const offBrowserPreview = api.onBrowserPreview((event) => {
@@ -770,6 +791,7 @@ export function useAppShellRuntime() {
       offQueueChanged();
       offPlansChanged();
       offToast();
+      offInsecureEndpoint();
       offBrowserPreview();
       offHostStatus();
       offNotificationChanged();

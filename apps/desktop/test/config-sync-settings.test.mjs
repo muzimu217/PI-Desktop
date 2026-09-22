@@ -33,8 +33,9 @@ test("cloud sync is a searchable settings destination", () => {
 test("cloud sync keeps credentials and vault operations on the host boundary", () => {
   assert.match(syncPage, /api\.configSyncConfigure\(/);
   assert.match(syncPage, /setState\(await api\.configSyncSyncNow\(\)\)/);
-  assert.match(syncPage, /allowInsecureHttp/);
-  assert.match(syncPage, /settings\.configSync\.allowInsecureHttpWarning/);
+  // The plaintext opt-in is the network mode now, not a WebDAV switch: the page
+  // carries no per-endpoint HTTP acknowledgement of its own.
+  assert.doesNotMatch(syncPage, /allowInsecureHttp/);
   assert.match(syncPage, /settings\.configSync\.remoteMode/);
   assert.match(syncPage, /settings\.configSync\.appendOnlyWarning/);
   assert.match(syncPage, /settings\.configSync\.appendOnlyConfirm/);

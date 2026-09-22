@@ -355,6 +355,13 @@ export const IPC = {
     agentQueueChanged: "pi-desktop/agent/event/queueChanged",
     hostStatus: "pi-desktop/app/event/hostStatus",
     toast: "pi-desktop/app/event/toast",
+    /**
+     * The first plaintext hop to an endpoint the user typed, sent once and only
+     * until the shell records `networkPolicy.insecureNoticeAcknowledged`. The
+     * shell owns the wording, because the address is not a secret and the copy
+     * is localized.
+     */
+    insecureEndpointNotice: "pi-desktop/network/event/insecureEndpointNotice",
     browserState: "pi-desktop/browser/event/state",
     browserPreview: "pi-desktop/browser/event/preview",
     windowMaximized: "pi-desktop/window/event/maximized",

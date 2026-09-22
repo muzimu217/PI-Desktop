@@ -8,6 +8,16 @@
 
 ## 1. Goals
 
+### E2E-IMAGES-provider-save-feedback
+
+- **Preconditions:** Image configuration UI fixture; English and Chinese.
+- **Steps:** Mark image models and save the provider; choose a different image
+  default from its summary; then unmark the sole image model and save.
+- **Expected:** Provider edits confirm the provider update, including after
+  clearing the image selection. Explicit default selection keeps its specific
+  image-selection confirmation. Persisted bindings retain their existing behavior.
+- **Specs:** 03-runtime/21-image-generation. **Acceptance:** B.
+- **Milestone:** Maintenance. **Status:** Automated by
 ### E2E-IMAGES-remove-configured-model
 
 - **Preconditions:** API-boundary fixture with an image-marked model and another
@@ -61,6 +71,12 @@
   requests, GPT Image parameter omission, bounded responses, and rejection of
   more than four references before I/O. These are protocol tests, not official
   provider account/live compatibility certification.
+- **Proxy fake-IP:** With the explicit Settings → General → Network proxy
+  fake-IP option enabled, a URL response resolved to Clash's benchmark range
+  is downloaded through the proxy-aware transport; without the option it stays
+  `IMAGE_UNSAFE_URL`, and real private addresses remain blocked in both cases.
+  Covered by `packages/agent-runtime/src/image-generation/download.test.ts`,
+  not by the driver below.
 - **Status:** Automated in `node scripts/e2e-image-chat.mjs`; optional screenshots
   use `PI_IMAGE_CHAT_EVIDENCE_DIR`. The images are deterministic raster fixtures,
   not evidence of real-model quality or provider compatibility.
@@ -13356,12 +13372,12 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   `git-clone.test.mjs`, `sidebar-preferences.test.mjs`); full UI scenario Draft
   (run only in a capable environment when this surface changes)
 
-#### E2E-CLONE-public-hostname-rejects-private
+#### E2E-CLONE-accepts-a-lan-remote-and-rejects-metadata
 
 - **Preconditions**: The home project switcher Clone git project action is available.
-- **Steps**: 1) Enter `https://127.0.0.1/org/repo.git`, `http://localhost/org/repo.git`, `https://10.0.0.5/org/repo.git`, and `git@127.0.0.1:org/repo.git`. 2) Enter `https://github.com/org/repo.git` and `git@github.com:org/repo.git`.
-- **Expected**: Private, loopback, and link-local remotes are rejected before `git clone` runs. Public GitHub HTTPS and SSH remotes still parse to a folder name. `file:` and password-bearing URLs remain rejected.
-- **Specs linked**: `04-ux/01-ui-ia.md`, ADR 0247, D416
+- **Steps**: 1) Enter `https://192.168.1.5/org/repo.git`, `http://10.0.0.7/org/repo.git`, and `git@192.168.1.5:org/repo.git`. 2) Enter `https://169.254.169.254/org/repo.git` and `https://metadata.google.internal/org/repo.git`. 3) Enter `https://github.com/org/repo.git` and `git@github.com:org/repo.git`.
+- **Expected**: A LAN or loopback remote the user typed is accepted and parses to a folder name, because the remote is the user's own address. Cloud metadata hosts stay rejected, as do `file:` and password-bearing URLs, before `git clone` runs. Public GitHub HTTPS and SSH remotes still parse.
+- **Specs linked**: `04-ux/01-ui-ia.md`, ADR 0247, ADR 0304, D416
 - **Acceptance**: Security, D (workspace)
 - **Milestone**: M5
 - **Status**: Unit-covered (`apps/desktop/test/git-clone.test.mjs`)
@@ -13804,27 +13820,33 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 
 | ID | Scenario | Verification |
 |---|---|---|
-| E2E-MCP-MARKET-NET-BOUNDARY | URL guard rejects credentials, loopback, private, special-use IPv4, v4-mapped, ULA, site-local and link-local bypass forms (trailing dot included); direct/unknown routes pin the checked public address by default, while a fully proxied route uses the session transport and an explicit `allowFakeIp` opt-in can cover transparent-router fake-IP sources without allowing real private answers | deterministic guard assertions; source-contract coverage for DNS pin, proxy route selection, explicit fake-IP scope and bounded responses |
+| E2E-MCP-MARKET-NET-BOUNDARY | The URL guard rejects credentials, cloud metadata, unspecified, multicast and reserved forms (trailing dot included) even when the user typed them, and rejects loopback, private, special-use IPv4, v4-mapped, ULA, site-local and link-local forms for *third-party* hops — a redirect target or a catalog body; the same forms typed by the user into a source field are accepted, with plain `http` behind `networkPolicy.allowInsecureUserEndpoints`; direct/unknown routes pin the checked address by default, while a fully proxied route uses the session transport and an explicit `allowFakeIp` opt-in can cover transparent-router fake-IP sources without allowing real private answers | deterministic guard assertions; source-contract coverage for DNS pin, proxy route selection, explicit fake-IP scope and bounded responses |
 | E2E-MCP-MARKET-SEMANTICS | Registry records map to install templates preserving package versions, named/positional runtime/package arguments and required/optional env variables; a remote header variable is recognized in both the registry's `{name}` and the catalog's `${NAME}` spelling, prompts for declared editable values, preserves unbound brace literals, and resolves header-local defaults, fixed values, and optional flags without merging same-named inputs across headers (ADR registry-header-variable-spelling) | deterministic mapping assertions |
 | E2E-MCP-MARKET-INSTALL | Builtin catalog entry resolves through `resolveCatalogEntry` and installs via the host `mcp.upsert` RPC; record lands in `~/.agents/servers/` | real host binary, isolated temp HOME |
 | E2E-MCP-MARKET-HEADER-SCOPE | Registry header-local `{token}` resolves only in its header; same-named URL path/query tokens remain literal through mapping, resolution, host upsert/list and persistence. URL templates retain only legacy `${NAME}` substitution. When `headerBindings` exists (even empty or partial), unbound tokens in every header stay literal and never consume another header's input or default | shared regressions plus real host binary with isolated temporary storage; remote entry disabled, no network call |
 | E2E-MCP-MARKET-partial-header-bindings-stay-literal | Resolve a catalog with only Authorization bound and another header using the same `{token}` / `${token}`; an undeclared `${UNBOUND}` in a third header also remains literal through host upsert/list and disk persistence | real host binary, disabled remote entry, synthetic input and isolated temporary storage; no network call |
 
 
-#### E2E-SKILL-MARKET-NET-BOUNDARY: Public-HTTPS skill sources reject private and loopback URLs
+#### E2E-SKILL-MARKET-NET-BOUNDARY: A user-supplied source reaches the LAN, third-party content does not
 
 - **Preconditions**: Shared public-network helpers and the main-process
   public-HTTPS client with injectable fetch/DNS/route.
 - **Steps**: 1) Classify trailing-dot localhost, IPv4 loopback, IPv4-mapped
-  IPv6, ULA, link-local, RFC1918, and `http://` URLs. 2) Resolve a public
-  hostname to a private A record. 3) Follow a 302 whose Location is
-  `https://127.0.0.1/`. 4) Report a proxied route and a TUN fake-IP answer
+  IPv6, ULA, link-local, RFC1918, and `http://` URLs twice: once as a source URL
+  the user typed, once as a document URL that arrived inside a catalog. 2)
+  Resolve a public hostname to a private A record. 3) Follow a 302 whose Location
+  is `https://127.0.0.1/`. 4) Report a proxied route and a TUN fake-IP answer
   (`198.18.0.1`), the same answer on a `DIRECT` route, on an unreadable route,
   and on a route list that offers `DIRECT`. 5) Let a first hop be proxied and
   its redirect target direct.
-- **Expected**: Every bypass form is rejected. A public CDN URL is accepted.
-  DNS that yields a private address and a redirect onto loopback both throw a
-  policy error without fetching the private target. A judged refusal is not
+- **Expected**: A source URL the user typed may be a loopback or LAN catalog —
+  `https` always, `http` only under
+  `networkPolicy.allowInsecureUserEndpoints` — while the same address as a
+  *document* URL inside a catalog, or as a redirect target, is rejected; cloud
+  metadata, `unspecified`, multicast and reserved addresses are rejected on every
+  input. A public CDN URL is accepted. A source that resolves to a private
+  address is fetched rather than refused, and a third-party hop that resolves to
+  one throws a policy error without fetching the private target.
   retried; a local resolver that answered nothing is, and is reported as
   `NETWORK_RESOLVE_FAILED` (`kind` `unresolved`) rather than as an address-check
   refusal — the guard reached no verdict, so nothing may claim it did. An address

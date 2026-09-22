@@ -76,7 +76,9 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.proxyDirect",
       "settings.proxyCustom",
       "settings.proxyUrl",
-      "settings.proxyFakeIp",
+      "settings.networkRelaxedMode",
+      "settings.networkRelaxedModeDesc",
+      "settings.networkRelaxedModeStrictDesc",
     ],
   },
   {

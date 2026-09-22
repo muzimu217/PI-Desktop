@@ -4,6 +4,11 @@ The desktop exposes `AppSettings.imageGeneration` as the current default image-g
 
 ## Configuration
 
+Saving a provider confirms the provider was saved or updated, including when
+image capabilities were marked or unmarked. It must not claim that an image
+model was selected after deselection. Choosing an image default from the
+summary menu retains the image-selection confirmation.
+
 Model Advanced exposes **Set as image model** alongside the image and document attachment capabilities in the model capability group, not as a separate control row. The checkbox is multi-select: saving a provider persists every checked model in `imageGenerationModels`; Cancel leaves settings unchanged. Saving candidates does not replace the default conversation model. Unchecking the current image model and saving removes its default binding: the default becomes null, even when another runnable candidate remains. The unmarked model is available for chat again after saving and reopening settings. Saving another provider preserves a still-runnable image default. Below the default model row in the same defaults panel, **Image generation model** shows the current default and offers a menu to choose one from all marked candidates. When no candidate is configured, the summary row is hidden. An existing candidate that is missing, disabled, credential-less or removed displays only **Currently unavailable**. OAuth accounts are not eligible; there is no fallback.
 All marked provider/model pairs are excluded from the default conversation picker, provider quick-default action, and Composer model menu. Other providers with the same model ID remain independent. Existing conversation bindings and history are preserved; a conversation still pinned to any image candidate must select a chat model before sending. Runtime launch rejects every marked image model before inference.
 
@@ -63,7 +68,10 @@ upstream provider stopped processing or billing. Completed output files survive.
 Responses accept exactly one Base64 image or HTTPS image URL per request. JSON and
 download bodies are bounded; image files are capped at 16 MiB and restricted to
 PNG, JPEG and WebP signatures. Downloads use checked, pinned public DNS addresses,
-reject redirects and private destinations, and never receive provider headers.
+reject redirects and private destinations, and never receive provider headers. When
+Settings > General > Network explicitly enables proxy fake-IP support, a
+benchmark-range fake-IP answer uses the app's proxy-aware transport; real private,
+loopback, link-local and metadata addresses remain blocked.
 Input edits accept the session project, that session's scratch directory and the
 attachment store after realpath containment. Each edit input set is capped at
 32 MiB, with a 64 MiB input cache budget for the batch. Credentials remain outside the renderer and tool results.

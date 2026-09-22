@@ -1173,6 +1173,7 @@ D193 和 D194。
 | D188 | 将聊天配置文件替换为 Plan 状态 | *（被 D189 取代）* **PI-Desktop 有 1 个 pi Agent 和 1 个产品选择器：`Agent | 计划`. Plan is that Agent after entering planning state, never a second Agent, planner model, planner service, or permission mode. Agent remains the default. Persisted sessions, app defaults, and scheduled values stored as `聊天` migrate to `计划`; the internal `页面 = “聊天”` route may remain as a conversation-surface detail. Plan exposes `读取`, `Glob`, `Grep`, `浏览器预览`, `Bash`, `CompactCon text`, and `ExitPlanMode`; it denies `Write`, `编辑`, plugin tools, and unknown tools. Plan retains permission-mode selection: Bash prompts under `ask` and `accept-edits`, and runs without confirmation under `auto`,因此 Plan 是计划意图而不是严格的只读安全配置文件。** | 历史预检查点Plan合约；保留解释取代链 |
 | D189 | Plan 检查点工件、批准和执行纪元 | **相同的 pi Agent 使用 `Agent | Plan`, with Agent default. Plan calls `SubmitPlan(标题, markdown, 问题)` as the only tool in its assistant batch. Rust host-core writes the submitted Markdown bytes unchanged to a new immutable unique file under `<workspaceRoot>/.pi/plan/*.md`; it stores the relative artifact path, SHA-256, and byte size together with structured title/question fields in the existing `plan_approvals` row. No title/question wrapper is added and no prior artifact is replaced. The approval surface displays title, question, an artifact opener, absolute expiry, and status, and offers only Approve or Reject. Approve requires an explicit `ask`, `accept-edits`, or `auto` permission mode, with Ask selected by default; Reject carries no mode. The approval expires at one absolute 30-minute deadline and uses `PLAN_APPROVAL_TIMEOUT`. The same `plan_approvals` row carries `execution_id` and `execution_state` through `queued → 运行 → 已完成 | 中断了`. A startup transaction marks prior pending approvals and queued/running execution states interrupted before serving RPC; no work is replayed. Pending interruption/rejection/expiry leaves the session Plan; an already-approved queued/running interruption leaves the session Agent. One active turn, idle-only configuration, and one pending approval/queued-or-running execution per session are enforced. Scheduled Plan is rejected before provider, artifact, or queue work with `PLAN_REQUIRES_INTERACTIVE_SESSION`。协议 v9 和存储模式 v10 携带的合约没有序列化的 process-epoch 字段。** | 不可变的主机工件保留提交的检查点，同时一个 approval/execution 行和启动进程栅栏可防止重新启动重播，而不会丢失已批准的 Agent 状态 |
 | D190 | 可选择的命令 shell 目录和执行标识 | **主机核心公开稳定的平台感知目录 ID：`windows-powershell`、`cmd`、`git-bash` 和 `bash`；平台目录仅包含该平台支持的 ID。 `defaultCommandShell` 保留在主机设置中，并且设置写入拒绝不可用或错误的平台 ID。如果持久选择稍后变得不可用，则有效 shell 会有意回退到第一个可用的平台 shell。 `Bash` 工具和 `tools.execute` 协议名称保持不变；每个回合都会固定有效的 shell ID 和方言，并且主机在使用 `COMMAND_SHELL_CHANGED` 生成之前拒绝过时的 ID/dialect。 Shell 标识是目录选择，而不是可执行路径哈希。 Bash 分别流式传输 stdout 和 stderr，使用强制的 60 秒默认超时和 1-300 秒覆盖，并且 cancellation/timeout 关闭完整的进程树。** | 用户可以选择命令语言，而无需增加协议工具，而平台验证、显式回退和转固定目录身份可保持执行的可预测性 |
+| D604 | 信任用户自己填写的网络端点 | **对用户填写的 URL 修订 ADR 0243 / 0245 / 0247；沿用 ADR 0142 / 0257 / 0300。用户自己在设置里填写的 URL——市场源、git 远端、MCP OAuth 端点、生成图片 URL——改按"用户端点"策略判定：回环、RFC1918、CGNAT、link-local、ULA、site-local 与 `.local` 都可达，明文 `http` 也可用。这一切由**一个**开关决定：`networkPolicy.mode`（`relaxed` / `strict`），**默认 `relaxed`**，并取代此前按界面分散的确认（明文开关、WebDAV 的 `allowInsecureHttp`、`networkProxy.allowFakeIp`），旧的 `allowInsecureUserEndpoints: false` 迁移为 `strict`；首次明文访问会弹一次告知（`insecureNoticeAcknowledged`）。第三方内容在任何模式下仍只允许公网并把校验过的地址固定到连接：registry 记录、目录正文、目录内部的文档 URL、以及每一次重定向目标。云元数据、`unspecified`、multicast、reserved、documentation 在任何输入上一律拒绝。默认代理绕过列表增加 `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16`。不改主机协议、不改存储 schema：`networkPolicy` 只是既有 app settings 里的一个字段，写入时校验。** | 拒绝用户自己填写的局域网地址并没有消除那次请求——它只是把同样的工作搬到应用旁边的 shell 或浏览器里，因此这条边界牺牲了功能，却没有阻止用户已经做出的决定。SSRF 风险在第三方内容那一侧，所以边界的那一半保持不变。见 ADR 0304。 |
 
 ## 2026-08-05 — 仅代理模式
 
@@ -3546,6 +3547,28 @@ D193 和 D194。
   仍走应用内下载并在退出时安装。数据仍在现有应用数据目录。便携版请求
   user 执行级别。
 - 参见 ADR 0197 与 E2E-211。
+
+## 2026-09-22 —— 信任用户自己填写的网络端点（D604）
+
+- 用户自己填写的端点——模型 base URL、MCP 服务器、市场源、git 远端、
+  生成图片 URL——可以解析到回环、RFC1918、CGNAT、link-local、ULA、
+  site-local 或 `.local`，也可以使用明文 `http`。这一切由**一个**主机侧
+  开关决定：`settings.networkPolicy.mode`（`relaxed` | `strict`），**默认
+  `relaxed`**；它取代了此前的三个确认开关（`networkProxy.allowFakeIp`、
+  `configSync.allowInsecureHttp`、自填明文开关），旧的
+  `allowInsecureUserEndpoints: false` 迁移为 `strict`。首次明文访问会弹一次
+  告知。`https` 访问局域网主机不需要开关。
+- 第三方内容不变。registry 记录、市场目录正文、目录内部的文档 URL、
+  以及每一次 HTTP 重定向目标，仍然只允许公网，并把校验过的地址固定到
+  连接上。共享客户端按每一跳的来源判定，只有用户发起请求的首跳可以是
+  `user`。
+- 云元数据（`169.254.169.254`、`100.100.100.200`、`fd00:ec2::254`、
+  `metadata.google.internal`、`metadata`、`instance-data`）、`unspecified`、
+  multicast、reserved、documentation 地址在任何输入上一律拒绝，包括用户
+  自己填写的字段。
+- 默认代理绕过列表增加私网段，配置了代理之后不再吞掉本机模型服务、NAS
+  或 MCP 端点。见 `05-security/01-security.md` §4.1/§4.2、
+  `04-ux/06-settings-ia.md` 与 ADR 0304。
 
 ## 2026-09-22 —— Windows 便携交付改为普通 ZIP（D603）
 

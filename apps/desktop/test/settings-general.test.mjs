@@ -173,13 +173,14 @@ test("language persists as part of shared app settings", () => {
   assert.match(sharedTypesSource, /networkProxy\?: NetworkProxySettings/);
 });
 
-test("General Network card persists a custom HTTP or SOCKS5 proxy and fake-IP opt-in", () => {
+test("General Network card persists a custom HTTP or SOCKS5 proxy and the relaxed network mode", () => {
   assert.match(settingsPageSource, /<NetworkProxySection /);
-  assert.match(networkProxySource, /settings\.proxyFakeIp/);
-  assert.match(networkProxySource, /allowFakeIp/);
+  assert.match(networkProxySource, /settings\.networkRelaxedMode/);
+  // Fake-IP tolerance belongs to the network mode now, not to the proxy payload.
+  assert.doesNotMatch(networkProxySource, /allowFakeIp/);
   assert.match(settingsSearchSource, /settings\.proxy/);
   assert.match(settingsSearchSource, /settings\.proxyCustom/);
-  assert.match(settingsSearchSource, /settings\.proxyFakeIp/);
+  assert.match(settingsSearchSource, /settings\.networkRelaxedMode/);
   assert.match(electronMainSource, /applyNetworkProxyFromAppSettings/);
   assert.match(electronMainSource, /IPC\.invoke\.networkProxyTest/);
   assert.match(protocolSource, /networkProxyTest: "pi-desktop\/network\/testProxy"/);
@@ -192,8 +193,8 @@ test("General Network card persists a custom HTTP or SOCKS5 proxy and fake-IP op
   ]) {
     assert.match(source, /proxyCustom:/);
     assert.match(source, /proxyUrlPlaceholder:/);
-    assert.match(source, /proxyFakeIp:/);
-    assert.match(source, /proxyFakeIpDesc:/);
+    assert.match(source, /networkRelaxedMode:/);
+    assert.match(source, /networkRelaxedModeDesc:/);
   }
 });
 

@@ -740,6 +740,27 @@ criterion-by-criterion report of what was met and the evidence observed.
   (D608). Anthropic-family endpoints, including DeepSeek's, reject the whole
   turn with `tool_use ids must be unique` (issue #718), which leaves the session
   unable to continue.
+- The guard compares the wire-visible call id — the part before the `|` that
+  separates the Responses item id — and drops an assistant message whole once
+  every tool call in it was already claimed, because keeping its residual text
+  would leave a message sitting between a call and the result answering it. A
+  message that replays a claimed call while carrying a new one keeps its new
+  call in place; no writer produces that partial replay, and the guard does not
+  reorder messages to close the gap it leaves (D620).
+- The agent loop owns its context array. `prepareNextTurn` hands pi a copy of
+  the live state — for a delegate turn boundary too — exactly as pi's own
+  `createContextSnapshot()` does for `prompt()` and `continue()`: pi's loop
+  appends each streamed assistant message and each tool result to the array it
+  was given, while its `message_end` listener appends the same message to
+  `state.messages`, so handing over the live array stored every message of a
+  run's later iterations twice. The next turn's first request was built from
+  that array, and the duplicate of an assistant message carrying text plus a
+  tool call survived as a text-only clone between the call and its result —
+  pi-ai then closed the still-pending call with a synthesized output next to the
+  real one, and the endpoint rejected the turn with
+  `Duplicate tool output for call_id`. In a delegate the same doubling doubled
+  the estimate at the following boundary and left the trailing row a fallback
+  carries onto a model it cannot resume from (D620).
 - Restored checkpoints clear provider usage from retained assistant messages
   for budgeting. That usage measured the pre-compacted request and must not
   make the summary + tail appear as large as the discarded context.

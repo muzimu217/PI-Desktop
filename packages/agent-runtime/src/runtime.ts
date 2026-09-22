@@ -6022,7 +6022,19 @@ Delegation rules:
     this.setAgentMessages(messages);
     this.setAgentTools(tools);
     return {
-      messages: this.agent.state.messages,
+      // The loop owns its context array. pi appends every streamed assistant
+      // message and every tool result to the context it was handed, and its own
+      // `message_end` listener appends the same message object to
+      // `state.messages`; handing over the live array makes both land in one
+      // array, so every message of a run's later iterations is stored twice.
+      // The next turn is then built from that array, and the duplicate of an
+      // assistant message that carries text plus a tool call survives the
+      // request guard as a text-only clone sitting between the call and the
+      // result answering it. pi-ai then closes the still-pending call with a
+      // synthesized "No result provided" output next to the real one — two
+      // outputs for one call id, which the provider rejects (D620).
+      // `createContextSnapshot()` copies for the same reason.
+      messages: [...this.agent.state.messages],
       tools,
       systemPrompt: this.agent.state.systemPrompt,
     } as AgentContext;

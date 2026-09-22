@@ -15,7 +15,13 @@ const destinations = ["A", "B"].map((id) => ({
     previewUrl: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E", blur: 6,
   })),
 }));
-let settings = { defaultMode: "agent", theme: "light", language: "en", enterToSend: true };
+let settings = {
+  defaultMode: "agent",
+  theme: "light",
+  language: "en",
+  enterToSend: true,
+  developerMode: false,
+};
 window.piDesktop = {
   platform: "darwin", on: () => () => {},
   async invoke(channel, input) {
@@ -24,6 +30,22 @@ window.piDesktop = {
       case IPC.invoke.pluginScenicThemesDestinations: data = destinations; break;
       case IPC.invoke.settingsGet: data = settings; break;
       case IPC.invoke.settingsSet: settings = input; data = settings; break;
+      case IPC.invoke.configSyncGetState:
+        data = {
+          configured: false,
+          enabled: false,
+          paused: false,
+          locked: false,
+          status: "notConfigured",
+          remoteMode: "strict",
+          categories: {},
+          includeSecrets: false,
+          includeMemory: false,
+          automaticSync: false,
+          pendingApprovals: [],
+          mappings: [],
+        };
+        break;
       case IPC.invoke.commandShellList: data = { choices: [], effective: null }; break;
       default: throw new Error(`Unexpected fixture IPC: ${channel}`);
     }
@@ -39,12 +61,55 @@ const frame = () => new Promise(requestAnimationFrame);
 async function settle() { await frame(); await frame(); }
 function assert(value, message) { if (!value) throw new Error(message); }
 const pane = () => document.querySelector(".settings-content");
+const navButton = (label) => [...document.querySelectorAll(".settings-nav-item")]
+  .find((node) => node.querySelector(".settings-nav-label")?.textContent?.trim() === label);
 async function select(label) {
-  const button = [...document.querySelectorAll(".settings-nav-item")]
-    .find((node) => node.textContent.trim() === label);
+  const button = navButton(label);
   assert(button, `Missing destination: ${label}`);
   flushSync(() => button.click());
   await settle();
+}
+async function setSettingsSearch(value) {
+  const input = document.querySelector(".settings-search");
+  assert(input instanceof HTMLInputElement, "Settings search input must be rendered");
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  assert(setter, "Settings search input must expose its value setter");
+  setter.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  await settle();
+}
+async function checkCloudSyncVisibility() {
+  await setSettingsSearch("Cloud sync");
+  assert(!navButton("Cloud sync"), "Cloud sync must be absent from search without developer mode");
+  await setSettingsSearch("");
+
+  settings = { ...settings, developerMode: true };
+  flushSync(() => useAppStore.setState({ settings }));
+  await settle();
+  await setSettingsSearch("Cloud sync");
+  const syncButton = navButton("Cloud sync");
+  assert(syncButton, "Cloud sync must appear in settings search with developer mode");
+  assert(
+    syncButton.querySelector(".settings-nav-experimental")?.textContent?.trim() === "Experimental",
+    "Cloud sync's rail entry must be marked Experimental",
+  );
+
+  flushSync(() => syncButton.click());
+  await settle();
+  assert(
+    document.querySelector(".settings-section-title")?.textContent?.includes("Experimental"),
+    "Cloud sync's page title must be marked Experimental",
+  );
+
+  settings = { ...settings, developerMode: false };
+  flushSync(() => useAppStore.setState({ settings }));
+  await settle();
+  assert(
+    useAppStore.getState().settingsTab === "general",
+    "A Cloud sync page hidden by developer mode must return to General",
+  );
+  assert(!navButton("Cloud sync"), "Cloud sync must leave the rail when developer mode is off");
+  await setSettingsSearch("");
 }
 async function scroll() {
   pane().scrollTop = 220;
@@ -55,6 +120,7 @@ async function scroll() {
 window.settingsScrollProbe = async () => {
   await settle();
   const checks = [];
+  await checkCloudSyncVisibility();
   for (const theme of ["light", "dark"]) {
     document.documentElement.dataset.theme = theme;
     await select("AI");

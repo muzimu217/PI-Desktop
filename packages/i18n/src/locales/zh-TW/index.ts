@@ -686,6 +686,7 @@ sklm: {
     },
     configSync: {
       title: "雲端同步",
+      experimental: "實驗性",
       connectionTitle: "WebDAV 雲端同步",
       connectionDescription: "透過加密的 WebDAV 保管庫同步可攜式設定。不會包含對話記錄、原始碼或執行階段狀態。",
       errorTitle: "同步需要處理",

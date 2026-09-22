@@ -696,6 +696,7 @@ sklm: {
     },
     configSync: {
       title: "Bulut senkronizasyonu",
+      experimental: "Deneysel",
       connectionTitle: "WebDAV bulut senkronizasyonu",
       connectionDescription: "Şifreli bir WebDAV kasası üzerinden taşınabilir yapılandırmayı senkronize edin.",
       errorTitle: "Sync needs attention",

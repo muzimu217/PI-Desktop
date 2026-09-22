@@ -52,6 +52,8 @@ export type SettingsNavEntry = {
    * rail, the page, and settings search drop it together.
    */
   developerOnly?: true;
+  /** Localized Experimental badge shown beside the rail row and page title. */
+  experimentalBadgeKey?: string;
 };
 
 export const SETTINGS_NAV: SettingsNavEntry[] = [
@@ -264,6 +266,8 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     labelKey: "settings.nav.sync",
     titleKey: "settings.configSync.title",
     group: "system",
+    developerOnly: true,
+    experimentalBadgeKey: "settings.configSync.experimental",
     keywordKeys: [
       "settings.configSync.connectionTitle",
       "settings.configSync.endpoint",
@@ -279,6 +283,7 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     titleKey: "settings.remoteHosts.title",
     group: "system",
     developerOnly: true,
+    experimentalBadgeKey: "settings.remoteHosts.experimental",
     keywordKeys: [
       "settings.remoteHosts.title",
       "settings.remoteHosts.addTitle",

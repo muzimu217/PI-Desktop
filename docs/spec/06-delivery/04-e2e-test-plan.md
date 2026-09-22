@@ -8222,30 +8222,38 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 
 ### E2E-CONFIG-SYNC-webdav-portable-configuration
 
-- **Preconditions:** A built task candidate, isolated host profile, and a local
+- **Preconditions:** A built task candidate, isolated host profile with
+  developer mode initially off, and a local
   WebDAV fixture that supports strong ETags and conditional PUT, plus a fixture
   variant that ignores conditional headers but supports `PROPFIND` directory
   listing. No real WebDAV account, provider, or production desktop.
-- **Steps:** 1) Open Settings → Cloud sync and enter the fixture URL, device
-  label, directory, and backup password. 2) Run the capability test and
-  confirm it uses temporary objects. 3) Select provider/MCP/skill categories
+- **Steps:** 1) Open Settings with developer mode off; confirm Cloud sync is
+  absent from the rail and settings search returns no Cloud sync result. 2) Open
+  Settings → Info → Developer, enable developer mode, and confirm Cloud sync
+  appears in the rail and settings search. Open it and confirm the Experimental
+  badge appears beside the rail row and page title. 3) Enter the fixture URL,
+  device label, directory, and backup password. 4) Run the capability test and
+  confirm it uses temporary objects. 5) Select provider/MCP/skill categories
   while leaving credentials and memory off; enable credentials in a second
-  preview and verify only redacted counts are shown. 4) Configure device A,
-  create a user provider and MCP definition, and sync. 5) Configure device B
+  preview and verify only redacted counts are shown. 6) Configure device A,
+  create a user provider and MCP definition, and sync. 7) Configure device B
   against the same vault, sync, inspect pending activation/mapping, and verify
-  no command or task runs before approval. 6) Approve a changed safe entity,
+  no command or task runs before approval. 8) Approve a changed safe entity,
   reject one staged entity, edit disjoint settings on both devices, and sync
-  again. 7) Exercise a concurrent head writer, wrong password, weak ETag,
+  again. 9) Exercise a concurrent head writer, wrong password, weak ETag,
   ciphertext corruption, redirect, archive traversal, and network interruption.
-  8) On the ignored-precondition fixture, select explicit compatibility mode,
+  10) On the ignored-precondition fixture, select explicit compatibility mode,
   confirm the warning, and configure two devices. Verify each device publishes
   its own encrypted head under the heads collection, a concurrent update is
   merged from both tips, and compatibility mode does not delete immutable
   history. Cancel the confirmation once and verify configuration is not saved.
-  9) Use the explicit LAN HTTP acknowledgement with a loopback/private fixture,
+  11) Use the explicit LAN HTTP acknowledgement with a loopback/private fixture,
   verify the setting survives a state refresh, and confirm a public HTTP
   endpoint is rejected even when the checkbox is selected.
-- **Expected:** Strict mode refuses unreliable conditional writes. The explicit
+- **Expected:** With developer mode off, Cloud sync is absent from the rail and
+  settings search; enabling developer mode reveals the destination and its
+  Experimental badges without changing sync behavior. Strict mode refuses
+  unreliable conditional writes. The explicit
   compatibility mode accepts only a server that proves bounded directory
   listing, explains that it is not atomic CAS, and retains per-device tips for
   merge/recovery. A server that ignores conditional headers is never accepted
@@ -8259,13 +8267,15 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   conflicts remain reviewable, explicit deletions use tombstones, category
   opt-out is not deletion, and executable imports remain inactive until local
   approval and mapping. Recovery never exposes a partial local apply.
-- **Specs:** `03-runtime/22-config-sync.md`, `03-runtime/14-secrets-storage.md`,
-  `05-security/01-security.md`, ADR 0300, ADR 0301.
+- **Specs:** `04-ux/06-settings-ia.md`, `03-runtime/22-config-sync.md`,
+  `03-runtime/14-secrets-storage.md`, `05-security/01-security.md`, ADR 0300,
+  ADR 0301.
 - **Acceptance:** F (persistence), Security, Quality.
 - **Milestone:** M6+.
 - **Status:** Draft; merge/crypto and in-process WebDAV conditional-write
-  coverage exists. The remaining automation is the full two-device process
-  path and checkpoint-level local recovery fault injection.
+  coverage exists. The Settings visibility gate is automated by
+  `pnpm test:e2e:settings-scroll`; the remaining automation is the full
+  two-device process path and checkpoint-level local recovery fault injection.
 
 ## 8. Traceability Matrix
 
@@ -14795,8 +14805,9 @@ the latest destination. These assertions measure work counts, not device FPS.
 - Automated coverage: `pnpm test:e2e:settings-scroll` mounts the production
   SettingsPage, store, translations, and built CSS in isolated Electron. Only
   preload data is stubbed; search navigation uses SearchDialog's public store
-  entry points. This covers renderer interaction, not host persistence or the
-  full global-search dialog.
+  entry points. It also checks the Cloud sync developer-mode gate, Experimental
+  badges, and fallback to General. This covers renderer interaction, not host
+  persistence or the full global-search dialog.
 
 ### E2E-SCHEDULED-dispatch
 

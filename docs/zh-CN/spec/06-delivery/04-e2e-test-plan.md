@@ -8489,13 +8489,13 @@ the latest destination. These assertions measure work counts, not device FPS.
 
 ### E2E-CONFIG-SYNC-webdav-portable-configuration
 
-- **前提：** 已构建的任务候选版本、隔离的 Host 配置，以及支持 strong ETag 和条件 PUT 的本地 WebDAV fixture。不使用真实 WebDAV 账户、provider 或生产桌面。
-- **步骤：** 1）打开设置 → 云同步，填写 fixture URL、设备标签、目录和备份密码。2）运行能力测试，确认使用临时对象。3）选择 provider/MCP/skill 类别，保持凭据和 memory 未选中；在第二次预览中启用凭据，确认只显示脱敏计数。4）配置设备 A，创建 user provider 和 MCP 定义并同步。5）让设备 B 连接同一 vault，同步后检查待激活/映射，并验证审批前不会运行命令或任务。6）批准一个变更后的安全实体，拒绝一个暂存实体，在两台设备上编辑不相交设置并再次同步。7）测试并发 head writer、错误密码、weak ETag、密文损坏、redirect、归档路径穿越和网络中断。8）使用回环／私有地址的 fixture 勾选“允许在受信任的内网地址使用 HTTP”，确认刷新状态后仍保留；即使勾选，公网 HTTP 地址也必须被拒绝。
-- **预期：** 测试拒绝不可靠的条件写入。HTTP 默认关闭，仅允许 localhost、`.local` 或私有／链路本地地址；公网 HTTP 地址会被拒绝，界面会提示凭据暴露风险。若 fixture 探测到该 endpoint 对不存在对象返回 502，后续只兼容该 endpoint 的这一行为；忽略条件头的服务器仍必须标记为不受支持。WebDAV 只能看到已认证的密文和不透明对象名；原始秘密不会出现在 Renderer 状态或日志中。相同和不相交的编辑会收敛，冲突保持可审查，明确删除使用 tombstone，类别退出不是删除，可执行导入在本地审批和映射前保持不激活。恢复不会暴露部分应用的本地配置。
-- **规格：** `03-runtime/22-config-sync.md`、`03-runtime/14-secrets-storage.md`、`05-security/01-security.md`、ADR 0300。
+- **前提：** 已构建的任务候选版本、默认关闭开发者模式的隔离 Host 配置，以及支持 strong ETag 和条件 PUT 的本地 WebDAV fixture。不使用真实 WebDAV 账户、provider 或生产桌面。
+- **步骤：** 1）开发者模式关闭时打开设置，确认导轨没有“云同步”，搜索也没有云同步结果。2）打开“设置 → 信息 → 开发者”，启用开发者模式，确认“云同步”出现在导轨和设置搜索中；打开该页，确认导轨行和页面标题均显示“实验性”徽章。3）填写 fixture URL、设备标签、目录和备份密码。4）运行能力测试，确认使用临时对象。5）选择 provider/MCP/skill 类别，保持凭据和 memory 未选中；在第二次预览中启用凭据，确认只显示脱敏计数。6）配置设备 A，创建 user provider 和 MCP 定义并同步。7）让设备 B 连接同一 vault，同步后检查待激活/映射，并验证审批前不会运行命令或任务。8）批准一个变更后的安全实体，拒绝一个暂存实体，在两台设备上编辑不相交设置并再次同步。9）测试并发 head writer、错误密码、weak ETag、密文损坏、redirect、归档路径穿越和网络中断。10）使用回环／私有地址的 fixture 勾选“允许在受信任的内网地址使用 HTTP”，确认刷新状态后仍保留；即使勾选，公网 HTTP 地址也必须被拒绝。
+- **预期：** 开发者模式关闭时，云同步页面及其设置搜索结果不可见；启用后入口可见并标记为实验性，云同步行为保持不变。测试拒绝不可靠的条件写入。HTTP 默认关闭，仅允许 localhost、`.local` 或私有／链路本地地址；公网 HTTP 地址会被拒绝，界面会提示凭据暴露风险。若 fixture 探测到该 endpoint 对不存在对象返回 502，后续只兼容该 endpoint 的这一行为；忽略条件头的服务器仍必须标记为不受支持。WebDAV 只能看到已认证的密文和不透明对象名；原始秘密不会出现在 Renderer 状态或日志中。相同和不相交的编辑会收敛，冲突保持可审查，明确删除使用 tombstone，类别退出不是删除，可执行导入在本地审批和映射前保持不激活。恢复不会暴露部分应用的本地配置。
+- **规格：** `04-ux/06-settings-ia.md`、`03-runtime/22-config-sync.md`、`03-runtime/14-secrets-storage.md`、`05-security/01-security.md`、ADR 0300。
 - **验收：** F（持久化）、Security、Quality。
 - **里程碑：** M6+。
-- **状态：** Draft；合并/密码学和进程内 WebDAV 条件写入覆盖已存在。完整双设备进程路径和逐检查点本地恢复故障注入仍待自动化。
+- **状态：** Draft；合并/密码学和进程内 WebDAV 条件写入覆盖已存在。云同步设置入口的开发者模式门控由 `pnpm test:e2e:settings-scroll` 自动验证；完整双设备进程路径和逐检查点本地恢复故障注入仍待自动化。
 
 ### E2E-DIALOG-long-text-boundaries
 

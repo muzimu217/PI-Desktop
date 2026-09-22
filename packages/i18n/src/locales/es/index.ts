@@ -688,6 +688,7 @@ sklm: {
     },
     "configSync": {
       title: "Cloud sync",
+      experimental: "Experimental",
       connectionTitle: "WebDAV cloud sync",
       connectionDescription:
         "Synchronize portable configuration through an encrypted WebDAV vault. Conversation history, source files, and runtime state are never included.",

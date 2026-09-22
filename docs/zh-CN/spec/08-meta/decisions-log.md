@@ -2261,7 +2261,7 @@ D193 和 D194。
   空草稿显示「停止」，因此用户清空草稿即可露出立即停止操作。所属会话的
   `agent_end` 之后，渲染器通过既有的 `agent/prompt` 路径排出一项。「立即发送」
   把一项提升到队首并调用增量的 `pi-desktop/agent/stop`；sidecar 设置
-  pi-agent-core 的一次性 `shouldStopAfterTurn` 标志，于是当前的助手回复 / 工具
+  pi-agent-core 的一次性 `finishTurn` 决策，于是当前的助手回复 / 工具
   批次跑完、持久化回合正常关闭之后，优先的提示才开始。立即中止保持现有行为，
   且从不清空队列。
 - 这改变了渲染器状态归属并新增一个公开的 Electron IPC 通道，但不改动 host-core

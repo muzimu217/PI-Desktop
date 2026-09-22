@@ -2014,14 +2014,14 @@ Delegation rules:
       // ordering guarantee is untouched.
       toolExecution: "parallel",
       steeringMode: "all",
-      // A queued renderer prompt asks the current run to finish normally at
-      // the next turn boundary. pi-agent-core evaluates this after the
-      // assistant response and completed tool batch, before another provider
-      // request, so no second concurrent durable turn is created.
-      shouldStopAfterTurn: async () => {
-        if (!this.gracefulStopRequested) return false;
+      // pi-agent-core 0.87 replaces shouldStopAfterTurn with finishTurn. A
+      // queued renderer prompt ends a completed turn at the next boundary,
+      // without treating an error or abort as a graceful stop.
+      finishTurn: async ({ message }) => {
+        if (!this.gracefulStopRequested) return;
+        if (message.stopReason === "error" || message.stopReason === "aborted") return;
         this.gracefulStopRequested = false;
-        return true;
+        return { action: "end" };
       },
     });
 

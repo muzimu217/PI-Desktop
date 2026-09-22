@@ -1525,6 +1525,14 @@ with the original v3 `SessionManager`, Pi `ModelRuntime`, `SettingsManager`, and
 leaf, compaction, model/thinking changes, and context-bearing custom messages;
 it is never reconstructed from renderer `UiMessage` rows.
 
+The 0.87.0 SDK also applies append-only `context_edit` entries to this model
+projection. An edit can omit or replace an earlier message for later provider
+requests without rewriting its raw JSONL entry or the visible native history.
+Native Pi extensions use the SDK's boundary hooks; all entries they append,
+including context edits, pass through the sidecar's lease and parent-chain
+guard. This native extension lifecycle is separate from the Desktop Agent
+extension adapter described in [trusted extensions](../07-plugins/16-trusted-extensions.md).
+
 The first native slice supports text prompt **without model tools**, stop/abort,
 and explicit refresh. `createAgentSession` receives `noTools: "all"`; neither
 built-in nor extension tools may bypass Desktop permissions. Tool parity awaits

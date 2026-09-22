@@ -448,14 +448,16 @@ describe("DesktopAgentRuntime configuration matching", () => {
     await runtime.dispose();
   });
 
-  it("stops once at the next completed turn boundary", async () => {
+  it("stops once at a successful finishTurn boundary and lets errors settle", async () => {
     const runtime = createRuntime();
     const agent = (runtime as any).agent;
     agent.state.isStreaming = true;
 
     expect(runtime.requestGracefulStop()).toEqual({ requested: true });
-    expect(await agent.shouldStopAfterTurn({})).toBe(true);
-    expect(await agent.shouldStopAfterTurn({})).toBe(false);
+    expect(await agent.finishTurn({ message: { stopReason: "error" } })).toBeUndefined();
+    expect(await agent.finishTurn({ message: { stopReason: "aborted" } })).toBeUndefined();
+    expect(await agent.finishTurn({ message: { stopReason: "stop" } })).toEqual({ action: "end" });
+    expect(await agent.finishTurn({ message: { stopReason: "stop" } })).toBeUndefined();
 
     agent.state.isStreaming = false;
     expect(runtime.requestGracefulStop()).toEqual({ requested: false });

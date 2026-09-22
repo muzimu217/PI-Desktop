@@ -1572,6 +1572,13 @@ revision, Plan/Goal, collaboration, and queue operations remain unsupported
 for native sessions in this slice. Forking is supported as described here and in
 the runtime spec.
 
+The 0.87.0 `context_edit` entry is part of the native v3 JSONL branch. It changes
+only the SDK-built model projection by omitting or replacing a target message;
+the original line and renderer history remain intact. It is not copied into the
+Desktop transcript or SQLite, and needs no Desktop schema migration. The lease
+guard covers `SessionManager.appendContextEdit` alongside the other native
+append methods.
+
 A native fork writes exactly one new v3 JSONL child in the parent's session
 directory. Branch extraction runs against an in-memory manager over the parent
 snapshot, then child title/parent saved model/thinking fallbacks are appended in
@@ -1608,4 +1615,3 @@ Hourly rows retain their fields but require explicit calendar confirmation
 when converted. Known intent survives cadence changes and database reopen.
 This additive JSON key needs no table or schema-version migration. Older
 versions ignore the key and cannot enforce the new conversion guard.
-

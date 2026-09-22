@@ -16,6 +16,13 @@ which PI-Desktop adopts alongside the `pi-ai` and `pi-agent-core` kernel
 contributes. D388 folded the earlier standalone "trusted extensions"
 registry into this contribution; the engine below is unchanged.
 
+This contract describes extensions attached to Desktop Agent sessions. The
+Desktop adapter implements the explicit subset in §5–6; new upstream events do
+not become actionable here automatically. Native Pi continuation runs the
+coding-agent SDK's own extension lifecycle and can use its 0.87.0 boundary
+hooks, subject to the separate native-session lease and trust rules in
+[ADR 0254](../../adr/0254-native-pi-session-continuation.md).
+
 Provider declarations are a separate manifest surface rather than part of this
 contract: `contributes.providers` materializes Host-owned provider rows
 ([02-plugin-manifest-schema.md](02-plugin-manifest-schema.md) §5.4, ADR 0259),

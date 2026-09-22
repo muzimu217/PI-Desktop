@@ -4241,7 +4241,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   runnable with the generic text-only, non-reasoning shape; pi-ai supplies only
   the selected wire adapter, OAuth flow, and account model availability. A
   ChatGPT Plus/Pro or GitHub Copilot account lists `gpt-6-astra` from the
-  pinned pi-ai 0.86.1 catalog; models.dev then supplies its published metadata.
+  pinned pi-ai 0.87.0 catalog; models.dev then supplies its published metadata.
 - **Specs linked**: `02-architecture/02-tech-stack.md`,
   `03-runtime/11-provider-model-system.md`,
   `03-runtime/13-model-catalog-and-selection.md`, ADR 0134
@@ -14015,7 +14015,9 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   context-bearing custom-message entries, and a valid project cwd. A faux local
   model/auth binding is configured in the fixture Pi agent directory; Desktop
   provider secrets are absent. A fixture extension restores custom state in
-  `session_start` and contributes a skill through `resources_discover`.
+  `session_start`, contributes a skill through `resources_discover`, and uses
+  the 0.87 `turn_end` boundary to propose a `context_edit` for the settled
+  assistant entry.
 - **Steps:** Start PI-Desktop with fixture-only agent/session directories;
   refresh sessions; open the native row beside a Desktop row; submit one text
   prompt; stop or let the faux response settle; send the same text again with
@@ -14030,6 +14032,8 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   Exactly two durable SDK-ID user rows remain, including after abort; smart-stop
   never rewrites native history. Retries/compaction remain running and stoppable
   until one terminal completion; the owned idle lease accepts the second send.
+  The `context_edit` is appended under the same lease, affects the next model
+  request, and leaves the original assistant row visible in native detail.
   Compact and queue push/list reject before host access. Opaque host-turn queue
   remove/prioritize remain Desktop-only because native paths create no entries.
 - **Specs:** runtime §12; storage §12; security §12; ADR 0254.
@@ -14039,8 +14043,9 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 
 - **Preconditions:** A writable synthetic native v3 fixture is listed.
 - **Steps:** Acquire Desktop continuation ownership, then simulate a foreign
-  append/replacement before the next SDK append; also attempt a second Desktop
-  lease and stale leases whose owners are live, remote, malformed, or uncertain.
+  append/replacement before the extension's `appendContextEdit`; also attempt a
+  second Desktop lease and stale leases whose owners are live, remote,
+  malformed, or uncertain.
   Refresh list/detail with a dead same-host owner and unchanged or complete
   append-only extended bytes, then prompt through normal UI capabilities.
 - **Expected:** The second writer is refused; external divergence tears down
@@ -14048,8 +14053,9 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   appended and no bytes are truncated or rewritten; a lease releases on normal
   dispose and is reclaimed after crash only with a dead same-host owner and an
   unchanged target or same-file prefix-preserving complete parent-chain extension.
-  Uncooperative Pi clients can still race the OS append; no shared-lock guarantee
-  is claimed.
+  The context-edit append is refused by the same byte and parent check as other
+  SDK writes. Uncooperative Pi clients can still race the OS append; no
+  shared-lock guarantee is claimed.
 - **Specs:** runtime §12; storage §12; security §12; ADR 0254.
 - **Status:** Documented; run after integration into main.
 
@@ -14892,4 +14898,3 @@ renderer's durable transcript reads. No real model or provider is contacted.
 `node --test apps/desktop/test/plugin-timeout-budgets.test.mjs`,
 `pnpm --filter @pi-desktop/shared test`, and
 `pnpm --filter @pi-desktop/host-runtime test`.
-

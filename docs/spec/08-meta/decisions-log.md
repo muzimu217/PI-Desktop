@@ -2515,7 +2515,7 @@ D193, and D194.
   session's `agent_end`, the renderer drains one item through the existing
   `agent/prompt` path. Send now promotes one item and calls additive
   `pi-desktop/agent/stop`; the sidecar sets pi-agent-core's one-shot
-  `shouldStopAfterTurn` flag, so the current assistant response/tool batch
+  `finishTurn` decision, so the current assistant response/tool batch
   completes and the durable turn closes normally before the prioritized prompt
   starts. Immediate abort keeps its current behavior and never clears the
   queue.

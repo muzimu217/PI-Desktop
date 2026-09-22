@@ -901,11 +901,17 @@ CREATE INDEX idx_task_runs ON task_runs(task_id, started_at DESC);
 ```
 
 生成会话的运行通过 `session_id` 免费获取其转录本。
-`config_json` 保存 `schedule: {hour, minute, weekday}`、毫秒时间戳 `nextRunAt`
-和 `workspacePath`。每天、每周按宿主本地时区计算。每小时采用 `nextRunAt = now + 3_600_000`，
+`config_json` 保存 `schedule: {hour, minute, weekday}`、毫秒时间戳 `nextRunAt`、
+`workspacePath`，以及可选的任务级 `permissionMode` 与成对的 `providerId`／`modelId`。
+这些新增字段无需物理表迁移。缺少模型字段时仍在运行时读取应用默认值；缺少权限字段时，
+自动运行继续使用 Ask，立即运行继续继承全局权限。每天、每周按宿主本地时区计算。每小时采用 `nextRunAt = now + 3_600_000`，
 忽略日历时间字段。可选 `weekdays` 保存 1–7 个不重复的 0–6 整数，覆盖每周的旧 `weekday`；
 缺失时保留单日语义，空数组、重复或越界值在写入前拒绝。无需表结构迁移。
-无 `schedule` 的旧任务不会自动运行；无需修改表或迁移数据库。
+无 `schedule` 的旧任务不会自动运行；无需修改表或迁移数据库。见 ADR 0305。
+
+任务还可独立保存 `thinkingLevel`，取值与会话相同（包括 `off` 和 `omit`）。
+模型和推理等级直接复用主对话框的完整选择器及交互逻辑，仅将保存回调接到任务草稿。
+未配置此字段的旧任务仍以 `off` 运行；清空字段恢复旧行为，不需要数据库迁移。
 
 计划任务 `config_json.mode` 是持久操作模式值。有
 故意没有物理 `scheduled_tasks.mode` 列。 v7→v8
@@ -1341,3 +1347,4 @@ preference does not rewrite provider configuration or require a schema migration
 schedule 就推断为日历配置；旧版 Hourly 行保留字段，但转换时需要明确确认日历时间。
 已知意图在周期切换和数据库重开后仍然保留。该新增 JSON 字段不需要表或 schema
 版本迁移；旧版本会忽略它，也无法执行新的转换保护。
+

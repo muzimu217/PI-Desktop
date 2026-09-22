@@ -1060,8 +1060,19 @@ behavior. Invalid or empty selections are rejected before mutation. No table
 migration is needed. Daily/weekly schedules use the host local timezone; hourly
 schedules compute `nextRunAt = now + 3_600_000`, ignoring calendar fields. Absence
 of `schedule` leaves legacy tasks unarmed. No physical schema change is made.
-Task wire fields project `schedule`, RFC3339 `nextRunAt` and `workspacePath`.
-See [the automation ADR](../../adr/scheduled-desktop-automations.md).
+Task wire fields project `schedule`, RFC3339 `nextRunAt`, `workspacePath` and the
+optional task-owned `permissionMode` plus paired `providerId`/`modelId` values.
+These additive values stay in `config_json`; no physical migration is required.
+Missing model fields retain run-time app-default resolution. Missing permission
+keeps legacy behavior: Ask for automatic runs and inherited permission for Run now.
+See [the automation ADR](../../adr/scheduled-desktop-automations.md) and
+[ADR 0305](../../adr/0305-scheduled-task-execution-settings.md).
+
+Tasks also persist optional `thinkingLevel` using the existing session values
+(including `off` and `omit`). The full Composer model/reasoning picker and
+controller are reused with a task-draft configuration callback. Both manual and
+automatic runs apply the saved level. Missing or cleared levels retain the
+legacy `off` behavior; no database migration is required.
 
 Scheduled task `config_json.mode` is a durable operating-mode value. There is
 intentionally no physical `scheduled_tasks.mode` column. The v7→v8
@@ -1597,3 +1608,4 @@ Hourly rows retain their fields but require explicit calendar confirmation
 when converted. Known intent survives cadence changes and database reopen.
 This additive JSON key needs no table or schema-version migration. Older
 versions ignore the key and cannot enforce the new conversion guard.
+

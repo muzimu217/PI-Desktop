@@ -1,6 +1,6 @@
 # ADR: Desktop-owned automation dispatch with Host-owned schedules
 
-- Status: Accepted for implementation
+- Status: Accepted for implementation; amended by ADR 0305
 - Date: 2026-09-20
 
 ## Context
@@ -27,10 +27,12 @@ Old cadence-only records remain unarmed until explicitly configured. Existing
 scheduled.run retains its prepare-only response; additive scheduledExecute IPC
 dispatches a turn, and scheduledListRuns exposes the existing run ledger.
 
-Automatic runs use Ask permission mode. They may wait for a user in their result
-conversation; this feature never grants approval. Plan/Goal rejection remains.
-The default provider/model are resolved at execution time. Retain the task's
-project even when the foreground workspace changes.
+Automatic runs use the task's saved permission mode and default to Ask when the
+field is absent. Ask runs may wait for a user in their result conversation;
+selecting Auto is an explicit per-task choice under ADR 0305. Plan/Goal rejection
+remains. A saved provider/model pair is used when present; otherwise the app
+defaults are resolved at execution time. Retain the task's project even when the
+foreground workspace changes.
 
 Expose Scheduled through a footer clock action as well as global search.
 The page has task and run-history views, editing, pause/resume, Run now and
@@ -80,3 +82,4 @@ The UI offers four time periods (09:00, 14:00, 19:00, 22:00) to keep setup
 simple. AI tools retain precise local time configuration, and the form preserves
 those custom times. Direct database access or renderer-mediated tool mutation
 would duplicate ownership or bypass permission gates and is rejected.
+

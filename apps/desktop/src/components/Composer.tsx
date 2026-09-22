@@ -384,6 +384,7 @@ export function Composer({
     ? composerModelDisplayName(provider, modelId, selectedModel?.displayName)
     : selectedModel?.displayName || modelId || t("chat.model");
   const modelMenu = useComposerModelMenu({
+    configureActiveSession,
     mode,
     activeSessionId,
     provider,

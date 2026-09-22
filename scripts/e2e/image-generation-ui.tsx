@@ -80,7 +80,12 @@ globalThis.imageGenerationProbe = async () => {
     providerCount: 1,
     modelCount: 2,
   });
-  api.updateProvider = async (input) => ({ provider: providers.find((entry) => entry.id === input.id)! });
+  api.updateProvider = async (input) => {
+    const index = providers.findIndex((entry) => entry.id === input.id);
+    const saved = { ...providers[index], models: structuredClone(input.models ?? providers[index].models) };
+    providers[index] = saved;
+    return { provider: saved };
+  };
   api.fsReadImageDataUrl = async () => ({
     kind: "image",
     dataUrl:
@@ -281,6 +286,60 @@ globalThis.imageGenerationProbe = async () => {
       providers.splice(0, providers.length, provider, alternate, chatProvider);
       flushSync(() => useAppStore.setState({ providers: [...providers] }));
 
+      // Removing a configured model is also an explicit release of its image
+      // binding, even when the capability checkbox was never touched.
+      for (const remaining of [false, true]) {
+        providers.splice(0, providers.length, provider, alternate, chatProvider);
+        const original = { providerId: "p", modelId: "image-one" };
+        const other = { providerId: "q", modelId: "image-two" };
+        settings = {
+          ...settings,
+          imageGeneration: original,
+          imageGenerationModels: remaining ? [original, other] : undefined,
+          defaultProviderId: remaining ? "chat" : "p",
+          defaultModelId: remaining ? "chat-model" : "image-one",
+        };
+        flushSync(() => useAppStore.setState({ settings, providers: [...providers] }));
+        const editImages = () => click(container.querySelector<HTMLButtonElement>(
+          'button[aria-label="' + i18n.t("settings.editProvider") + '"]',
+        ));
+        const removeImage = async () => {
+          await until(() => !!document.querySelector(".provider-chosen-row"), "chosen models missing");
+          const chosen = [...document.querySelectorAll<HTMLElement>(".provider-chosen-row")]
+            .find((element) => element.querySelector(".provider-chosen-row-id")?.textContent === "image-one");
+          click(chosen?.querySelector<HTMLButtonElement>(".provider-chosen-remove"));
+        };
+        editImages();
+        await removeImage();
+        click(button(i18n.t("settings.cancel")));
+        assert(settings.imageGeneration?.modelId === original.modelId, "cancel removed the image default");
+        assert(providers[0].models.length === 2, "cancel persisted provider model removal");
+        editImages();
+        await removeImage();
+        click(button(i18n.t("settings.saveProvider")));
+        await until(() => !document.querySelector(".provider-setup-dialog"), "model removal save did not finish");
+        assert(!providers[0].models.some((model) => model.id === "image-one"), "model was not removed");
+        assert(settings.imageGeneration?.providerId === undefined,
+          "removed provider model kept the image default");
+        assert(settings.imageGenerationModels?.length === (remaining ? 1 : 0),
+          "removed provider model kept an image candidate");
+        assert(settings.defaultProviderId === (remaining ? "chat" : "p") &&
+          settings.defaultModelId === (remaining ? "chat-model" : "image-two"),
+          "model removal did not preserve the existing chat-default repair");
+        flushSync(() => root.render(null));
+        flushSync(() => useAppStore.setState({ settings: structuredClone(settings) }));
+        render();
+        assert(!!container.querySelector(".model-image-row") === remaining,
+          "image summary did not reflect the saved candidates after reopen");
+        editImages();
+        await until(() => !!document.querySelector(".provider-chosen-row"), "saved provider did not reopen");
+        assert(![...document.querySelectorAll(".provider-chosen-row-id")]
+          .some((element) => element.textContent === "image-one"), "removed model returned after reopen");
+        click(button(i18n.t("settings.cancel")));
+      }
+      providers.splice(0, providers.length, provider, alternate, chatProvider);
+      flushSync(() => useAppStore.setState({ providers: [...providers] }));
+
     }
     const message = {
       id: "image",
@@ -329,6 +388,7 @@ globalThis.imageGenerationProbe = async () => {
       ok: true,
       locales: ["en", "zh-CN"],
       scenarios: [
+        "remove-marked-model-cancel-save-reopen-and-clear",
         "advanced-save-cancel",
         "unmark-only-image-model-save-reopen-chat-selection",
         "advanced-provider-switch",

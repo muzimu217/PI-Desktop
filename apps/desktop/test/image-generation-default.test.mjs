@@ -321,6 +321,21 @@ test("unchecking the active model selects a remaining runnable candidate", () =>
   assert.deepEqual(plan.imageGenerationModels, [binding("y", "other"), binding("x", "next")]);
 });
 
+test("removing the active provider model clears the image default", () => {
+  const plan = planImageGenerationDefaults(
+    {
+      imageGenerationModels: [binding("x", "old"), binding("y", "other")],
+      imageGeneration: binding("x", "old"),
+    },
+    "x",
+    ["next"],
+    [provider("x", ["next"]), provider("y", ["other"])],
+    true,
+  );
+  assert.equal(plan.imageGeneration, null);
+  assert.deepEqual(plan.imageGenerationModels, [binding("y", "other"), binding("x", "next")]);
+});
+
 test("saving the active provider preserves a still-selected default", () => {
   const plan = planImageGenerationDefaults(
     { imageGeneration: binding("x", "current") },

@@ -8,6 +8,23 @@
 
 ## 1. Goals
 
+### E2E-IMAGES-remove-configured-model
+
+- **Preconditions:** API-boundary fixture with an image-marked model and another
+  configured model on its provider; repeat with legacy single binding and with
+  another image candidate on another provider.
+- **Steps:** Remove the marked model in the provider editor without toggling its
+  image checkbox. Cancel once, repeat and Save, then reopen settings and editor.
+- **Expected:** Cancel preserves both configurations. Save removes the model and
+  its image candidate and clears the image default, even when another image
+  candidate remains on this or another provider. The settings summary therefore
+  shows the unavailable state until the user explicitly chooses a new default.
+  An unaffected chat default stays unchanged; a removed chat default still falls
+  back to the first configured model. Reload preserves results.
+- **Specs:** 03-runtime/21-image-generation. **Acceptance:** B.
+- **Milestone:** Maintenance. **Status:** Automated in English and Chinese by
+  `scripts/e2e-image-generation-ui.mjs`.
+
 ### E2E-IMAGES-desktop-conversation
 
 - **Preconditions:** Isolated desktop profile and workspace, built image feature,
@@ -548,7 +565,7 @@ identify the platform validation still needed.
 
 - **Preconditions**: App running; provider A saved and set as the app default model; a second provider B serving different models; one image-capable model configured on A and another on a different service.
 - **Steps**: 1) Open Settings → Model configuration and add provider B; save without touching the Default model row. 2) Confirm the Default model row still names provider A and its exact model, and that a new session starts on it. 3) Set an image model as the default image model, then add a provider that also serves image models; save. 4) Confirm the Default image model row still names the earlier binding while the picker lists the new provider's image models as candidates. 5) Delete the provider that owned a default, then add a service that serves a model and an image model; save. 6) Confirm both defaults now resolve to that newly added provider.
-- **Expected**: Saving a new provider never repoints an app default that still resolves: the model default keeps the pairing the Default model row already renders, and the image default keeps its stored binding while its candidate list grows. Only a default that no longer resolves — its provider deleted, or its model removed from the provider — is filled by the newly added provider, so settings are written only when the app would otherwise have nothing to run. The explicit make-default actions, the edit path, and the fallback to the first remaining binding are unchanged.
+- **Expected**: Saving a new provider never repoints an app default that still resolves: the model default keeps the pairing the Default model row already renders, and the image default keeps its stored binding while its candidate list grows. A removed image model is cleared and requires an explicit new selection; a removed chat default still uses the existing chat repair rule. The explicit make-default actions and the edit path remain unchanged.
 - **Specs linked**: `03-runtime/13-model-catalog-and-selection.md`
 - **Acceptance**: B (model selection)
 - **Milestone**: M6

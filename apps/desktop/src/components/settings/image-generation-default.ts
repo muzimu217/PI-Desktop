@@ -106,6 +106,7 @@ export function planImageGenerationDefaults(
   savedProviderId: string,
   selectedModelIds: readonly string[],
   providers: readonly ProviderPublic[],
+  removedDefaultModel = false,
 ): ImageGenerationDefaultPlan {
   const existing = imageGenerationBindings(
     current.imageGenerationModels,
@@ -132,6 +133,8 @@ export function planImageGenerationDefaults(
   ) ?? null;
   return {
     imageGenerationModels,
-    imageGeneration: resolvesImageGenerationDefault(active, providers) ? active : fallback,
+    imageGeneration: removedDefaultModel
+      ? null
+      : resolvesImageGenerationDefault(active, providers) ? active : fallback,
   };
 }

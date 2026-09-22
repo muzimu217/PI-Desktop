@@ -27,16 +27,21 @@ export function ImageGenerationModelRow({
   const { t } = useTranslation();
   const binding = settings.imageGeneration;
   const candidates = imageGenerationBindings(settings.imageGenerationModels, binding);
-  if (!binding || candidates.length === 0) return null;
+  if (candidates.length === 0) return null;
 
-  const activeCandidate = candidates.find((candidate) =>
-    candidate.providerId === binding.providerId &&
-    modelIdsMatch(candidate.modelId, binding.modelId),
-  );
-  const provider = providers.find((entry) => entry.id === binding.providerId);
+  const activeCandidate = binding
+    ? candidates.find((candidate) =>
+      candidate.providerId === binding.providerId &&
+      modelIdsMatch(candidate.modelId, binding.modelId),
+    )
+    : undefined;
+  const provider = binding
+    ? providers.find((entry) => entry.id === binding.providerId)
+    : undefined;
   // The same availability rule that decides whether this binding may stay the
   // app default, so the row can never claim a pairing the runtime rejects.
-  const valid = imageGenerationBindingAvailable(provider, binding.modelId);
+  const valid = binding !== null && binding !== undefined &&
+    imageGenerationBindingAvailable(provider, binding.modelId);
   const options = candidates.map((candidate) => {
     const candidateProvider = providers.find((entry) => entry.id === candidate.providerId);
     const available = imageGenerationBindingAvailable(

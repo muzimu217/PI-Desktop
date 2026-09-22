@@ -79,7 +79,7 @@ test("the capability row carries no explanatory copy or extra controls", () => {
 });
 
 
-test("image generation selection is an attachment capability and hides when unset", () => {
+test("image generation selection is an attachment capability and keeps an unavailable row when unbound", () => {
   assert.match(
     pickerSource,
     /className="provider-chosen-capability-rows">[\s\S]*?settings\.setImageModel/,
@@ -91,7 +91,8 @@ test("image generation selection is an attachment capability and hides when unse
   assert.match(pickerSource, /imageModelIds\?\.some\([\s\S]*?modelIdsMatch/);
   assert.match(pickerSource, /onImageModelChange\(binding\.id, event\.target\.checked\)/);
   assert.match(imageModelRowSource, /imageGenerationBindings\(settings\.imageGenerationModels, binding\)/);
-  assert.match(imageModelRowSource, /if \(!binding \|\| candidates\.length === 0\) return null;/);
+  assert.match(imageModelRowSource, /if \(candidates\.length === 0\) return null;/);
+  assert.match(imageModelRowSource, /imageModelUnavailable/);
 });
 
 test("the Composer model rows use the provider binding for vision badges", () => {

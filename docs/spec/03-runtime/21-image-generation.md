@@ -4,8 +4,20 @@ The desktop exposes `AppSettings.imageGeneration` as the current default image-g
 
 ## Configuration
 
-Model Advanced exposes **Set as image model** alongside the image and document attachment capabilities in the model capability group, not as a separate control row. The checkbox is multi-select: saving a provider persists every checked model in `imageGenerationModels`; Cancel leaves settings unchanged. Saving candidates does not replace the default conversation model. Unchecking the current image model and saving removes its default binding: the first remaining runnable candidate becomes the default, or the default becomes null if none remains. The unmarked model is available for chat again after saving and reopening settings. Saving another provider preserves a still-runnable image default. Below the default model row in the same defaults panel, **Image generation model** shows the current default and offers a menu to choose one from all marked candidates. When no candidate is configured, the summary row is hidden. An existing candidate that is missing, disabled, credential-less or removed displays only **Currently unavailable**. OAuth accounts are not eligible; there is no fallback.
+Model Advanced exposes **Set as image model** alongside the image and document attachment capabilities in the model capability group, not as a separate control row. The checkbox is multi-select: saving a provider persists every checked model in `imageGenerationModels`; Cancel leaves settings unchanged. Saving candidates does not replace the default conversation model. Unchecking the current image model and saving removes its default binding: the default becomes null, even when another runnable candidate remains. The unmarked model is available for chat again after saving and reopening settings. Saving another provider preserves a still-runnable image default. Below the default model row in the same defaults panel, **Image generation model** shows the current default and offers a menu to choose one from all marked candidates. When no candidate is configured, the summary row is hidden. An existing candidate that is missing, disabled, credential-less or removed displays only **Currently unavailable**. OAuth accounts are not eligible; there is no fallback.
 All marked provider/model pairs are excluded from the default conversation picker, provider quick-default action, and Composer model menu. Other providers with the same model ID remain independent. Existing conversation bindings and history are preserved; a conversation still pinned to any image candidate must select a chat model before sending. Runtime launch rejects every marked image model before inference.
+
+### Provider model removal
+
+Saving a provider after explicitly removing a configured model also removes
+that model's image candidate, even if the image capability checkbox was not
+touched. If it was the active image default, clear the default, even when another
+runnable candidate remains on this or another provider. Cancel preserves
+both the provider models and the image settings. Legacy single bindings follow
+the same rule. Unchanged image selections retain the ordinary provider-save
+path. External provider changes can still leave an unavailable binding visible.
+The existing chat-default repair still runs if the saved provider no longer
+contains its selected chat model; otherwise the chat default is preserved.
 
 ## Agent contract
 

@@ -8402,6 +8402,19 @@ the latest destination. These assertions measure work counts, not device FPS.
   default.
 - **Status:** Contract-covered; no end-to-end driver waits out a real 70s call.
 
+### E2E-IMAGES-remove-configured-model
+
+- **前提：** API 边界 fixture，服务商包含已标记的生图模型及另一个模型；
+  分别测试旧版单绑定和另一服务商仍有可用生图候选的情况。
+- **步骤：** 不操作生图复选框，直接移除已标记模型；先取消，再重复并保存，
+  重新打开设置和编辑器。
+- **预期：** 取消保留配置；保存清除已移除模型的生图候选并清空生图默认值，即使
+  仍有其他可用候选；保留仍存在的聊天默认模型，被移除的聊天默认模型按原有
+  规则改为第一个剩余模型，重新打开后状态保持。
+- **规格：** 03-runtime/21-image-generation。**验收：** B。
+- **里程碑：** 维护。**状态：** `scripts/e2e-image-generation-ui.mjs`
+  使用中英文自动覆盖。
+
 ### E2E-IMAGES-desktop-conversation
 
 - **Preconditions:** Isolated desktop profile and workspace, built image feature,

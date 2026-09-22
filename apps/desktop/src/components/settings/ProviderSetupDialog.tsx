@@ -262,9 +262,17 @@ export function ProviderSetupDialog({
       return;
     }
     const persisted = selection.bindingsToPersist;
-    const imageModelIdsToSave = imageModelDraft?.filter((imageModelId) =>
+    // Removing a configured model releases its image binding even when the
+    // capability checkbox was untouched. Ordinary provider edits keep their
+    // existing save path when the image selection did not change.
+    const imageSelection = imageModelDraft ?? imageModelIds;
+    const remainingImageModels = imageSelection?.filter((imageModelId) =>
       persisted.some((model) => model.id === imageModelId),
     );
+    const imageModelIdsToSave = imageModelDraft !== undefined ||
+      remainingImageModels?.length !== imageSelection?.length
+      ? remainingImageModels
+      : undefined;
     setSaving(true);
     setError("");
     try {

@@ -357,7 +357,7 @@ index 3106c5d470dc3610c05d8ee153026df20f86f66e..8b209bb46809c394ffebfd11d5dfd273
                      id: block.id,
                      type: "function",
 diff --git a/dist/api/openai-completions.js b/dist/api/openai-completions.js
-index fd459fddd20380242bbe37ec16e260097c9e4236..7d4c90a1aee35efaa05548c4797929111de4db70 100644
+index fd459fddd20380242bbe37ec16e260097c9e4236..dff3e9b3d04a95eec40dd2483b297a53823afe14 100644
 --- a/dist/api/openai-completions.js
 +++ b/dist/api/openai-completions.js
 @@ -1039,21 +1039,27 @@ export function convertMessages(model, context, compat, options) {
@@ -436,6 +436,25 @@ index fd459fddd20380242bbe37ec16e260097c9e4236..7d4c90a1aee35efaa05548c479792911
      return params;
  }
  function convertTools(tools, compat) {
+@@ -1265,6 +1306,9 @@ function detectCompat(model) {
+         requiresAssistantAfterToolResult: false,
+         requiresThinkingAsText: false,
+         requiresReasoningContentOnAssistantMessages: isDeepSeek,
++        // Relays that reject an empty reasoning echo must set this explicitly:
++        // no endpoint can be auto-detected as requiring a real one.
++        requiresNonEmptyReasoningReplay: undefined,
+         thinkingFormat: isDeepSeek
+             ? "deepseek"
+             : isZai
+@@ -1317,6 +1361,8 @@ function getCompat(model) {
+         requiresThinkingAsText: model.compat.requiresThinkingAsText ?? detected.requiresThinkingAsText,
+         requiresReasoningContentOnAssistantMessages: model.compat.requiresReasoningContentOnAssistantMessages ??
+             detected.requiresReasoningContentOnAssistantMessages,
++        requiresNonEmptyReasoningReplay: model.compat.requiresNonEmptyReasoningReplay ??
++            detected.requiresNonEmptyReasoningReplay,
+         thinkingFormat: model.compat.thinkingFormat ?? detected.thinkingFormat,
+         openRouterRouting: model.compat.openRouterRouting ?? {},
+         vercelGatewayRouting: model.compat.vercelGatewayRouting ?? detected.vercelGatewayRouting,
 diff --git a/dist/api/openai-responses-shared.js b/dist/api/openai-responses-shared.js
 index 53597d2c3becdd2c03d4fd265c213a36b403f26b..763f99a6e7d726ff9fc1ed59a45f6c8173ad108a 100644
 --- a/dist/api/openai-responses-shared.js
@@ -896,7 +915,7 @@ index cf46c043b854412d56c5d65230a509165229806e..0fe002385c3d9906709be1cce6867d0c
  //# sourceMappingURL=index.js.map
 \ No newline at end of file
 diff --git a/dist/types.d.ts b/dist/types.d.ts
-index 49f2a3262e19aea105f95424cdec08444a7f5748..52215b53d50ed92ed0aeb7416ab71c1bdced2d49 100644
+index 49f2a3262e19aea105f95424cdec08444a7f5748..a4d5e56dce4c4ba654b6c4cee1bb516c3d41580f 100644
 --- a/dist/types.d.ts
 +++ b/dist/types.d.ts
 @@ -267,6 +267,30 @@ export interface ToolCall {
@@ -959,7 +978,20 @@ index 49f2a3262e19aea105f95424cdec08444a7f5748..52215b53d50ed92ed0aeb7416ab71c1b
  } | {
      type: "done";
      reason: Extract<StopReason, "stop" | "length" | "toolUse" | "deferred">;
-@@ -789,6 +819,8 @@ export interface Model<TApi extends Api> {
+@@ -546,6 +576,12 @@ export interface OpenAICompletionsCompat {
+     requiresThinkingAsText?: boolean;
+     /** Whether all replayed assistant messages must include an empty reasoning_content field when reasoning is enabled. Default: auto-detected from URL. */
+     requiresReasoningContentOnAssistantMessages?: boolean;
++    /**
++     * Whether a replayed assistant message that carries no reasoning must send a documented
++     * non-empty placeholder instead of an empty string. Some relays reject the empty echo.
++     * Default: false; only an explicit model.compat opt-in enables it.
++     */
++    requiresNonEmptyReasoningReplay?: boolean;
+     /** Format for reasoning/thinking parameter. "openai" uses reasoning_effort, "openrouter" uses reasoning: { effort }, "deepseek" uses thinking: { type } plus reasoning_effort when supported, "together" uses reasoning: { enabled } plus reasoning_effort when supported, "baseten" uses configurable chat_template_args plus reasoning_effort when supported, "zai" uses thinking: { type }, "qwen" uses top-level enable_thinking: boolean, "qwen-chat-template" uses chat_template_kwargs.enable_thinking and preserve_thinking, "chat-template" uses configurable chat_template_kwargs, "string-thinking" uses top-level thinking: string, and "ant-ling" uses reasoning: { effort } only when the mapped effort is non-null. Default: "openai". */
+     thinkingFormat?: "openai" | "openrouter" | "deepseek" | "together" | "baseten" | "zai" | "qwen" | "chat-template" | "qwen-chat-template" | "string-thinking" | "ant-ling";
+     /** Kwargs to send as `chat_template_kwargs` when `thinkingFormat` is `chat-template`. Use `{ "$var": "thinking.enabled" }`, `{ "$var": "thinking.effort" }`, or `{ "$var": "thinking.budget" }` for pi-controlled thinking values. */
+@@ -789,6 +825,8 @@ export interface Model<TApi extends Api> {
      provider: ProviderId;
      baseUrl: string;
      reasoning: boolean;

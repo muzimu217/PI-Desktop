@@ -375,17 +375,20 @@ sidecar 请求
 因此 sidecar 永远拿不到刷新令牌，拿到的访问令牌也只属于其会话绑定的那个
 提供商。
 
-这类行的模型发现读取已认证的目录（`models.getAvailable`，它已应用厂商
-自己的 `filterModels`），而不是探测 `/models`；连接测试通过解析认证来
-证明账户。对 ChatGPT Plus/Pro（`openai-codex`）这类静态 OAuth 厂商，该
-目录是已固定的 pi-ai 模型列表，而不是实时 `/models` 探测，因此 `gpt-6-astra`
-这类新账户模型只有在 pin 包含它之后才会出现。xAI（Grok/X 订阅）是例外：
-用已解析的账户令牌请求 `GET /v1/models` 成功时，返回的对话模型就是该账户
-可选的模型，包括 pin 里还没有的 id；图像和视频模型会被丢掉。请求失败时
-仍回退到 pin 目录。models.dev 在 ID 可用后仍
-提供元数据，但不能把 ID 加进已认证列表。一个厂商可以跨越多种线路 API ——
-Copilot 同时提供 Anthropic、Chat Completions 与 Responses 模型 —— 因此行
-的 `apiStyle` 跟随所选模型。
+这类行的模型发现读取已登录账户自己的模型列表；连接测试仍通过解析认证来证明
+账户。请求失败，或返回的不是模型列表时，才回退到 pi-ai（`models.getAvailable`，
+含厂商自己的 `filterModels`）。各厂商打自己的接口：ChatGPT Plus/Pro
+（`openai-codex`）是 `GET {base}/codex/models`，因此 `gpt-6-luna` 这类账户
+已经提供、pin 里还没有的 id 也能出现；普通 `{ data: [...] }` 不当成 Codex
+列表。Copilot 是带 IDE 身份头和 `X-GitHub-Api-Version` 的 `GET {base}/models`，
+只保留 `model_picker_enabled === true` 且未被策略禁用的 id，pin 不认识的 id
+只有在其家族已经对应唯一线路 API 时才加入。Anthropic 用 OAuth 身份头请求
+`GET {base}/v1/models`。Kimi、Meta、xAI、OpenRouter 请求 `GET {base}/models`
+（Kimi 走 Anthropic 风格的 `/v1`）。Radius 继续用网关目录刷新，不再另打一遍。
+图像、视频、语音和嵌入模型会被丢掉。models.dev 不认识的 id 只从同档位的 pin
+兄弟继承限额，xAI 按 `grok-4.6`、`grok-4.5`、`grok-4.3` 的固定新到旧顺序，
+不按 pin 顺序。models.dev 不能把账户列表里没有的 id 加进去。一个厂商可以
+跨越多种线路 API，因此行的 `apiStyle` 跟随所选模型。
 
 ### Anthropic token 端点限流
 

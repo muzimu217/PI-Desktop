@@ -6776,8 +6776,8 @@ eleven-tool-round desktop paths are verified by
   编辑器不再缺少高级设置。在账户模型上启用的等级会持久化，并在重新打开编辑器后
   依然存在。OpenAI Codex 的 `openai-codex` 适配器键会解析匹配的 `openai`
   models.dev 记录，因此 `gpt-6-astra` 不会显示为通用的 128,000 / 8,192 /
-  无推理默认值。已认证的 ChatGPT 列表本身来自已固定的 pi-ai 目录（0.86.1
-  包含 `gpt-6-astra`）；models.dev 不能补上缺失的 OAuth ID。没有已发布记录
+  无推理默认值。已认证的 ChatGPT 列表来自账户令牌的 `GET {base}/codex/models`，
+  所以 pin 里还没有的 id 只要响应里有就能选；请求失败才回退到 pi-ai。models.dev 不能补上缺失的 OAuth ID。没有已发布记录
   的模型则保留其已存等级不变。账户的默认模型仍是首个绑定。
 - **链接规格**：`04-ux/06-settings-ia.md`、`04-ux/08-component-spec.md` §19、
   `03-runtime/11-provider-model-system.md` §10、`08-meta/decisions-log.md`

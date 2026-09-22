@@ -171,6 +171,11 @@ function harness(options = {}) {
     },
     modelConfigFor: options.modelConfigFor,
     newId: () => `id-${++counter}`,
+    fetch:
+      options.fetch ??
+      (async () => {
+        throw new Error("live model list disabled in test");
+      }),
   });
   // The store the module handed pi-ai, so a test can drive it the way a token
   // refresh would.
@@ -602,8 +607,7 @@ test("conversation-model filter drops xAI image and video ids", () => {
 
 test("an xAI account offers the chat models its /models endpoint returns", async () => {
   const seen = [];
-  const previousFetch = globalThis.fetch;
-  globalThis.fetch = async (url, init) => {
+  const fetchModels = async (url, init) => {
     seen.push({
       url: String(url),
       authorization: init?.headers?.Authorization,
@@ -616,6 +620,8 @@ test("an xAI account offers the chat models its /models endpoint returns", async
       ],
     }), { status: 200, headers: { "content-type": "application/json" } });
   };
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = fetchModels;
   const xaiModel = {
     id: "grok-4.6",
     name: "Grok 4.6",
@@ -639,6 +645,7 @@ test("an xAI account offers the chat models its /models endpoint returns", async
   };
   try {
     const { host, events, oauth } = harness({
+      fetch: fetchModels,
       provider: {
         id: "xai",
         name: "xAI",
@@ -674,4 +681,50 @@ test("an xAI account offers the chat models its /models endpoint returns", async
   } finally {
     globalThis.fetch = previousFetch;
   }
+});
+
+test("a new Grok inherits grok-4.6 even when an older Grok is first in the pin", async () => {
+  const fetchModels = async () => new Response(JSON.stringify({
+    data: [{ id: "grok-4.7" }],
+  }), { status: 200, headers: { "content-type": "application/json" } });
+  const older = {
+    id: "grok-4.3",
+    name: "Grok 4.3",
+    api: "openai-responses",
+    provider: "xai",
+    baseUrl: "https://api.x.ai/v1",
+    input: ["text"],
+    reasoning: true,
+    thinkingLevelMap: { off: "off", low: "low", medium: "medium", high: "high" },
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 1_000_000,
+    maxTokens: 30_000,
+  };
+  const newest = {
+    ...older,
+    id: "grok-4.6",
+    name: "Grok 4.6",
+    input: ["text", "image"],
+    thinkingLevelMap: { off: null, low: "low", medium: "medium", high: "high", xhigh: "xhigh" },
+    contextWindow: 500_000,
+    maxTokens: 500_000,
+  };
+  const { events, oauth } = harness({
+    fetch: fetchModels,
+    provider: {
+      id: "xai",
+      name: "xAI",
+      baseUrl: "https://api.x.ai/v1",
+      auth: { oauth: { name: "xAI", isSubscription: true, loginLabel: "Sign in" } },
+    },
+    models: [older, newest],
+  });
+  const { loginId } = await oauth.start("xai");
+  const prompt = await waitFor(events, "prompt");
+  oauth.respond({ loginId, promptId: prompt.request.promptId, value: "abc" });
+  const done = await waitFor(events, "done");
+  const binding = await oauth.bindingFor(done.providerId, "grok-4.7");
+  assert.equal(binding.modelConfig.contextWindow, 500_000);
+  assert.equal(binding.modelConfig.maxTokens, 500_000);
+  assert.deepEqual(binding.supportedThinkingLevels, ["low", "medium", "high", "xhigh"]);
 });

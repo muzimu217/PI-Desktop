@@ -559,14 +559,13 @@ The canonical DDL lives in [04-data-storage](04-data-storage.md) (D086). Summary
   reads the local models.dev snapshot and runs provider endpoint discovery only for IDs absent from it
 - host RPC in: `{ providerId?: string }`; reads only the Rust-owned `models`
   table
-- for an `authKind: "oauth"` row Electron main reads the authenticated catalog
-  (`models.getAvailable`, which applies the vendor's own `filterModels`, so a
-  Copilot account lists what its subscription includes) instead of calling
-  `/models`; each returned model carries the apiStyle its wire API implies.
-  Static vendors such as `openai-codex` use the pinned pi-ai catalog (0.86.1
-  includes `gpt-6-astra`); models.dev does not invent those IDs. `xai` is the
-  exception: conversation models come from `GET /v1/models` on the resolved
-  account token, and the pinned catalog is used only when that request fails.
+- for an `authKind: "oauth"` row Electron main reads the signed-in account's
+  model list (see `03-runtime/11-provider-model-system.md`) instead of the
+  pinned catalog. pi-ai `models.getAvailable` is used only when that request
+  fails. Each returned model carries the apiStyle its wire API implies.
+  `openai-codex` calls `GET {base}/codex/models`, so an account id such as
+  `gpt-6-luna` appears without a pin update; models.dev does not invent those
+  IDs. Copilot still hides models the account did not enable.
 - out: `{ models: ModelCatalogItem[] }`; each known model carries the complete
   models.dev metadata including `reasoning`, `supportedThinkingLevels`, limits,
   modalities, output types, and capability tags. Cached/provider claims cannot

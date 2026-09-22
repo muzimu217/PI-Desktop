@@ -394,11 +394,12 @@ Copilot 的上下文相关请求标头；已保存的同名自定义 header 会�
   在 Electron main 中运行发现
 - 将 RPC 托管在：`{ providerId?: string }` 中；只读取 Rust 拥有的 `models`
   表
-- 对 `authKind: "oauth"` 行，Electron 主进程读取已认证的目录
-  （`models.getAvailable`，它已应用厂商自己的 `filterModels`，因此 Copilot
-  账户列出的是其订阅包含的模型），而不是调用 `/models`；返回的每个模型都
-  带着其线路 API 所隐含的 apiStyle。`openai-codex` 这类静态厂商使用已固定
-  的 pi-ai 目录（0.86.1 包含 `gpt-6-astra`）；models.dev 不会发明这些 ID。
+- 对 `authKind: "oauth"` 行，Electron 主进程读取已登录账户自己的模型列表
+  （见 `03-runtime/11-provider-model-system.md`），请求失败才回退到 pi-ai
+  的 `models.getAvailable`。返回的每个模型都带着其线路 API 所隐含的
+  apiStyle。`openai-codex` 调用 `GET {base}/codex/models`，因此 `gpt-6-luna`
+  这类账户 id 不需要等 pin 更新；models.dev 不会发明这些 ID。Copilot 仍只列出
+  账户已启用的模型。
 - 输出：`{ models: ModelCatalogItem[] }`；每个模型都带有 pi-resolved
   `reasoning` 功能和 `supportedThinkingLevels`。缓存的功能标签
   旧提供程序字段无法覆盖 pi 模型记录。

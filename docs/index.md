@@ -1,19 +1,16 @@
 ---
 layout: home
 title: PI-Desktop
-titleTemplate: Documentation for a modular desktop workspace for AI agents
+titleTemplate: A modular desktop workspace for AI agents
 hero:
   name: PI-Desktop
   text: A desktop workspace for AI agents.
-  tagline: Bring projects, agents, models, plugins, and workflows into one persistent, local-first environment. Model-agnostic. Plugin-powered.
+  tagline: Bring projects, agents, models, plugins, and workflows into one persistent desktop environment.
   actions:
     - theme: brand
-      text: Start with the guide
+      text: Download
+      link: https://github.com/vastsa/PI-Desktop/releases/latest
+    - theme: alt
+      text: Documentation
       link: /guide/
-    - theme: alt
-      text: Product tour
-      link: /guide/screenshots
-    - theme: alt
-      text: Spec map
-      link: /spec/README
 ---

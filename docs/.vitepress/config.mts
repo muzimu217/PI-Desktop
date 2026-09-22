@@ -167,7 +167,8 @@ const zhNav: DefaultTheme.NavItem[] = [
 export default defineConfig({
   title: 'PI-Desktop',
   description: 'A modular desktop workspace for AI agents',
-  appearance: 'dark',
+  // Product shell is dark-base; lock docs to the same charcoal system.
+  appearance: 'force-dark',
   cleanUrls: true,
   lastUpdated: true,
   head: [

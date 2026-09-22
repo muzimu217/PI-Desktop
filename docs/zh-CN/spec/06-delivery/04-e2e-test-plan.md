@@ -8741,6 +8741,22 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **验收 / 里程碑**：C、Quality / M6+。
 - **状态**：组件与状态层用户路径由 `queue-pending-actions.test.mjs` 覆盖。
 
+### E2E-SETTINGS-destination-scroll-reset
+
+- 打开设置 → AI，滚动到中间，再选择快捷键：标题和首项从顶部显示。滚动后
+  返回 AI，该页也从顶部显示。
+- 再次选择当前分类，或不离开当前页更新设置，保留内容区滚动位置。
+- 覆盖内置分类 → 插件、插件 → 插件、插件 → 先前选择的内置分类；再次
+  选择当前插件分类时保留位置。
+- 从其他分类、当前打开的插件分类，以及 AI 当前页通过全局搜索设置锚点进入
+  AI：插件页关闭，目标项在下一次绘制前可见，消费锚点后保持定位。没有锚点的
+  外部切页也会离开插件，并从顶部开始。
+- 在明暗两种主题下运行。
+- 自动化覆盖：`pnpm test:e2e:settings-scroll` 在隔离 Electron 中挂载真实
+  SettingsPage、store、翻译和构建后的 CSS。仅 preload 数据使用 fixture；
+  搜索导航调用 SearchDialog 使用的公开 store 入口。该测试覆盖渲染层交互，
+  不覆盖 host 持久化或完整全局搜索弹窗。
+
 ### E2E-SCHEDULED-dispatch
 
 - **场景**：独立分发到期任务。

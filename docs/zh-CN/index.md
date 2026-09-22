@@ -1,19 +1,16 @@
 ---
 layout: home
-title: PI-Desktop 文档
-titleTemplate: 面向 AI 智能体的模块化桌面工作区
+title: PI-Desktop
+titleTemplate: 可拆卸的 AI Agent 桌面工作台
 hero:
   name: PI-Desktop
-  text: 给 AI 智能体一个桌面工作区。
-  tagline: 把项目、智能体、模型、插件和工作流收进同一个持续存在的本地环境。模型可替换，插件可扩展。
+  text: 可拆卸的 AI Agent 桌面工作台。
+  tagline: 把项目、Agent、模型、插件和工作流，装进一个长期可用的桌面环境。
   actions:
     - theme: brand
-      text: 先读快速开始
+      text: 立即下载
+      link: https://github.com/vastsa/PI-Desktop/releases/latest
+    - theme: alt
+      text: 使用文档
       link: /zh-CN/guide/
-    - theme: alt
-      text: 产品一览
-      link: /zh-CN/guide/screenshots
-    - theme: alt
-      text: 规格地图
-      link: /zh-CN/spec/README
 ---

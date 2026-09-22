@@ -14762,6 +14762,26 @@ the latest destination. These assertions measure work counts, not device FPS.
   cover ownership, deletion, repeated/bounded forks, retained checkpoint paths,
   expired inputs, rollback, and symlink rejection.
 
+### E2E-SETTINGS-destination-scroll-reset
+
+- Open Settings → AI and scroll midway down. Select Shortcuts: its title and
+  first settings appear at the top. Scroll and return to AI: it starts at top.
+- Re-select the active destination and update settings without navigating:
+  the content keeps its scroll position.
+- Repeat for built-in → plugin, plugin → plugin, and plugin → the previously
+  selected built-in destination. Re-selecting a plugin keeps its position.
+- Follow a global search setting anchor into AI from another destination,
+  from an open plugin destination, and within AI: the plugin page is gone and
+  the target row is visible before the next paint. Consuming the anchor keeps
+  that position. An external tab change with no anchor also leaves the plugin
+  and starts at the top.
+- Run in light and dark themes.
+- Automated coverage: `pnpm test:e2e:settings-scroll` mounts the production
+  SettingsPage, store, translations, and built CSS in isolated Electron. Only
+  preload data is stubbed; search navigation uses SearchDialog's public store
+  entry points. This covers renderer interaction, not host persistence or the
+  full global-search dialog.
+
 ### E2E-SCHEDULED-dispatch
 
 - **Scenario:** Independent task dispatch.

@@ -218,7 +218,7 @@ Each ADR includes:
 | 0194 | Optional subagent thinking override | Accepted for implementation |
 | 0195 | Viewport-fixed work panel toggle | Accepted (amends 0068 / 0085) |
 | 0196 | Show provider retry causes in the active-turn status | Accepted (amends 0175) |
-| 0197 | Publish a Windows Portable Executable | Accepted (amends 0022 / D126) |
+| 0197 | Publish a Windows Portable Package | Accepted (amends 0022 / D126 / D603) |
 | 0198 | Name every quiet interval on the live activity row | Accepted (amends 0175 / 0186) |
 | 0200 | Host-owned plugin session import and ownership API | Accepted |
 | 0201 | Explicit plugin project ids and host-owned session refresh | Accepted |
@@ -330,6 +330,8 @@ Each ADR includes:
 | 0299 | [Subagent context budget and delegate compaction](0299-subagent-context-budget.md) | Accepted for implementation (amends ADR 0064; extends ADR 0062 / ADR 0279) |
 | 0300 | [Host-owned encrypted portable configuration sync](0300-host-owned-encrypted-portable-configuration-sync.md) | Accepted for implementation |
 | 0301 | [Explicit append-only WebDAV compatibility mode](0301-explicit-append-only-webdav-compatibility-mode.md) | Accepted for implementation |
+| 0302 | [A failed compaction keeps the recent window, and an oversized summary is chunked](0302-compaction-fallback-recent-window-and-chunked-summary.md) | Accepted for implementation (issue #827; amends ADR 0049 / ADR 0282) |
+| 0303 | [A skill package carries resources far above the document cap](0303-skill-package-resource-limits.md) | Accepted for implementation (amends ADR 0300) |
 | turn-process-and-thinking-display | [Turn process and thinking presentation](turn-process-and-thinking-display.md) | Accepted |
 | provider-display-order | [Provider display order](provider-display-order.md) | Accepted |
 | registry-header-variable-spelling | [Remote header variables accept the registry's `{name}` spelling](registry-header-variable-spelling.md) | Proposed |

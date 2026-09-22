@@ -5,6 +5,7 @@ import type {
   ConfigSyncCategorySelection,
   ConfigSyncHistoryEntry,
   ConfigSyncPendingApproval,
+  ConfigSyncProgress,
   ConfigSyncRemoteMode,
   ConfigSyncState,
 } from "@pi-desktop/shared";
@@ -12,6 +13,7 @@ import { api } from "../../lib/api";
 import { Badge, Button, Field, Input, PasswordInput, cx } from "../ui";
 import { IconCloudDown, IconRefresh, IconShield, IconTrash } from "../icons";
 import { SettingsCard, SettingsRow } from "../../features/settings/primitives";
+import { configSyncProgressView } from "../../features/settings/config-sync-progress";
 import { SettingsMenuSelect } from "./SettingsMenuSelect";
 
 const CATEGORIES: Array<{
@@ -72,6 +74,8 @@ export function ConfigSyncPage() {
     | "disconnect"
     | null
   >(null);
+  /** The last progress the host reported for a manual sync, if one is running. */
+  const [progress, setProgress] = useState<ConfigSyncProgress | null>(null);
   const [history, setHistory] = useState<ConfigSyncHistoryEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -142,6 +146,10 @@ export function ConfigSyncPage() {
       setRemoteMode(next.remoteMode ?? "strict");
     });
   }, [refresh]);
+
+  // The report is only shown while the page is running a sync itself, so an
+  // automatic run stays silent; the subscription is dropped with the page.
+  useEffect(() => api.onConfigSyncProgress((next) => setProgress(next)), []);
 
   const updateForm = (key: keyof typeof form, value: string) =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -218,6 +226,9 @@ export function ConfigSyncPage() {
       setError(cause instanceof Error ? cause.message : String(cause));
       await refresh();
     } finally {
+      // The request's own answer ends the run: once it has settled, whatever
+      // the last report said is already stale.
+      setProgress(null);
       setBusy(null);
     }
   };
@@ -369,6 +380,13 @@ export function ConfigSyncPage() {
   const locked = state?.locked === true;
   const categories = selection;
   const isHttpEndpoint = /^http:\/\//i.test(form.endpoint.trim());
+  // The report only exists for a sync this page started: an automatic run stays
+  // quiet, and no report outlives the request that produced it. Enabling a
+  // vault runs the same full sync as "sync now", so both operations are watched.
+  const syncProgress =
+    (busy === "sync" || busy === "configure") && progress
+      ? configSyncProgressView(progress)
+      : null;
 
   return (
     <div className="settings-stack settings-config-sync">
@@ -536,6 +554,55 @@ export function ConfigSyncPage() {
           </div>
         ) : null}
       </SettingsCard>
+
+      {/* A sync this page started reports itself here, above the cards: the
+          first enable is the slowest sync of all, and it runs while the status
+          card below has nothing to show yet. */}
+      {syncProgress ? (
+        <div className="settings-config-sync-progress">
+          <div className="settings-config-sync-progress-head">
+            <span className="settings-config-sync-progress-title">
+              {t("settings.configSync.progressTitle")}
+            </span>
+            <span className="settings-config-sync-progress-phase" role="status">
+              {t(syncProgress.phaseKey)}
+            </span>
+          </div>
+          {syncProgress.determinate ? (
+            <div
+              className="settings-config-sync-progress-bar"
+              role="progressbar"
+              aria-label={t("settings.configSync.progressTitle")}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={syncProgress.percent}
+              aria-valuetext={syncProgress.fraction ?? undefined}
+            >
+              <span
+                className="settings-config-sync-progress-bar-fill"
+                style={{ width: `${syncProgress.percent}%` }}
+              />
+            </div>
+          ) : null}
+          {syncProgress.determinate ? (
+            <div className="settings-config-sync-progress-figures">
+              {syncProgress.objects ? (
+                <span>
+                  {t(
+                    "settings.configSync.progress.objects",
+                    syncProgress.objects,
+                  )}
+                </span>
+              ) : null}
+              {syncProgress.bytes ? (
+                <span>
+                  {t("settings.configSync.progress.bytes", syncProgress.bytes)}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {configured ? (
         <>

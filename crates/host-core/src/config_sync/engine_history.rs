@@ -130,7 +130,9 @@ pub(super) async fn list_history(state: Arc<Mutex<AppState>>) -> Result<Value> {
     };
     let transport = transport_with_password(&config, transport_password)?;
     if config.remote_mode == RemoteMode::AppendOnly {
-        let Some(remote) = read_append_only_remote(&transport, &config, &key).await? else {
+        let Some(remote) =
+            read_append_only_remote(&transport, &config, &key, &NoSyncProgress).await?
+        else {
             return Ok(json!([]));
         };
         let current = remote.tip_ids.iter().cloned().collect::<BTreeSet<_>>();
@@ -327,7 +329,9 @@ pub(super) async fn restore(
     };
     let transport = transport_with_password(&config, transport_password)?;
     let (parent_ids, current_etag) = if config.remote_mode == RemoteMode::AppendOnly {
-        let Some(remote) = read_append_only_remote(&transport, &config, &key).await? else {
+        let Some(remote) =
+            read_append_only_remote(&transport, &config, &key, &NoSyncProgress).await?
+        else {
             bail!("CONFIG_SYNC_REMOTE: cannot restore from an empty vault");
         };
         if remote.tip_ids.is_empty() {
@@ -343,7 +347,7 @@ pub(super) async fn restore(
         (vec![current_head.revision_id], Some(current_etag))
     };
     let (target, target_resources) =
-        read_remote_revision(&transport, &config, &key, revision_id).await?;
+        read_remote_revision(&transport, &config, &key, revision_id, &NoSyncProgress).await?;
     let candidate_id = Uuid::new_v4().to_string();
     let candidate = LocalSnapshot {
         manifest: RevisionManifest {
@@ -357,7 +361,7 @@ pub(super) async fn restore(
         },
         resources: target_resources,
     };
-    upload_snapshot(&transport, &config, &key, &candidate).await?;
+    upload_snapshot(&transport, &config, &key, &candidate, &NoSyncProgress).await?;
     if config.remote_mode == RemoteMode::AppendOnly {
         publish_append_only_head(&transport, &config, &key, &config.device_id, &candidate_id)
             .await?;

@@ -28,7 +28,7 @@ This log freezes previously open questions into concrete decisions.
 | D452 | Plan and goal artifacts open in the bundled file view | **The contract approval card's artifact opener hands the immutable `.pi/plan/*.md` or `.pi/goal/*.md` path to the bundled `pi.file-manager` view whenever that view is launchable, and to the host file tab otherwise — the same preference and fallback a chat file reference already uses (ADR 0241). The artifact still creates or activates a tab in its originating session, so the approval reveal itself is unchanged; only the surface changes. Renderer-only; no protocol, host, storage, artifact-content, or permission change. See D189, ADR 0043, `04-ux/08-component-spec.md` §5.4 and §10A.2, `04-ux/09-interaction-patterns.md` §5A, E2E-106.** | The approval opener used a host file tab while every other project file the conversation names already opens in the user's own file view, so a plan or goal landed in the one surface the user does not browse project files in. |
 | D459 | Restore resizable sidebar width with collapse-below-threshold | **Amend D408 / ADR 0238 and restore ADR 0141 (ADR 0290): the expanded sidebar is again a renderer-owned `240px..520px` column (default `275px`) with a right-edge handle that previews on pointer-down, persists on release, and supports ArrowLeft/ArrowRight (16px), Home, and End. A pointer width below `160px` collapses as a user action without overwriting the preferred expanded width; keyboard resize never collapses. Live maximum is the three-column remainder after MainChat's 450px floor. Renderer only; existing `pi.desktop.sidebarWidth` preference. See E2E-168.** | Long labels need reclaimable width; ADR 0238's fixed 275px pin blocked that while the live three-column budget could already cap a user-chosen width. This decision was mistakenly recorded as D451 (already used by Review-opens-only-on-explicit-user-action); renumbered per issue #620. |
 | D457 | Signed macOS DMG is a two-icon install | **Amend D406 / ADR 0232 / ADR 0204: official and local DMGs contain only PI-Desktop.app and the Applications link on a branded 720×440 plate. They no longer include `If app won't open, read this.txt` or the command helper. macOS ZIP packages still ship both the opening note and `PI-Desktop-macOS-open.command` for trusted unsigned artifacts. See ADR 0296 and E2E-196b.** | Tagged DMGs are signed and notarized (D450); the unsigned-opening note on the installer read as an error. |
-| D450 | Signed macOS GitHub Releases | **Amend D078 / ADR 0022: GitHub tag releases Developer ID-sign, notarize (`notarytool` via electron-builder 26), staple, and Gatekeeper-verify macOS DMG/ZIP before upload, using identity `Developer ID Application: XingYu Liu (DUV63RKYTW)` / team `DUV63RKYTW` from Actions secrets (`CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`). Missing secrets fail the job. Local unsigned packaging without a certificate remains. `workflow_dispatch` may set `sign_macos: false` only for unsigned debug artifacts. Packaged macOS uses in-app `electron-updater` (ZIP + merged `latest-mac.yml`); Linux deb/rpm and Windows portable stay notify-and-link. No afterPack/afterSign adhoc codesign (ADR 0278).** | Production DMGs must open without a Gatekeeper warning, and signed macOS installs can download and restart into a new tag. See ADR 0289, E2E-196c, E2E-067A. |
+| D450 | Signed macOS GitHub Releases | **Amend D078 / ADR 0022: GitHub tag releases Developer ID-sign, notarize (`notarytool` via electron-builder 26), staple, and Gatekeeper-verify macOS DMG/ZIP before upload, using identity `Developer ID Application: XingYu Liu (DUV63RKYTW)` / team `DUV63RKYTW` from Actions secrets (`CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`). Missing secrets fail the job. Local unsigned packaging without a certificate remains. `workflow_dispatch` may set `sign_macos: false` only for unsigned debug artifacts. Packaged macOS uses in-app `electron-updater` (ZIP + merged `latest-mac.yml`); Linux deb/rpm and Windows portable ZIP stay notify-and-link. No afterPack/afterSign adhoc codesign (ADR 0278).** | Production DMGs must open without a Gatekeeper warning, and signed macOS installs can download and restart into a new tag. See ADR 0289, E2E-196c, E2E-067A. |
 
 ## B. Secondary implementation defaults
 
@@ -349,7 +349,7 @@ Gold source: local Codex electron captures; latest row wins where rows conflict.
 | ID | Topic | Decision | Rationale |
 |---|---|---|---|
 | D118 | Platform application menu and window chrome | **macOS installs a conventional system application menu and keeps hidden-inset traffic lights. Windows/Linux use the shared 46px frameless shell with localized File/Edit/View/Window/Help menus and renderer-drawn minimize/maximize-or-restore/close controls. Both menu surfaces route renderer-owned actions through a fixed `AppMenuCommand` allowlist; renderer menus route native editing/window actions through a separate fixed allowlist. Target packaging builds the local release host before Electron packaging. This adds platform-ready shell behavior but does not reverse D010: Windows/Linux release qualification remains post-MVP.** | A default Electron menu leaves macOS shell commands incomplete, while a frameless Windows/Linux window otherwise loses both application menus and window controls. Shared allowlists keep behavior consistent without exposing an arbitrary privileged command bridge. |
-| D120 | Application update delivery | *(amended by D364)* **Electron Main exclusively owns a fixed GitHub Releases feed, update polling, typed state, and install lifecycle. Development is disabled; packaged macOS and non-AppImage Linux use notify-and-link delivery, while Windows NSIS and Linux AppImage download in-app and install on quit. Renderer IPC cannot provide feed URLs. Automatic failures stay ambient, explicit checks surface status, and downloaded state remains actionable. The updater always forces `allowPrerelease = false` so prerelease installs (for example `0.2.0-rc.6`) track GitHub's latest stable release instead of electron-updater's default same-channel pin. D126 later publishes every platform feed produced by the tag matrix while macOS remains manual until a signed channel is qualified.** | Keep package installation outside the sandboxed renderer, match delivery to each installer format, and provide one consistent state across menus, Settings, and the update banner (ADR 0022). Without the stable-channel pin, RC builds never surface newer stables because electron-updater treats `rc` as a custom channel. |
+| D120 | Application update delivery | *(amended by D364 / D603)* **Electron Main exclusively owns a fixed GitHub Releases feed, update polling, typed state, and install lifecycle. Development is disabled; packaged macOS and non-AppImage Linux use notify-and-link delivery, while Windows NSIS and Linux AppImage download in-app and install on quit. Renderer IPC cannot provide feed URLs. Automatic failures stay ambient, explicit checks surface status, and downloaded state remains actionable. The updater always forces `allowPrerelease = false` so prerelease installs (for example `0.2.0-rc.6`) track GitHub's latest stable release instead of electron-updater's default same-channel pin. D126 later publishes every platform feed produced by the tag matrix while macOS remains manual until a signed channel is qualified.** | Keep package installation outside the sandboxed renderer, match delivery to each installer format, and provide one consistent state across menus, Settings, and the update banner (ADR 0022). Without the stable-channel pin, RC builds never surface newer stables because electron-updater treats `rc` as a custom channel. |
 | D313 | Main-owned GitHub issue feedback | **GitHub issue forms are the only intake path. The bug form requires description, reproduction steps, expected and actual behavior, app version, and OS; the feature form requires a problem and a proposed change. Settings → Info exposes one Report a problem action on `pi-desktop/app/openFeedback`. Electron Main builds a fixed `bug_report.yml` URL, prefills `app-version` / `os` / `environment` from Main-owned version info, and opens it with `shell.openExternal`. The renderer cannot supply a URL. Feature requests stay on GitHub's template picker. No host-protocol, storage, or update-feed change (ADR 0157).** | Reports without version or steps cannot be triaged, and a renderer-chosen destination would weaken the same Main-owned GitHub URL rule as D120. |
 | D330 | Main-owned `openExternal` protocol allowlist | **Every `shell.openExternal` call parses the URL first. Only `http:`, `https:` (hostname plus a written `//`), and `mailto:` (non-empty address) reach the OS, as a normalized href. `file:`, `javascript:`, `data:`, and custom URI schemes throw `DISALLOWED_EXTERNAL_URL` / plugin `INVALID_ARGUMENT`. Window-open handlers deny in-app and catch the error. Workspace files keep using `shell.openPath` after the path gate (ADR 0109). Preview "open in browser" uses the allowlist for web/mail URLs and `openPath` for an in-root file page (ADR 0168).** | Unvalidated `setWindowOpenHandler` → `openExternal` lets a clicked `ms-msdt:` / `file:` / custom-scheme link invoke an OS protocol handler. |
 | D332 | Classified plugin file preview and live workspace events | **Amend ADR 0104 / 0105 / 0109 / 0111: add `fs.readPreview` under `fs.read` (text / image data URL / binary / tooLarge, same caps as the host Files tab). Broadcast panel events to docked views as well as detached windows. Deliver `workspace:changed` to panels and plugin processes. The bundled Files view restores Open with default app, search, image preview, and copy path on those public channels.** | `fs.readText` cannot preview images or cap large binaries; docked views missed `appearance:changed`; Files polled for project switches. |
@@ -462,8 +462,9 @@ section mirrors only marketplace/catalog items still blocking nothing.
 
 | ID | Topic | Decision | Rationale |
 |---|---|---|---|
-| D126 | Three-platform release delivery (lifts D010) | *(amended by D364)* **Tag builds publish every artifact the matrix produces to the GitHub Release: macOS dmg/zip (arm64), Windows NSIS x64, Linux AppImage + deb (x64), each with blockmaps and the platform's `latest*.yml` electron-updater feed. Publishing the feeds activates D120's in-app update lanes for Windows NSIS and Linux AppImage; macOS stays in notify-and-link mode until a signed channel is qualified. The NSIS artifact name is pinned space-free (`PI-Desktop-Setup-${version}.${ext}`) because GitHub asset URLs mangle spaces. D010's macOS-only scope is lifted per the baseline-bump rule (baseline `0.4.7`); the release pipeline itself was qualified end-to-end on v0.1.1-rc.1/v0.1.1.** | The pipeline builds and validates all three platforms on every tag anyway; keeping installers as expiring Actions artifacts (90-day retention) withheld them from users without adding safety. Publishing the update feeds is the point of shipping: platforms with in-app lanes update silently, and future platform regressions surface through real installs instead of unused artifacts. |
-| D364 | Windows portable exe without installer | **Amend D120 / D126 / ADR 0022: tag builds publish a Windows x64 portable exe `PI-Desktop-Portable-${version}.exe` alongside the NSIS installer `PI-Desktop-Setup-${version}.exe`. The portable target does not write `latest.yml`. Packaged portable runs (`PORTABLE_EXECUTABLE_FILE`) use notify-and-link delivery. NSIS installs keep in-app download and quit-and-install. Data stays in the existing application data directory. Portable requests user execution level.** | Company environments that whitelist a single executable cannot run the NSIS installer. Applying the NSIS updater to a portable run would install the app, so portable stays manual (ADR 0197, E2E-211). |
+| D126 | Three-platform release delivery (lifts D010) | *(amended by D364 / D603)* **Tag builds publish every artifact the matrix produces to the GitHub Release: macOS dmg/zip (arm64), Windows NSIS x64, Linux AppImage + deb (x64), each with blockmaps and the platform's `latest*.yml` electron-updater feed. Publishing the feeds activates D120's in-app update lanes for Windows NSIS and Linux AppImage; macOS stays in notify-and-link mode until a signed channel is qualified. The NSIS artifact name is pinned space-free (`PI-Desktop-Setup-${version}.${ext}`) because GitHub asset URLs mangle spaces. D010's macOS-only scope is lifted per the baseline-bump rule (baseline `0.4.7`); the release pipeline itself was qualified end-to-end on v0.1.1-rc.1/v0.1.1.** | The pipeline builds and validates all three platforms on every tag anyway; keeping installers as expiring Actions artifacts (90-day retention) withheld them from users without adding safety. Publishing the update feeds is the point of shipping: platforms with in-app lanes update silently, and future platform regressions surface through real installs instead of unused artifacts. |
+| D364 | Windows portable exe without installer | *(superseded by D603)* **Amend D120 / D126 / ADR 0022: tag builds publish a Windows x64 portable exe `PI-Desktop-Portable-${version}.exe` alongside the NSIS installer `PI-Desktop-Setup-${version}.exe`. The portable target does not write `latest.yml`. Packaged portable runs (`PORTABLE_EXECUTABLE_FILE`) use notify-and-link delivery. NSIS installs keep in-app download and quit-and-install. Data stays in the existing application data directory. Portable requests user execution level.** | Company environments that whitelist a single executable cannot run the NSIS installer. Applying the NSIS updater to a portable run would install the app, so portable stays manual (ADR 0197, E2E-211). |
+| D603 | Windows portable delivery uses a normal ZIP | **Amend D364 / ADR 0022 / ADR 0197: tag builds publish a Windows x64 portable ZIP `PI-Desktop-Portable-${version}.zip` alongside the NSIS installer `PI-Desktop-Setup-${version}.exe`. The Windows release helper builds NSIS and ZIP separately, stamps ZIP app metadata with `piDistribution = "zip"`, and keeps the ZIP target out of `latest.yml`. Extracted ZIP runs use notify-and-link delivery; the updater still recognizes `PORTABLE_EXECUTABLE_FILE` for older portable executables. Data stays in the existing application data directory.** | The self-extracting portable wrapper could trigger administrator prompts and did not provide a reliable normal executable identity for the taskbar. A user-extracted ZIP launches `PI-Desktop.exe` directly and preserves the manual-update boundary. |
 | D260 | Release documentation is a version surface | **A stable version bump must update every version-bearing surface before the tag: the shipped-locale in-app changelog and its test list, every workspace `package.json` including `docs/package.json` (a third workspace root `scripts/release.mjs` previously skipped), the Cargo workspace version and `host-core` lockfile entry, `APP_VERSION`, and the `<major>.<minor>.x` release line stated in `README.md` and `README.zh-CN.md`. `scripts/check-release-docs.mjs` verifies all of them; `scripts/release.mjs` runs it after bumping and refuses to commit or tag while any surface disagrees, with `--skip-docs-check` reserved for deliberate non-release bumps. Extends D164.** | The in-app changelog gate alone left published documentation behind: the READMEs still advertised the `0.5.x` line at `0.10.8`, and `docs/package.json` sat at `0.5.8`. A tag is irreversible, so the check runs before the tag exists rather than as review etiquette. |
 | D371 | Explicit unsigned macOS first-launch helper | *(amended by D406 and D443)* **Every macOS distribution ships an executable `PI-Desktop-macOS-open.command`, placed on the DMG in a visible first-launch row below the drag-to-Applications gesture. It searches only `/Applications/PI-Desktop.app` and `~/Applications/PI-Desktop.app`, verifies `CFBundleIdentifier` is `net.aiuo.pi-desktop`, removes only `com.apple.quarantine` when present, and opens the app. It never uses `sudo`, accepts no arbitrary path, and does not replace Developer ID signing or notarization.** | The unsigned macOS lane can be blocked by quarantine with a misleading damaged-app message, and the terminal-only `xattr -cr` note was broader than the launch failure requires (ADR 0204, E2E-196b) |
 | D443 | Canonical application ID and macOS codesign identifier | **Amend D141 / D371 / ADR 0204: the application ID is `net.aiuo.pi-desktop` (`APP_ID`, electron-builder `appId`, macOS `CFBundleIdentifier`, Windows AppUserModelID). Development macOS hosts use `net.aiuo.pi-desktop.dev`. Do not adhoc-sign the unsigned pack in `afterPack`/`afterSign`: nested Electron helpers are still unsigned and `codesign` fails with `code object is not signed at all`. See ADR 0278 and issue #524.** | The owner domain is `net.aiuo.pi-desktop`. Binding the unsigned outer identifier is deferred until a helper-safe pack path exists. |
@@ -4221,6 +4222,19 @@ D193, and D194.
   data directory. Portable requests user execution level.
 - See ADR 0197 and E2E-211.
 
+## 2026-09-22 — Windows portable delivery uses a normal ZIP (D603)
+
+- Decision D603 amends D364 / ADR 0022 / ADR 0197. The Windows x64 lane now
+  publishes `PI-Desktop-Portable-<version>.zip` beside the NSIS installer.
+  The release helper builds the two targets separately and stamps the ZIP app
+  metadata with `piDistribution = "zip"`; the ZIP target does not write
+  `latest.yml`.
+- Users extract the ZIP and launch `PI-Desktop.exe` directly. The ZIP run uses
+  notify-and-link update delivery, while the updater keeps recognizing
+  `PORTABLE_EXECUTABLE_FILE` for older portable executables. The existing data
+  directory and NSIS in-app update lane are unchanged.
+- See ADR 0197 and E2E-211.
+
 ## 2026-09-09 — Name every quiet interval on the live activity row (D365)
 
 - ADR 0175 named only `waiting-model`, `retrying`, and `waiting-subagents`.
@@ -6595,3 +6609,126 @@ that was sitting at the bottom — including after the turn had finished.
   by `apps/desktop/test/default-model-display.test.mjs` and
   `apps/desktop/test/image-generation-default.test.mjs`, with
   `provider-model-config.test.mjs` asserting the add branch consults them.
+
+## 2026-09-22 — An unreadable command source refuses a slash submission (D613, issue #795)
+
+- Composer send-time resolution read the merged command list and swallowed a
+  failure as `null`, which the submit path could not tell apart from "no such
+  command". `/compact` typed while that IPC read failed was therefore sent to the
+  model as literal prompt text, and the model acted on it as an instruction.
+- Resolution now answers with three outcomes instead of one nullable value:
+  resolved (builtin/plugin/extension dispatch), unknown (templates, aliases, and
+  id-less entries continue as prompt text), and unavailable. Unavailable refuses
+  the submission, keeps the draft, and shows
+  `chat.slashCommandSourceUnavailable`. The failed read leaves the TTL cache
+  cold, so the next submit retries it; a warm cache still resolves through a
+  source blip.
+- The refusal is fail-closed on purpose: only the command source can say whether
+  `/name` is a control command, so while it cannot be read a `name` that looks
+  like plain text is refused rather than guessed. Templates and genuinely unknown
+  aliases keep the old prompt path. Pinned by
+  `apps/desktop/test/slash-command-source.test.mjs` and
+  `03-runtime/01-ipc-protocol.md` §13c.
+
+## 2026-09-22 — A manual compaction has its own transport deadline and a durable verdict (D614, issue #795)
+
+- `agent.compact` is a blocking RPC that spends a whole model summary request
+  inside the sidecar: pi serializes the conversation, streams the summary, and
+  retries a transient failure. It ran under the flat 130s transport default, so a
+  ~158s compaction on an 888KB context ended as `sidecar RPC timeout` while the
+  sidecar kept working and persisted the checkpoint — the user was told the
+  compaction failed, and the next turn proved it had succeeded.
+- The deadline is now derived from the ceilings the sidecar actually enforces:
+  one stream watchdog (180s) per attempt, `1 + 3` attempts, the 2s/4s/8s retry
+  backoff, and transport slack — `AGENT_COMPACT_RPC_TIMEOUT_MS`, deliberately
+  per-method rather than a wider global default.
+- Either host path (Electron `agentCompact` IPC and `RuntimeService.compact`)
+  also stops treating a transport timeout as the sidecar's verdict: it re-reads
+  the durable `session.compaction` record and reports success when a new
+  checkpoint landed, logs the mismatch, and rethrows the timeout otherwise. A
+  verdict the sidecar reported itself is never reconciled. Pinned by
+  `packages/host-runtime/src/runtime-service.test.ts`,
+  `packages/shared/src/protocol.test.ts`,
+  `apps/desktop/test/plugin-timeout-budgets.test.mjs`, and
+  `03-runtime/01-ipc-protocol.md` §5.4.
+
+## 2026-09-22 — An empty transcript read is retried and never cached (D615, issue #795)
+
+- The renderer treated every durable `session.get` window as the truth, and
+  cached it. A window that came back empty for a session with thousands of
+  messages — the host answers such a read from a transcript file it may be
+  rewriting — was stored as an empty snapshot, hover prefetch re-served it, and
+  the pane stayed blank until the app restarted. Nothing distinguished a failed
+  or stale read from an empty conversation, and no path retried one.
+- A read is now judged against the session's own count: zero messages for a
+  session the sidebar counts as having history triggers one more read, then keeps
+  the snapshot the user already has, and otherwise reports
+  `chat.sessionTranscriptEmpty`. The empty page is never written to the
+  transcript cache, so a hover prefetch cannot poison every later open.
+- This is a defense, not the host-side root cause: the transcript rewrite is the
+  reporter's 0.15.1 storage layout, and the read side still answers "session
+  exists, no messages" instead of reporting an unreadable transcript. See
+  `04-ux/09-interaction-patterns.md` §Session isolation across tabs.
+
+## 2026-09-22 — A renderer that never reaches its first state gets a bounded surface and a quit channel (D616)
+
+- The renderer's startup had no timeout of its own: `bootstrap()` either
+  publishes the initial state or nothing, so one read that never settled left the
+  window on the boot surface with no menu, no data, and nothing to act on except
+  force-quitting the process (issue #831). The renderer now watches its own wait.
+  `STARTUP_SLOW_HINT_MS` (30s) adds logs, diagnostics, and quit to the boot
+  surface without calling the boot a failure; `STARTUP_STALLED_MS` (180s) turns it
+  into the recovery surface, which also offers a retry that re-runs `bootstrap()`.
+- Both bounds sit above the main↔host RPC ceiling (`DEFAULT_RPC_TIMEOUT_MS`,
+  130s), so a slow but successful boot is never read as a failure, and the
+  watchdog never cancels the startup it watches: a boot that finishes replaces the
+  surface with the shell. The recovery surface replaces the splash (exactly one
+  boot surface is mounted), and the renderer-drawn window controls stay above it,
+  so a frameless Windows/Linux window can always be closed.
+- The renderer gains the quit channel `pi-desktop/app/quit` (`api.quitApp()`),
+  whose handler calls `app.quit()` exactly like the Quit menu item, so the ordered
+  shutdown, the confirmation dialog, and the close behavior stay the ones the app
+  already has. See `03-runtime/07-process-model.md` §3 and E2E-076.
+
+## 2026-09-22 — A failed compaction keeps the recent window (D617, issue #827)
+
+- An automatic compaction whose summary request failed installed a
+  retained-tail checkpoint that carried at most the latest user message, and a
+  rebuild narrowed a stored checkpoint's tail the same way. A long turn
+  therefore reached the next model request as one user sentence: the reported
+  session lost roughly 168 messages (3 user / 34 assistant / 131 tool) between
+  two checkpoints while the transcript on disk and the UI row stayed intact.
+- The fallback now retains the real recent window — the newest contiguous
+  messages of the compacted range, every role, bounded by the keep-recent
+  target and by what the carried summary and the recovery notice leave — and
+  marks it with `details.retainedTailShape`, so a rebuild replays it. A
+  checkpoint without the marker (every successful checkpoint, and every record
+  written before it existed) still normalizes to the latest user message. An
+  `active_turn` fallback also keeps the active task's user message when the
+  window cannot hold it, the fallback drops the assistant messages pi drops
+  anyway and any tool result whose call is not in the window, and
+  `details.failureReason` records `no_new_history` / `summary_budget` /
+  `summary_provider` / `checkpoint_oversized` instead of provider error text.
+- A summary prompt that is still too large after the single reduced pass is no
+  longer skipped: the range is split into contiguous chunks that each fit, at
+  most 16 requests, each carrying the previous chunk's summary, and the
+  checkpoint reports the summed usage of the requests that produced it. Only an
+  empty range, or one past that request bound, still falls back on budget
+  grounds. See ADR 0302, `03-runtime/02-agent-runtime.md`, ADR 0049, ADR 0282.
+
+## 2026-09-22 — pi's file-op collector is fed the names it reads (D618, issue #827)
+
+- A checkpoint's `readFiles` / `modifiedFiles`, and the `<read-files>` section a
+  summary appends, come from pi's own `extractFileOpsFromMessage`, which switches
+  on the lowercase names `read` / `write` / `edit` — the names pi's tools carry.
+  PI-Desktop registers `Read` / `Write` / `Edit`, so the collector matched
+  nothing and every checkpoint reported an empty file list; issue #827 turned
+  this up while reading a compaction report.
+- The conversion stays on our side of the boundary. `withPiFileOpToolNames`
+  copies the entries handed to pi's `prepareCompaction` with exactly those three
+  names respelled; no stored byte changes — a transcript, a checkpoint and a
+  rebuilt context keep our names — and the input array comes back untouched when
+  no such call is present, so the common path allocates nothing.
+- Only those three are converted. pi's collector reads nothing else, so `Grep`,
+  `Glob`, `Bash`, plugin and MCP names keep the spelling we register, and the
+  summarized text changes only where pi consumes the name.

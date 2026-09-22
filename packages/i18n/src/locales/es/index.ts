@@ -8,6 +8,16 @@ export const es = {
     "loadingView": "Cargando vista…",
     "uiCrashed": "Algo salió mal con la interfaz"
   },
+  "startup": {
+    "slowTitle": "Aún iniciando…",
+    "slowBody": "PI-Desktop está tardando más de lo habitual en alcanzar tu servicio local. Puede que aún termine por sí solo — puedes esperar o recoger los registros primero.",
+    "stalledTitle": "PI-Desktop no pudo terminar de iniciarse",
+    "stalledBody": "Esta ventana nunca recibió tus chats y tu configuración, así que todavía no hay nada que mostrar. No se eliminó nada — tus datos siguen en el disco.",
+    "retrying": "Reintentando…",
+    "copyDiagnostics": "Copiar diagnósticos",
+    "diagnosticsCopied": "Diagnósticos copiados",
+    "diagnosticsFailed": "No se pudieron copiar los diagnósticos"
+  },
   "common": {
     "close": "Cerrar",
     "cancel": "Cancelar",
@@ -233,6 +243,8 @@ export const es = {
     "slashGroupExtensions": "Comandos de extensión",
     "slashGroupSkills": "Habilidades",
     "slashEmpty": "No hay comandos coincidentes",
+"slashCommandSourceUnavailable": "La lista de comandos no está disponible, así que no se envió nada. Inténtalo de nuevo.",
+    "sessionTranscriptEmpty": "No se pudo leer el historial de esta sesión. Vuelve a abrirla para intentarlo de nuevo.",
     "fileMenu": "Referencias de archivos",
     "removeFileReference": "Eliminar referencia de archivo {{name}}",
     "messageAttachments": "Archivos adjuntos en este mensaje",
@@ -721,6 +733,19 @@ sklm: {
       save: "Save and sync",
       configured: "Cloud sync configuration saved.",
       syncNow: "Sync now",
+      progressTitle: "Sincronizando…",
+      progress: {
+        phase: {
+          capture: "Recopilando cambios locales",
+          download: "Descargando cambios remotos",
+          merge: "Combinando cambios",
+          upload: "Subiendo cambios",
+          apply: "Aplicando cambios",
+          cleanup: "Limpiando",
+        },
+        objects: "{{done}} / {{total}}",
+        bytes: "{{done}} / {{total}}",
+      },
       statusTitle: "Sync status",
       statusLabel: "Current state",
       lastSuccess: "Last successful run: {{date}}",

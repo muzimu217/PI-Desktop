@@ -117,6 +117,7 @@ import type {
   ConfigSyncMapProjectInput,
   ConfigSyncConfigureInput,
   ConfigSyncRestoreInput,
+  ConfigSyncProgress,
   ConfigSyncState,
   TrustedExtensionStatusEvent,
   TrustedExtensionUiPrompt,
@@ -1247,6 +1248,12 @@ export const api = {
   executeCommand: (commandId: string) =>
     invoke(IPC.invoke.commandPaletteExecute, commandId),
   openLogs: () => invoke(IPC.invoke.logOpenFolder),
+  /**
+   * Quit the application. Used by the surfaces that own the window before the
+   * shell has data; the main process runs the same ordered shutdown as the Quit
+   * menu item, so the answer may never arrive — callers must not depend on it.
+   */
+  quitApp: () => invoke<{ ok: boolean }>(IPC.invoke.appQuit),
   /** Toggles the devtools console; rejects unless developer mode is on. */
   toggleDevTools: (open?: boolean) =>
     invoke<{ open: boolean }>(IPC.invoke.devtoolsToggle, { open }),
@@ -1545,6 +1552,12 @@ export const api = {
     if (!window.piDesktop?.on) return () => undefined;
     return window.piDesktop.on(IPC.event.configSyncChanged, (payload) =>
       listener(payload as ConfigSyncState),
+    );
+  },
+  onConfigSyncProgress: (listener: (progress: ConfigSyncProgress) => void) => {
+    if (!window.piDesktop?.on) return () => undefined;
+    return window.piDesktop.on(IPC.event.configSyncProgress, (payload) =>
+      listener(payload as ConfigSyncProgress),
     );
   },
   onPluginLauncherShown: (listener: () => void) => {

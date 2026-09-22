@@ -8,6 +8,16 @@ export const de = {
     "loadingView": "Ansicht wird geladen…",
     "uiCrashed": "Mit der Schnittstelle ist ein Fehler aufgetreten"
   },
+  "startup": {
+    "slowTitle": "Startet noch…",
+    "slowBody": "PI-Desktop braucht länger als sonst, um Ihren lokalen Dienst zu erreichen. Der Start kann noch von selbst abschließen — Sie können warten oder zuerst die Protokolle sichern.",
+    "stalledTitle": "PI-Desktop konnte den Start nicht abschließen",
+    "stalledBody": "Dieses Fenster hat Ihre Chats und Einstellungen nie erhalten, daher gibt es noch nichts anzuzeigen. Es wurde nichts gelöscht — Ihre Daten sind noch auf dem Datenträger.",
+    "retrying": "Erneuter Versuch…",
+    "copyDiagnostics": "Diagnosen kopieren",
+    "diagnosticsCopied": "Diagnosen kopiert",
+    "diagnosticsFailed": "Diagnosen konnten nicht kopiert werden"
+  },
   "common": {
     "close": "Schließen",
     "cancel": "Abbrechen",
@@ -233,6 +243,8 @@ export const de = {
     "slashGroupExtensions": "Erweiterungsbefehle",
     "slashGroupSkills": "Fähigkeiten",
     "slashEmpty": "Keine übereinstimmenden Befehle",
+"slashCommandSourceUnavailable": "Befehlsliste nicht verfügbar, es wurde nichts gesendet. Bitte erneut versuchen.",
+    "sessionTranscriptEmpty": "Der Verlauf dieser Sitzung konnte nicht gelesen werden. Bitte die Sitzung erneut öffnen.",
     "fileMenu": "Dateiverweise",
     "removeFileReference": "Dateiverweis {{name}} entfernen",
     "messageAttachments": "Anhänge in dieser Nachricht",
@@ -721,6 +733,19 @@ sklm: {
       save: "Save and sync",
       configured: "Cloud sync configuration saved.",
       syncNow: "Sync now",
+      progressTitle: "Synchronisierung läuft…",
+      progress: {
+        phase: {
+          capture: "Lokale Änderungen werden erfasst",
+          download: "Remote-Änderungen werden geladen",
+          merge: "Änderungen werden zusammengeführt",
+          upload: "Änderungen werden hochgeladen",
+          apply: "Änderungen werden angewendet",
+          cleanup: "Aufräumen",
+        },
+        objects: "{{done}} / {{total}}",
+        bytes: "{{done}} / {{total}}",
+      },
       statusTitle: "Sync status",
       statusLabel: "Current state",
       lastSuccess: "Last successful run: {{date}}",

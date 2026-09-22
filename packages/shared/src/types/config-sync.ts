@@ -39,6 +39,40 @@ export type ConfigSyncRemoteMode = "strict" | "appendOnly";
 
 export type ConfigSyncCategorySelection = Record<ConfigSyncCategory, boolean>;
 
+/**
+ * The step a run is in. `capture` collects the local snapshot, `download` reads
+ * the remote revision's resources, `merge` reconciles both, `upload` writes the
+ * merged revision's resources, `apply` writes the result locally, and `cleanup`
+ * deletes revisions the retention window no longer keeps.
+ */
+export type ConfigSyncPhase =
+  | "capture"
+  | "download"
+  | "merge"
+  | "upload"
+  | "apply"
+  | "cleanup";
+
+/**
+ * What a running sync is doing, reported while it runs.
+ *
+ * The sync is a single request, so without these the interface has nothing to
+ * show between the click and the answer. `done`/`total` are that phase's units
+ * — objects for `download`/`upload` (the device tips being read, in append-only
+ * mode) and entities for `capture`/`merge`/`apply`, while `cleanup` reports the
+ * phase without counting it — and `total === 0` means the size of the phase is
+ * not known in advance. `bytesDone`/`bytesTotal` are a byte pair that only
+ * `upload` reports in full — `download` reports `bytesDone` alone, because a
+ * remote manifest names resources by id rather than by length — and
+ * `bytesTotal === 0` means the byte count is not known.
+ */
+export type ConfigSyncProgress = {
+  phase: ConfigSyncPhase;
+  done: number;
+  total: number;
+  bytesDone: number;
+  bytesTotal: number;
+};
 export type ConfigSyncPreferences = {
   endpoint: string;
   username: string;

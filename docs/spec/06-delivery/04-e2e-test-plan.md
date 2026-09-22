@@ -796,8 +796,13 @@ identify the platform validation still needed.
   defaults return. 5) Edit the OAuth account Advanced headers, save, then
   run a turn that refreshes the access token. 6) Repeat against OpenCode Go
   and confirm `x-opencode-session` is still present. 7) Repeat against
-  Codex/Anthropic OAuth inference. 8) Attempt `Authorization` and CR/LF
-  values; save is rejected.
+  Codex/Anthropic OAuth inference. 8) Enter a value holding fullwidth
+  characters (`０`, `１２３`) and confirm the editor says it will be saved as
+  half-width, then save and reopen: the stored value is ASCII. 9) Enter a value
+  holding Han text or a NUL and confirm the editor warns before saving, then
+  save: it is rejected as `HEADERS_INVALID` with the character and its index
+  named. 10) Point the app at a store whose row was written before this rule and
+  run a turn. 11) Attempt `Authorization` and CR/LF values; save is rejected.
 - **Expected**: Non-empty custom headers are the last writer on that row's
   outbound HTTP (turns, subagents, one-shots, discovery, connection test,
   OAuth refresh). Empty restores pi-ai / `claude-cli` / OpenCode defaults.
@@ -811,7 +816,11 @@ identify the platform validation still needed.
   OpenCode still sends
   `x-opencode-session` and `x-opencode-client`. Codex
   and Anthropic still send the custom User-Agent despite adapter last-writes.
-  First OAuth login does not collect headers. Reserved keys and CR/LF are
+  First OAuth login does not collect headers. A fullwidth value saves as
+  half-width and is folded again on read, so a row stored before this rule runs
+  a turn instead of throwing. A value holding Han text or a control character is
+  refused at save with the character and index named, and dropped by the runtime
+  rather than thrown by `Headers.set`. Reserved keys and CR/LF are
   rejected. Advanced is a compact key/value editor, not a lone User-Agent
   field.
 - **Specs linked**: `03-runtime/12-provider-config-schema.md`,

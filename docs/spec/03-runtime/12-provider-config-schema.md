@@ -255,7 +255,28 @@ OAuth token refresh. A fetch wrapper is the last writer so Codex and the
 Anthropic SDK cannot overwrite it. The same values are also placed on stream-
 option headers so OpenCode's caller-wins rule stays true. Keys are
 case-insensitive unique, at most 32 entries, name ≤ 256 bytes, value ≤ 4096
-bytes, no CR/LF, names alphanumeric plus hyphen. Reserved keys
+bytes, no CR/LF, names alphanumeric plus hyphen. Values are folded to
+half-width first — the fullwidth block (U+FF01–U+FF5E) and the ideographic
+space (U+3000) become their ASCII counterparts — then trimmed, then checked:
+HTAB, printable ASCII and the Latin-1 supplement may travel, while Han, emoji,
+curly quotes, NUL and every other control character are refused with
+`HEADERS_INVALID` naming the character and its index. Folding is what covers
+the case users actually hit: a fullwidth character is what an IME or a
+fullwidth-formatted page produces, and an unfixed value makes `Headers.set`
+throw `Cannot convert argument to a ByteString` mid-turn. A full NFKC pass is
+deliberately not used — it would rewrite halfwidth katakana into code points
+above U+00FF and produce combining marks. The Advanced editor also says, next
+to the rows, when a value will be folded and when it will be refused.
+
+The same rule is applied at three boundaries with three different failure
+modes, deliberately: **the editor's save** refuses an unusable row with the
+character and its index (`HEADERS_INVALID`), because a user is there to fix it;
+**a stored map** is folded on read and the unusable rows dropped, so a store
+written before the rule cannot fail a turn; and **a sync bundle** is folded and
+dropped before it is deserialized into a write input, so a row a peer on an
+older build (or a pre-rule backup) still carries cannot fail a whole revision.
+The read path and the sync path therefore agree, and only the interactive write
+reports an error. Reserved keys
 (`authorization`, `proxy-authorization`, `host`, `content-type`,
 `content-length`, `cookie`, `set-cookie`, `connection`, `transfer-encoding`,
 `te`, `trailer`, `upgrade`, `keep-alive`, `x-api-key`, `api-key`,
@@ -595,10 +616,17 @@ The canonical DDL lives in [04-data-storage](04-data-storage.md) (D086). Summary
 3. `apiStyle=opencode_go` requires the fixed OpenCode Go name and endpoint; clients must not accept overrides
 4. `authKind=none` forbidden for cloud presets that require keys
 5. headers keys are case-insensitive unique, at most 32 entries; names
-   alphanumeric plus hyphen; values trimmed, at most 4096 bytes, no CR/LF
+   alphanumeric plus hyphen; values folded from fullwidth to half-width, then
+   trimmed, at most 4096 bytes, no CR/LF, printable Latin-1 only — a character
+   above U+00FF or a control character is refused with the character and its
+   index named
 6. reserved header names (`authorization`, `host`, `content-type`,
    `x-api-key`, `x-opencode-session`, and the rest listed above) are rejected
-7. secretValue max length enforced (e.g. 8KB)
+7. secretValue max length enforced (e.g. 8KB); a fullwidth value folds to
+   half-width on write and on read, because the key is signed into an HTTP
+   header. A key that is still not Latin-1 is **not** refused: some auth kinds
+   do not put the key in a header (a query parameter, a SigV4 signature), so
+   the writer cannot know. Such a key keeps failing at request time.
 8. modelId must be non-empty trimmed string; allow `/`, `.`, `:`, `-`
 9. unknown protocol on older clients => provider shown disabled with warning, not crash
 10. Legacy `supportsReasoning`, when present, must still validate as boolean but

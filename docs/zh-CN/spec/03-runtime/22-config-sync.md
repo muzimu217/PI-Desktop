@@ -55,7 +55,7 @@ Host-core 持有 vault key、WebDAV 传输、修订状态、合并基线、待�
 `404 Not Found`。能力探测会在删除临时对象后记录所选 endpoint 的这一行为；后续读取只会将该
 endpoint 已观测到的状态视为对象不存在，其他非成功响应仍然报错。这不会放宽严格模式的条件写要求：忽略 `If-None-Match` 或 `If-Match` 的服务器，只有在用户选择追加式兼容模式且目录列表探测成功后，才支持双向同步。
 
-默认要求 HTTPS。设置页可显式确认 LAN HTTP 风险，但 Host 仅接受 localhost、`.local` 或私有／链路本地 IP；公网 HTTP 仍会被拒绝。redirect、endpoint userinfo、路径穿越、不安全远端名称、过大对象、weak ETag 和无界 KDF 参数都会被拒绝。
+默认要求 HTTPS。设置页可显式确认 LAN HTTP 风险，但 Host 仅接受 localhost、`.local` 或私有／链路本地 IP；公网 HTTP 仍会被拒绝。3xx 重定向会被拒绝且不会跟随；成功响应仍可以带 Location。endpoint userinfo、路径穿越、不安全远端名称、过大对象、weak ETag 和无界 KDF 参数都会被拒绝。所选端点下缺失的集合（含嵌套远程目录）会按顺序创建。已保存的 WebDAV 应用密码只对同一端点和账户复用。再次保存同步设置会保留已有的暂停状态。Host 错误使用稳定的 `CONFIG_SYNC_*` 代码，设置页据此给出恢复说明。
 
 ## 4. 合并与激活
 

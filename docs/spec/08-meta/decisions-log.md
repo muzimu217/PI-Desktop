@@ -6946,3 +6946,45 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - Only those three are converted. pi's collector reads nothing else, so `Grep`,
   `Glob`, `Bash`, plugin and MCP names keep the spelling we register, and the
   summarized text changes only where pi consumes the name.
+
+## 2026-09-22 — Provider header values fold fullwidth input instead of failing the turn (D621)
+
+- A custom provider header value holding a fullwidth character — `０` (U+FF10)
+  is what an IME or a fullwidth-formatted page gives for `0` — reached
+  `Headers.set` and made undici throw `TypeError: Cannot convert argument to a
+  ByteString because the character at index N has a value of X which is greater
+  than 255`. The request never left, the text named no field the user could fix,
+  and rows created before custom headers shipped could not show it: the same
+  configuration looked healthy on an older build.
+- Header values now fold the fullwidth block (U+FF01–U+FF5E) and the ideographic
+  space (U+3000) onto ASCII, then trim, then require HTAB, printable ASCII or the
+  Latin-1 supplement. A full NFKC pass is deliberately not used: it rewrites
+  halfwidth katakana into U+30A2 plus combining marks, which still cannot travel.
+  Host persistence refuses what remains with `HEADERS_INVALID` naming the
+  character and its index; the runtime drops that row instead of throwing, the
+  same way it already drops CR/LF and reserved keys.
+- The fold runs on read as well as on write, so a value stored before the rule
+  existed starts working after an upgrade rather than failing until the user
+  retypes it. Provider API keys fold on both sides too — a key is signed into
+  `Authorization` or `x-api-key`, where a fullwidth character can never be
+  correct — but a key is never refused at save, because some endpoints still
+  take it in a query parameter.
+- The Advanced header editor says next to the rows when a value will be folded
+  and when it will be refused, so the outcome does not arrive as a surprise
+  error. One rule, two engines: `packages/shared/src/header-value.ts` and its
+  Rust mirror in `crates/host-core/src/providers/validation.rs`. See
+  `03-runtime/12-provider-config-schema.md`, ADR 0178, E2E-005G.
+- The three boundaries where the rule runs fail differently on purpose, and the
+  difference is the point: the editor's save refuses an unusable row and names
+  the character, because a user is there to fix it; a stored map folds and drops
+  on read; and a sync bundle folds and drops before it is deserialized into a
+  write input, so a row a peer on an older build (or a pre-rule backup) still
+  carries cannot fail a whole revision. Without that third boundary the stricter
+  write turned one stale row into a permanently stuck sync — the read path would
+  have hidden it while the write path aborted on it.
+- Provider API keys fold on both sides too — a key is signed into `Authorization`
+  or `x-api-key`, where a fullwidth character can never be correct — but a key is
+  never refused at save, because some auth kinds do not put the key in a header
+  (a query parameter, a SigV4 signature). A key that is still not Latin-1 keeps
+  failing at request time; refusing it would block a save this writer cannot
+  judge.

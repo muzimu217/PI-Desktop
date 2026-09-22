@@ -120,9 +120,15 @@ HTTPS is required by default. The settings page may expose an explicit
 LAN-risk acknowledgement for HTTP, but Host accepts that exception only for
 localhost, `.local` names, or private/link-local IP addresses. Public HTTP
 endpoints remain rejected. The warning explains that HTTP does not protect
-WebDAV credentials in transit. Redirects, endpoint userinfo, path traversal,
-unsafe remote names, oversized objects, weak ETags, and unbounded KDF
-parameters are rejected.
+WebDAV credentials in transit. Redirect responses are rejected and are not
+followed; a success response may still carry a Location header. Endpoint
+userinfo, path traversal, unsafe remote names, oversized objects, weak ETags,
+and unbounded KDF parameters are rejected. Missing collections under the
+selected endpoint, including a nested remote directory, are created in order.
+A stored WebDAV app password is reused only for the same endpoint and account.
+Saving sync settings keeps a pause that was already set. Host errors use stable
+`CONFIG_SYNC_*` codes so the settings page can show a recovery action without
+treating the server text as the only message.
 
 ## 4. Merge and activation
 

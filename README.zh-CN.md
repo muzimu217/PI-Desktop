@@ -17,6 +17,7 @@
 [![Stars](https://img.shields.io/github/stars/vastsa/PI-Desktop?style=flat\&label=stars)](https://github.com/vastsa/PI-Desktop/stargazers)
 [![CI](https://github.com/vastsa/PI-Desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/vastsa/PI-Desktop/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/vastsa/PI-Desktop)](LICENSE)
+[![Discord](https://img.shields.io/badge/Discord-加入社区-5865F2?logo=discord\&logoColor=white)](https://discord.gg/VJZnf4p9c)
 
 <br />
 

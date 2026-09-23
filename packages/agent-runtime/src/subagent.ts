@@ -62,6 +62,7 @@ import {
   delegateSummaryModels,
   prepareDelegateTurnContext,
   subagentContextOverflowError,
+  type DelegateTurnUpdate,
 } from "./subagent-context.js";
 import {
   dedupeToolCallMessages,
@@ -284,6 +285,50 @@ export class SubagentRun {
     signal?.addEventListener("abort", onAbort, { once: true });
     let caughtError: ReturnType<typeof classifyAgentError> | undefined;
     try {
+      const initialTaskMessage: AgentMessage = {
+        role: "user",
+        content: this.opts.task,
+        timestamp: Date.now(),
+      };
+      const agentState = this.agent.state;
+      const preflightModel = agentState?.model ?? this.modelBinding().model;
+      const preflightMessages = (agentState?.messages ?? []).filter(
+        (message) => message.role !== "system",
+      );
+      const preflightSystemPrompt =
+        agentState?.systemPrompt ?? this.opts.systemPrompt;
+      const preflightTools = agentState?.tools ?? this.opts.tools;
+      const initialContext = await prepareDelegateTurnContext({
+        messages: preflightMessages,
+        additionalMessages: [initialTaskMessage],
+        model: preflightModel,
+        taskBrief: this.opts.task,
+        retentionMode: "active_turn",
+        summaryModels: () =>
+          delegateSummaryModels(
+            this.provider,
+            preflightModel,
+            this.opts.sessionId,
+          ),
+        systemPrompt: preflightSystemPrompt,
+        tools: preflightTools,
+        retainTaskBriefOnDegradation: false,
+        thinkingLevel: agentState?.thinkingLevel ?? this.thinkingLevel,
+        signal: this.runSignal(),
+      });
+      if (this.runSignal().aborted) {
+        return this.result("aborted", "The delegated task was aborted.");
+      }
+      if (initialContext.kind === "overflow") {
+        return this.result(
+          "failed",
+          "",
+          subagentContextOverflowError(this.provider.modelId),
+        );
+      }
+      if (initialContext.kind !== "unchanged") {
+        this.installContextOutcome(initialContext);
+      }
       await this.agent.prompt(this.opts.task);
       await this.agent.waitForIdle();
       while (!signal?.aborted) {
@@ -353,6 +398,25 @@ export class SubagentRun {
     }, this.retryState);
   }
 
+  private installContextOutcome(
+    outcome: Extract<DelegateTurnUpdate, { kind: "compacted" | "degraded" }>,
+  ): void {
+    const systemMessage = this.agent.state.messages.find(
+      (message) => message.role === "system",
+    );
+    this.agent.state.messages = [
+      ...(systemMessage ? [systemMessage] : []),
+      ...outcome.messages.filter((message) => message.role !== "system"),
+    ];
+    if (outcome.kind === "compacted") {
+      this.contextCompactions += 1;
+      const summaryUsage = usageFromPi(outcome.summaryUsage);
+      this.usage = addUsage(this.usage, summaryUsage);
+    } else {
+      this.contextDegraded = true;
+    }
+  }
+
   /**
    * Shape the delegate's next in-run turn, mirroring the session's
    * `prepareNextTurn` (ADR 0299, decisions 2-4). A compaction rewrites only
@@ -364,6 +428,8 @@ export class SubagentRun {
   ): Promise<AgentLoopTurnUpdate | undefined> {
     const outcome = await prepareDelegateTurnContext({
       messages: this.agent.state.messages,
+      systemPrompt: this.agent.state.systemPrompt,
+      tools: this.agent.state.tools,
       model: this.agent.state.model,
       taskBrief: this.opts.task,
       retentionMode: delegateRetentionMode(turn),
@@ -387,20 +453,7 @@ export class SubagentRun {
       );
       throw new Error(this.pendingContextOverflow.message);
     }
-    const systemMessage = this.agent.state.messages.find(
-      (message) => message.role === "system",
-    );
-    this.agent.state.messages = [
-      ...(systemMessage ? [systemMessage] : []),
-      ...outcome.messages.filter((message) => message.role !== "system"),
-    ];
-    if (outcome.kind === "compacted") {
-      this.contextCompactions += 1;
-      const summaryUsage = usageFromPi(outcome.summaryUsage);
-      this.usage = addUsage(this.usage, summaryUsage);
-    } else {
-      this.contextDegraded = true;
-    }
+    this.installContextOutcome(outcome);
     return {
       context: {
         // The loop owns its context array: pi appends every streamed assistant

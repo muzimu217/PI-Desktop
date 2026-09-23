@@ -55,6 +55,7 @@ import {
   IconTerminal,
   IconVideo,
   IconWrench,
+  IconX,
 } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
 
@@ -149,8 +150,14 @@ export function AssistantErrorMessage({ message }: { message: UiMessage }) {
   const detailsToggleRef = useRef<HTMLButtonElement | null>(null);
   const notifyDisclosureAnchor = useDisclosureAnchorNotifier();
   const detailsId = useId();
+  const dismissed = useAppStore(
+    (state) => state.dismissedAssistantErrorMessages[message.id] === true,
+  );
+  const dismissAssistantErrorMessage = useAppStore(
+    (state) => state.dismissAssistantErrorMessage,
+  );
   const error = message.error;
-  if (!error) return null;
+  if (!error || dismissed) return null;
   const networkDetails = error.details;
   const certificateFailure =
     error.code === "NETWORK_ERROR" &&
@@ -232,6 +239,15 @@ export function AssistantErrorMessage({ message }: { message: UiMessage }) {
               {t("errors.action.openSettings")}
             </button>
           ) : null}
+          <button
+            type="button"
+            className="message-error-dismiss"
+            aria-label={t("chat.dismissError")}
+            title={t("chat.dismissError")}
+            onClick={() => dismissAssistantErrorMessage(message.id)}
+          >
+            <IconX size={14} aria-hidden />
+          </button>
         </div>
       </div>
       <div

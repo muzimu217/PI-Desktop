@@ -126,6 +126,8 @@ export type AppState = {
   /** Latest user-selected session while its transcript/workspace is resolving. */
   selectingSessionId?: string;
   messages: UiMessage[];
+  /** Renderer-only visibility overrides; never persisted with transcript messages. */
+  dismissedAssistantErrorMessages: Record<string, true>;
   /** Session ids whose panes stay mounted, most recently visible first. */
   retainedSessionIds: string[];
   /** Last transcript each retained pane painted. */
@@ -238,6 +240,7 @@ export type AppState = {
   ) => Promise<boolean>;
   retryLastPrompt: () => Promise<void>;
   clearError: () => void;
+  dismissAssistantErrorMessage: (messageId: string) => void;
   activateMessageRevision: (rootUserId: string, revisionIndex: number) => Promise<void>;
   deleteMessage: (messageId: string) => Promise<void>;
   rollbackWorkspaceChange: (

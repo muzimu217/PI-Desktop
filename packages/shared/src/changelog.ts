@@ -2,6 +2,7 @@ import { deEntries } from "./changelog-de.js";
 import { esEntries } from "./changelog-es.js";
 import { frEntries } from "./changelog-fr.js";
 import { koEntries } from "./changelog-ko.js";
+import { ptBREntries } from "./changelog-pt-BR.js";
 import { trEntries } from "./changelog-tr.js";
 
 /**
@@ -16,7 +17,7 @@ import { trEntries } from "./changelog-tr.js";
  * Stable product versions only — omit pre-releases.
  */
 
-export type ChangelogLocale = "en" | "zh-CN" | "zh-TW" | "tr" | "de" | "es" | "fr" | "ko";
+export type ChangelogLocale = "en" | "zh-CN" | "zh-TW" | "tr" | "de" | "es" | "fr" | "ko" | "pt-BR";
 
 export type ChangelogEntry = {
   /** Semver without a leading `v`, matching apps/desktop package version. */
@@ -2474,6 +2475,7 @@ export const CHANGELOG: Record<ChangelogLocale, readonly ChangelogEntry[]> = {
   es: esEntries,
   fr: frEntries,
   ko: koEntries,
+  "pt-BR": ptBREntries,
 };
 
 /** Normalize `v0.2.7` / whitespace to the catalog key form. */
@@ -2507,6 +2509,7 @@ export function resolveChangelogLocale(
   if (value === "es" || value.startsWith("es-")) return "es";
   if (value === "fr" || value.startsWith("fr-")) return "fr";
   if (value === "ko" || value.startsWith("ko-")) return "ko";
+  if (value === "pt" || value.startsWith("pt-")) return "pt-BR";
   return "en";
 }
 

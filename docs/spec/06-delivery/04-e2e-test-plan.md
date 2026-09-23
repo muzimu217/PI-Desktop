@@ -1592,13 +1592,16 @@ identify the platform validation still needed.
 - **Steps**: 1) Type a draft, then choose edit on the queued row. 2) Clear the
   composer and choose edit again. 3) Confirm the queue no longer lists the row
   and the composer holds the row's text and its file-reference chip. 4) Send it
-  and compare the transcript with the original queued prompt.
+  and compare the transcript with the original queued prompt. 5) Queue an image
+  with a file, quit the app normally, reopen it, and edit the restored row.
+  Repeat with an image-only row and a text-only row; resend each edited draft.
 - **Expected**: With a non-empty input (or an attachment chip) the edit is
   refused with a visible message and the row stays queued. With an empty input
   the row leaves the queue, the Host no longer lists it, and the composer holds
   the exact text plus the original file-reference chip — not the
   serialized prompt the Host received. Re-sending produces the same prompt as the
-  queued row would have.
+  queued row would have. After restart, Host-stored content and all attachments
+  survive editing and resubmission even though the in-memory draft is gone.
 - **Specs linked**: `04-ux/08-component-spec.md` (§11), ADR 0265
 - **Acceptance**: C (chat, stream)
 - **Milestone**: M6+

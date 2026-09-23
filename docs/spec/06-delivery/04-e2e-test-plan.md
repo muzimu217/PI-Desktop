@@ -15083,3 +15083,26 @@ renderer's durable transcript reads. No real model or provider is contacted.
 `node --test apps/desktop/test/plugin-timeout-budgets.test.mjs`,
 `pnpm --filter @pi-desktop/shared test`, and
 `pnpm --filter @pi-desktop/host-runtime test`.
+
+## E2E-PROVIDER-endpoint-guidance-and-search
+
+- **Preconditions:** Isolated Electron/Chromium, production provider form,
+  synthetic provider responses; no live keys or services.
+- **Steps:** Open an existing DeepSeek, xAI and legacy OpenAI Completions entry.
+  Check search directly, cancel, reopen, check and save, reopen, uncheck and save.
+  Apply format advice on relay `/responses` and `/messages` operation URLs.
+- **Expected:** One service entry and one checkbox; no separate search preset or
+  interface-switch action. Save changes only the model opt-in, retaining URL,
+  format, name, key and other model settings; Cancel writes nothing. A selected
+  explicit format wins over hostname defaults. Relay advice preserves origin.
+- **Specs:** 03-runtime/12 endpoint guidance; 03-runtime/11 search setup guidance;
+  ADR 0297 official-route amendment.
+- **Acceptance:** English/Chinese interaction flows and the previous custom and
+  Codex account paths pass. Real adapter contracts verify opt-in request routes,
+  credentials and search tools. A DeepSeek conversation continues off/on/off,
+  retains prior text, and does not replay encrypted search blocks to Completions.
+- **Milestone:** Provider configuration maintenance.
+- **Status:** `pnpm test:e2e:provider-api-style` and
+  `official-native-search.test.ts`; shared route tests reject lookalike hosts,
+  unsafe URLs and unknown gateways. The UI fixture does not prove Host/SQLite
+  persistence or live provider availability.

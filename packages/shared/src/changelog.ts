@@ -33,6 +33,7 @@ const enEntries: ChangelogEntry[] = [
     version: "0.15.6",
     date: "2026-09-23",
     highlights: [
+      "Enable native search directly on existing DeepSeek, xAI and OpenAI services without changing their saved connection settings.",
       "Support GPT-6 Astra, Sol, and Luna across the OpenAI and ChatGPT/Codex model catalogs.",
     ],
   },
@@ -845,6 +846,7 @@ const zhCNEntries: ChangelogEntry[] = [
     version: "0.15.6",
     date: "2026-09-23",
     highlights: [
+      "在原有 DeepSeek、xAI 和 OpenAI 服务中直接开启原生搜索，无需切换入口或改写连接配置。",
       "支持 OpenAI 与 ChatGPT/Codex 模型目录中的 GPT-6 Astra、Sol 和 Luna。",
     ],
   },
@@ -1657,6 +1659,7 @@ const zhTWEntries: ChangelogEntry[] = [
     version: "0.15.6",
     date: "2026-09-23",
     highlights: [
+      "在原有 DeepSeek、xAI 和 OpenAI 服務中直接啟用原生搜尋，無須切換入口或改寫連線設定。",
       "支援 OpenAI 與 ChatGPT/Codex 模型目錄中的 GPT-6 Astra、Sol 與 Luna。",
     ],
   },

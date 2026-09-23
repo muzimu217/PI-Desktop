@@ -238,7 +238,8 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
     When enabled and the model resolves to `anthropic-messages`,
     `openai-responses`, `azure-openai-responses`, or
     `openai-codex-responses` (stored apiStyle `anthropic_messages`, `responses`,
-    or `openai_codex_responses`), the adapter attaches the provider's hosted
+    or `openai_codex_responses`, or a published official search route from
+    Chat Completions), the adapter attaches the provider's hosted
     search tool (`web_search_20250305` / `web_search`), extracts activity into
     `UiMessage.hostedSearch` (`rounds` for display, `replay` for convertMessages),
     and restores raw blocks on later turns including after restart (ADR 0297).
@@ -791,3 +792,15 @@ fix.
 - Automatic paid-plan discovery for every vendor portal
 - Proprietary non-HTTP SDKs without pi-ai support
 - Cloud-synced provider profiles
+
+### Search setup guidance
+
+The search checkbox uses the same request-only transport resolver as the
+runtime. An opted-in official DeepSeek, xAI or legacy OpenAI Chat Completions
+model can use its published search interface without another service entry or
+changes to stored connection settings. Other models and search-off requests
+keep their configured transport. Search is off by default. Known routes match
+exact origins and paths, never display names or model substrings.
+The resolved adapter remains authoritative for search extraction and replay.
+Unknown connection formats are described as not integrated by this app rather
+than unsupported by the vendor. See the provider configuration specification.

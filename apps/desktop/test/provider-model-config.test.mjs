@@ -8,9 +8,14 @@
  * came back, and the user picks from that live list.
  */
 import assert from "node:assert/strict";
+import { register } from "node:module";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadStyles } from "./helpers/styles.mjs";
+
+register(new URL("./helpers/ts-import-hooks.mjs", import.meta.url));
+const { normalizeApiStyle } = await import("@pi-desktop/shared");
+const { normalizeBaseUrlInput } = await import("../src/components/settings/provider-endpoint-guidance.ts");
 
 const read = (rel) => readFile(new URL(rel, import.meta.url), "utf8");
 
@@ -98,7 +103,12 @@ test("custom API format is a common-path choice, named services skip it", () => 
 
 test("editing a provider with an unknown persisted API style stays renderable", () => {
   assert.match(setupSource, /normalizeApiStyle\(provider\?\.apiStyle\)/);
-  assert.match(setupSource, /default:\s*return \["\/chat\/completions", "\/models"\]/);
+  const style = normalizeApiStyle("future_api_format");
+  assert.equal(style, "chat_completions");
+  assert.equal(
+    normalizeBaseUrlInput("https://relay.example/v1/chat/completions", style),
+    "https://relay.example/v1",
+  );
 });
 
 test("both credential kinds share one live list and one binding shape", () => {

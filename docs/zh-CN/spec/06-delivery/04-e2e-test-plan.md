@@ -8882,3 +8882,19 @@ the latest destination. These assertions measure work counts, not device FPS.
 `node --test apps/desktop/test/session-transcript-empty-read.test.mjs`、
 `node --test apps/desktop/test/plugin-timeout-budgets.test.mjs`、
 `pnpm --filter @pi-desktop/shared test`、`pnpm --filter @pi-desktop/host-runtime test`。
+
+## E2E-PROVIDER-endpoint-guidance-and-search
+
+- **前提：** 隔离 Electron/Chromium、真实配置表单、合成响应，无真实密钥或服务。
+- **步骤：** 打开已有 DeepSeek、xAI、旧 OpenAI 服务，直接勾选搜索、取消、重开、
+  勾选并保存、重开后取消勾选并保存；应用中转站完整请求地址的格式建议。
+- **预期：** 一个服务入口、一个搜索开关；没有额外搜索预设或切换接口按钮。
+  只保存模型搜索选项，地址、协议、名称、密钥及其他模型配置保持不变；取消不写入。
+  已保存格式优先于域名预设，中转站建议不改变来源。
+- **规格：** 03-runtime/12、03-runtime/11、ADR 0297 官方路由修订。
+- **验收：** 中英文及原有自定义/OAuth 路径通过；真实适配器验证开关控制的请求路径、
+  凭据和工具。DeepSeek 同一会话关闭→开启→关闭搜索后仍能继续，保留文本，
+  不向 Completions 重放搜索加密数据。
+- **里程碑：** 提供商配置维护。
+- **状态：** `pnpm test:e2e:provider-api-style`、`official-native-search.test.ts`；
+  共享路由测试覆盖伪装域名、不安全地址和未知中转站。未验证线上服务或 Host/SQLite 保存。

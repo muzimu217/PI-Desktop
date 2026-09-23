@@ -277,10 +277,9 @@ export function ModelSelectionPanes({
     if (models.length === 0) setChosenQuery("");
   }, [models.length]);
 
-  // The hosted web search tool only exists on two wires; on any other
-  // style the opt-in cannot work, so the checkbox stays present but disabled
-  // with an explanatory hint instead of silently doing nothing.
-  const nativeWebSearchWireCapable = nativeWebSearchSupportedOn(apiStyle);
+  // Use the same published endpoint routing as the runtime. A disabled control
+  // means this connection is not integrated, not that the vendor cannot search.
+  const nativeWebSearchWireCapable = nativeWebSearchSupportedOn(apiStyle, lookupContext?.baseUrl);
 
   /**
    * The chosen list narrows with the discovered list's rule plus the binding's

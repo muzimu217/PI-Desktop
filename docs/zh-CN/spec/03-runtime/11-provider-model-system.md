@@ -212,7 +212,7 @@ PI-Desktop 不得把用户永久限制在一份简短的固定模型列表上。
     因此没有目录默认值）。启用后，当模型解析到 `anthropic-messages`、
     `openai-responses`、`azure-openai-responses` 或 `openai-codex-responses`
     （存储的 apiStyle 为 `anthropic_messages`、`responses` 或
-    `openai_codex_responses`）时，适配器附加提供商托管搜索工具
+    `openai_codex_responses`，或从 Chat Completions 解析到已确认的官方搜索路径）时，适配器附加提供商托管搜索工具
     （`web_search_20250305` / `web_search`），将活动写入
     `UiMessage.hostedSearch`，并在后续回合（含重启后）回放原始数据（ADR 0297）。
     OpenAI OAuth 使用独立的 Codex Responses 适配器和 ChatGPT 订阅端点，不是公开的
@@ -681,3 +681,11 @@ OpenAI Responses 适配器必须把 `response.completed`（以及
 已知目标模型时，估算遵守该适配器既有的模型切换回放边界。压缩序列化把搜索投影传入摘要请求，
 不伪装成客户端工具调用。被压缩前缀转为生成的文本摘要；保留尾部中的原始搜索仍按既有规则回放，
 不承诺摘要无损保留原始搜索块。
+
+### 搜索配置引导
+
+搜索开关与运行时共用请求路由判断。官方 DeepSeek、xAI 和旧 OpenAI Chat Completions
+配置开启搜索后，内部使用已确认的搜索接口，不增加第二个服务，不改写连接设置。
+其他模型及关闭搜索的请求继续使用原协议，搜索默认关闭。路由只匹配精确来源和路径，
+不根据展示名称或模型名推断。最终适配器继续负责搜索解析和历史回放。
+未集成格式显示“应用尚未适配”，不冒充厂商能力结论。详见提供商配置规格。

@@ -33,6 +33,7 @@ import {
   OPENCODE_GO_BASE_URL,
   resolveApiStyle,
   resolveNativeWebSearch,
+  nativeWebSearchTransport,
   deepseekRequestCompat,
   zhipuRequestCompat,
   type ThinkingLevel,
@@ -160,7 +161,16 @@ export function providerRequestKey(provider: RuntimeProviderConfig): string {
  * wrong adapter (the gateway answers 500, see #105).
  */
 export function apiBindingForProviderModel(provider: RuntimeProviderConfig): ApiBinding {
-  return apiBindingForStyle(resolveApiStyle(provider.modelConfig?.api) ?? provider.apiStyle);
+  return apiBindingForStyle(providerRequestTransport(provider).apiStyle);
+}
+
+function providerRequestTransport(provider: RuntimeProviderConfig) {
+  const apiStyle = resolveApiStyle(provider.modelConfig?.api) ?? provider.apiStyle;
+  return nativeWebSearchTransport({
+    apiStyle,
+    baseUrl: provider.baseUrl ?? provider.modelConfig?.baseUrl ?? apiBindingForStyle(apiStyle).defaultBaseUrl,
+    enabled: provider.modelConfig?.webSearch === true,
+  });
 }
 
 /**
@@ -223,7 +233,7 @@ export function buildProviderModel(
     : genericModelConfig(provider.modelId, provider.baseUrl ?? binding.defaultBaseUrl);
   const baseUrl = runtimeBaseUrlForApi(
     binding.api,
-    provider.baseUrl ?? catalog?.baseUrl ?? binding.defaultBaseUrl,
+    providerRequestTransport(provider).baseUrl ?? binding.defaultBaseUrl,
   );
   const zhipuCompat = zhipuRequestCompat({
     vendorKey: provider.vendorKey,
@@ -290,7 +300,7 @@ export function createProviderModels(
     createProvider({
       id: provider.id,
       name: provider.name,
-      baseUrl: provider.baseUrl,
+      baseUrl: model.baseUrl,
       auth: {
         apiKey: {
           name: `${provider.name} API key`,

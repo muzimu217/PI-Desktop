@@ -5,6 +5,7 @@ export const ptBREntries: ChangelogEntry[] = [
     "version": "0.15.6",
     "date": "2026-09-23",
     "highlights": [
+      "Ative a pesquisa nativa diretamente nos serviços DeepSeek, xAI e OpenAI existentes sem alterar as configurações de conexão salvas.",
       "Adiciona suporte a GPT-6 Astra, Sol e Luna aos catálogos de modelos da OpenAI e do ChatGPT/Codex.",
     ],
   },

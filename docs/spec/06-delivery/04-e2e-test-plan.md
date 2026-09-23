@@ -3511,7 +3511,11 @@ identify the platform validation still needed.
   a URL preview, and a completed Bash row. 3) Verify the header is a tablist:
   open enough tabs to overflow it, confirm only the strip scrolls and the `+`
   trigger stays visible, activate the scrolled-away tab, and close tabs with
-  hover/focus `×` and middle-click. 4) Click `+` twice and verify each click
+  hover/focus `×` and middle-click. Drag a tab across another tab and verify
+  the before/after drop indicator, resulting order, and unchanged active tab;
+  hold a drag at each strip edge until hidden tabs scroll into view, then verify
+  the indicator follows the newly visible targets. Repeat with
+  `Alt+ArrowLeft`/`Alt+ArrowRight`. 4) Click `+` twice and verify each click
   creates and activates a separate New launcher tab. Confirm the launcher body
   contains Review plus each in-scope plugin view exactly once as clickable rows;
   there is no work-panel dropdown or popup. Click Browser from one New tab and
@@ -3559,9 +3563,13 @@ identify the platform validation still needed.
   fixed `+`; labels stay readable instead of shrinking into one cluster, the
   strip alone scrolls, active tabs scroll into view, and close selects the
   right neighbor then left. New launcher tabs expose Review and in-scope plugin
-  views as body buttons, with no popup to overlap or shift the panel. Clicking a
-  launcher row replaces that New tab with the destination or activates its
-  existing singleton. Closing the last tab leaves the panel open on New. Collapse
+  views as body buttons, with no popup to overlap or shift the panel. Dragging a
+  tab shows a before/after insertion indicator, edge-holding scrolls the strip
+  toward hidden tabs, and reorders only the tab array; the active resource stays
+  active. `Alt+ArrowLeft`/`Alt+ArrowRight` provides the same reorder path from
+  the focused tab. Clicking a launcher row replaces
+  that New tab with the destination or activates its existing singleton.
+  Closing the last tab leaves the panel open on New. Collapse
   retains runtime tabs but hides the panel until another artifact reopens it.
   Width follows the shared three-column budget with no fixed pixel cap and
   previews its current/minimum/maximum values through the panel separator. The

@@ -31,6 +31,7 @@ import { registerWindowIpc } from "./window-ipc";
 import { createComposerTemplateLoader, registerWorkspaceIpc } from "./workspace-ipc";
 import { registerComposerIpc } from "./composer-ipc";
 import { registerSpeechIpc } from "./speech-ipc";
+import { registerVoiceIpc } from "./voice-ipc";
 import type { IpcRegistrar } from "./types";
 import type { createTraySessions } from "../tray-sessions";
 
@@ -102,6 +103,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     currentNetworkProxy,
     applyApplicationMenuSettings,
     applyDeveloperMode,
+    applyPreventScreenSleep,
     resolveEffectiveCommandShell,
     modelsDevCatalog,
     vendorOAuth,
@@ -153,6 +155,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     getPluginPanelTheme,
     isDeveloperMode,
     sendToRenderer,
+    voiceService,
   } = dependencies;
 
 
@@ -258,6 +261,7 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
     currentNetworkProxy,
     applyApplicationMenuSettings,
     applyDeveloperMode,
+    applyPreventScreenSleep,
     resolveEffectiveCommandShell,
   });
   registerConfigSyncIpc({
@@ -446,6 +450,10 @@ export function registerIpcHandlers(dependencies: RegisterIpcDependencies) {
   });
 
   registerSpeechIpc({ registrar, speech });
+
+  if (voiceService) {
+    registerVoiceIpc({ registrar, voiceService });
+  }
 
   registerRemoteHostIpc({ registrar });
 

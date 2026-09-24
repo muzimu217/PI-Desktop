@@ -17,7 +17,7 @@ import {
   APP_ID,
   APP_NAME,
   APP_VERSION,
-  ErrorCodes as SharedErrorCodes,
+  ErrorCodes,
   IPC,
   IPC_WHITELIST,
   KEYBOARD_SHORTCUTS,
@@ -114,6 +114,7 @@ import { registerWindowIpc } from "./ipc/window-ipc";
 import { registerPullsIpc } from "./ipc/pulls-ipc";
 import { registerAgentIpc } from "./ipc/agent-ipc";
 import { registerIpcHandlers } from "./ipc/register";
+import { createVoiceService } from "./voice-service";
 import {
   type WindowLifecycleState,
 } from "./bootstrap/window";
@@ -158,16 +159,6 @@ import { registerPluginUiIpc } from "./ipc/plugin-ui-ipc";
 import { registerSkillsIpc } from "./ipc/skills-ipc";
 import { stripWinLongPrefix } from "./path-utils";
 
-// The shared error-code union is reconciled in the shared lane. Keep desktop
-// source type-safe while that lane is temporarily staged at main.
-const ErrorCodes = {
-  ...SharedErrorCodes,
-  COMMAND_SHELL_INVALID: "COMMAND_SHELL_INVALID",
-  SHELL_NOT_FOUND: "SHELL_NOT_FOUND",
-  PLAN_EXECUTION_INTERRUPTED: "PLAN_EXECUTION_INTERRUPTED",
-  PLAN_PERMISSION_MODE_REQUIRED: "PLAN_PERMISSION_MODE_REQUIRED",
-} as const;
-
 // A closed stdout/stderr (Linux AppImage, GUI launch without a TTY) must not
 // surface as Electron's "Uncaught Exception: write EPIPE" dialog. The same
 // default dialog must not appear for a stray uncaughtException (non-ASCII
@@ -183,6 +174,15 @@ applyDevelopmentUserData(app, isDevelopmentBuild);
 if (process.platform === "win32") {
   app.setAppUserModelId(APP_ID);
 }
+
+// Chromium's accessibility tree serializer has a known CHECK failure in
+// AXBlockFlowData::ComputeNeighborOnLine (chromium #552018997) that kills
+// the renderer when an AT client reads the tree while the DOM is being
+// mutated — exactly what happens during streaming agent responses.
+// The switch prevents Chromium from building the in-renderer accessibility
+// tree unless the user explicitly opts in via --force-renderer-accessibility.
+// This is a workaround until the upstream fix lands.
+app.commandLine.appendSwitch("disable-renderer-accessibility");
 
 // One installation, one process. The lock lives in `userData` (set just
 // above), so it is taken after `setName` and before anything else here
@@ -947,6 +947,7 @@ const {
   executeNativeMenuAction,
   dispatchNativeMenuAction,
   applyDeveloperMode,
+  applyPreventScreenSleep,
   applyNativeThemeSource,
   applyApplicationMenuSettings,
   applyAppThemePreference,
@@ -1246,6 +1247,8 @@ runtimeLifecycle = createRuntimeLifecycle({
 });
 const { bootHostStatus, runtimeArch, bootBackends } = runtimeLifecycle;
 
+const voiceService = createVoiceService(dataDir + "/voice-models", () => mainWindow);
+
 function registerIpc() {
   return registerIpcHandlers({
     traySessions: applicationLifecycle!.traySessions,
@@ -1282,6 +1285,7 @@ function registerIpc() {
     currentNetworkProxy,
     applyApplicationMenuSettings,
     applyDeveloperMode,
+    applyPreventScreenSleep,
     resolveEffectiveCommandShell,
     modelsDevCatalog,
     vendorOAuth,
@@ -1337,6 +1341,7 @@ function registerIpc() {
     getPluginPanelTheme: () => pluginPanelTheme,
     isDeveloperMode: () => developerMode,
     sendToRenderer,
+    voiceService,
   });
 }
 
@@ -1408,6 +1413,7 @@ registerApplicationStartup({
   planUiProbe,
   applyApplicationMenuSettings,
   applyDeveloperMode,
+  applyPreventScreenSleep,
   applyPluginLauncherShortcut,
   applyToggleWindowShortcut,
   ensureWindow,

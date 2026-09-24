@@ -453,14 +453,14 @@ export const AssistantTurn = memo(function AssistantTurn({
  * turn item: a divider that says the earlier turns above it are now a summary.
  * It carries no actions — nothing about a persisted checkpoint is undoable.
  */
-export function CompactionRow({ mark }: { mark: ContextCompactionMark }) {
+export function CompactionRow({ mark }: { mark: ContextCompactionMark & { summary?: string } }) {
   const { t } = useTranslation();
   return (
     <div className="transcript-compaction-row" role="separator">
       <span className="transcript-compaction-label">
         {t("chat.compactionRow", { times: mark.generation })}
       </span>
-      <span className="transcript-compaction-detail">
+      <span className="transcript-compaction-detail" title={mark.summarized && !mark.fallback && mark.summary?.trim() ? mark.summary : undefined}>
         {mark.fallback
           ? t("chat.compactionRowSummaryFailed")
           : mark.summarized

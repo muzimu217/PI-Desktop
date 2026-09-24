@@ -885,6 +885,7 @@ sklm: {
     shortcutDisable: "{{action}} kısayolunu kapat",
     voice: "Ses",
     voiceEnable: "Sesli girişi etkinleştir",
+    voiceExperimental: "Deneysel",
     voiceMicrophone: "Mikrofon",
     voiceSystemDefault: "Sistem varsayılanı",
     voiceLanguages: "Diller",

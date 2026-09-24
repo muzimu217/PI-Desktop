@@ -895,6 +895,7 @@ sklm: {
     shortcutDisable: "{{action}} 단축키 비활성화",
     voice: "음성",
     voiceEnable: "음성 입력 활성화",
+    voiceExperimental: "실험적",
     voiceMicrophone: "마이크",
     voiceSystemDefault: "시스템 기본값",
     voiceLanguages: "언어",

@@ -736,6 +736,7 @@ sklm: {
     shortcutDisable: "Disable shortcut for {{action}}",
     voice: "Voice",
     voiceEnable: "Enable voice input",
+    voiceExperimental: "Experimental",
     voiceMicrophone: "Microphone",
     voiceSystemDefault: "System Default",
     voiceLanguages: "Languages",

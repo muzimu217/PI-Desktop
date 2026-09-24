@@ -58,6 +58,7 @@ import {
   RAIN_SPAWN_GUARD,
   RESIZE_DEBOUNCE_MS,
   SERIF_FONT_STACK,
+  TEXT_FONT_STACK,
   SIMULATION_STEP_SECONDS,
   SPARK_DELAY_RANGE_MS,
   SPARK_DISTANCE_MIN,
@@ -899,6 +900,22 @@ export function createMidAutumnEggScene(
     cakeImage = loadImage(options.cakeImageUrl, done);
   }
 
+  /**
+   * Wait for the Chinese font used by `sampleTextPoints` so the first open
+   * samples the correct glyphs instead of a fallback font's metrics.
+   *
+   * Uses the Font Loading API (widely supported). Falls back to a short
+   * timeout when the API is unavailable so the animation never hangs.
+   */
+  function ensureTextFont(onReady: () => void): void {
+    const font = `bold 48px ${TEXT_FONT_STACK}`;
+    if (typeof document.fonts?.load === "function") {
+      document.fonts.load(font, config.text).then(onReady, onReady);
+    } else {
+      onReady();
+    }
+  }
+
   function releaseImages(): void {
     for (const image of [moonImage, cakeImage]) {
       if (!image) continue;
@@ -917,7 +934,11 @@ export function createMidAutumnEggScene(
     window.addEventListener("orientationchange", onOrientationChange);
     setup();
 
-    loadImages(() => {
+    // Wait for both images and the text font before starting the animation.
+    // Without the font the first-open text sampling produces incomplete glyphs.
+    let pending = 2;
+    const onAssetReady = (): void => {
+      if (--pending > 0) return;
       if (destroyed) return;
       if (cakeImage) buildCakeSprite();
       reset();
@@ -931,7 +952,9 @@ export function createMidAutumnEggScene(
         return;
       }
       frameId = window.requestAnimationFrame(loop);
-    });
+    };
+    loadImages(onAssetReady);
+    ensureTextFont(onAssetReady);
   }
 
   function destroy(): void {

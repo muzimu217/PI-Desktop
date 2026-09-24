@@ -872,6 +872,7 @@ sklm: {
     shortcutDisable: "停用“{{action}}”快捷鍵",
     voice: "語音",
     voiceEnable: "啟用語音輸入",
+    voiceExperimental: "實驗性",
     voiceMicrophone: "麥克風",
     voiceSystemDefault: "系統預設",
     voiceLanguages: "語言",

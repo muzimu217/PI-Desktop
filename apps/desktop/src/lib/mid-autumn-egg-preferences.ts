@@ -1,4 +1,4 @@
-const MID_AUTUMN_EGG_SEEN_STORAGE_KEY = "pi.desktop.midAutumnEggSeen";
+const MID_AUTUMN_EGG_SEEN_STORAGE_KEY = "pi.desktop.midAutumnEggSeen.v2";
 
 function storage(): Storage | null {
   try {

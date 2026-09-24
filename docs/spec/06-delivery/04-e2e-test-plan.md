@@ -174,6 +174,22 @@
   General.
 - **Status:** Documented; run after integration into main.
 
+
+### E2E-SHELL-mid-autumn-egg-first-open
+
+- **Preconditions:** A profile whose renderer storage has never recorded the
+  Mid-Autumn egg (`pi.desktop.midAutumnEggSeen` unset).
+- **Steps:** Launch the app and watch the startup splash; after the shell is
+  ready close the egg with its top-right close button, relaunch and confirm no
+  automatic playback, then open Settings → Info and activate the Mid-Autumn
+  egg row.
+- **Expected:** The automatic egg appears only once the startup splash has
+  finished; it never covers or delays the splash and never appears while the
+  app is still loading. It fills the window, exposes an obvious top-right
+  close button, and both that button and Escape dismiss it and restore focus
+  to the app. Settings → Info shows the Easter eggs card, and its row replays
+  the same animation on demand regardless of the seen flag.
+- **Status:** Documented; run after integration into main.
 - Document every user-visible and protocol-visible behavior that MVP must verify.
 - Provide a scenario catalog that maps to acceptance criteria (A–H) and milestones (M1–M6).
 - Serve as the traceability backbone: scenario ID ↔ acceptance criterion ↔ spec.
@@ -6211,15 +6227,19 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Covers**: C, Quality / floating composer and retry surfaces
 - **Preconditions**: Renderer CSS is the production source under `apps/desktop/src/styles`.
 - **Steps**:
-  1. Inspect the computed background of `.composer-dock-docked` in both built-in themes and a custom theme.
-  2. Scroll a long transcript until a row passes beneath the floating Composer.
+  1. Inspect the computed background of `.composer-dock-docked` (fully transparent) and the `.thread-scroll` mask with two different `--composer-dock-height` values, in both built-in themes and a custom theme.
+  2. Scroll a long transcript until a row crosses the Composer boundary.
   3. Inspect `.plan-approval-bar` in the composer dock styles.
   4. Inspect `.run-activity-error-popover.message-error` in the transcript styles.
   5. Hover or focus a retrying active-turn row in a live session.
 - **Expected**:
-  - The dock paints the opaque `--ds-bg-primary` workspace surface across its
-    full width. Transcript text disappears at the Composer boundary and cannot
-    remain visible below the shell or around its rounded corners.
+  - The dock paints no backing surface. Transcript text fades out across the
+    `.thread-scroll` mask at the Composer boundary and cannot remain visible
+    below the shell or around its rounded corners. The mask's two stops sit
+    `--composer-dock-height + 16px` and `--composer-dock-height - 2px` above the
+    scrollport's bottom edge, so a transcript pinned to its end keeps its last
+    row fully opaque and the conversation pane's own surface - including a
+    contributed theme's background - stays visible behind the dock.
   - The Plan/Goal approval bar paints `--ds-bg-composer` with `--ds-shadow-composer` rather than the in-flow `--ds-tile` wash, so it remains a readable plate over the transparent composer dock.
   - The retry hover tooltip mixes the error tint over `--ds-bg-elevated-opaque`, so transcript text does not show through.
   - The retry tooltip is capped to the room above the tail status row and

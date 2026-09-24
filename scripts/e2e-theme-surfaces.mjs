@@ -50,6 +50,15 @@ app.whenReady().then(async () => {
     await window.webContents.debugger.sendCommand("Emulation.setFocusEmulationEnabled", { enabled: true });
     window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Tab" });
     window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Tab" });
+    // Input delivery is asynchronous. Wait for the keyboard focus seed before
+    // the probe blurs it; otherwise Tab can land during the first paint sample.
+    await window.webContents.executeJavaScript(
+      "new Promise((resolve) => {" +
+      "const target = document.querySelector('.settings-search');" +
+      "if (document.activeElement === target) resolve();" +
+      "else target.addEventListener('focus', () => resolve(), { once: true });" +
+      "})"
+    );
     const checks = [];
     for (const theme of ["light", "dark"]) {
       for (const custom of [false, true, false]) {

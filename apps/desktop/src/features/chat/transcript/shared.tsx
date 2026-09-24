@@ -70,6 +70,50 @@ export function useMessageRevealRequest(messageId: string) {
     : undefined;
 }
 
+
+/**
+ * Format a message timestamp for the toolbar.
+ * Today → HH:mm:ss; other days → YYYY-MM-DD HH:mm:ss.
+ */
+function formatMessageTime(iso: string, locale: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date();
+  const isToday =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  if (isToday) {
+    return date.toLocaleTimeString(locale, {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+  }
+  return date.toLocaleString(locale, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
+export function MessageTimestamp({ createdAt }: { createdAt?: string }) {
+  const { i18n } = useTranslation();
+  if (!createdAt) return null;
+  const display = formatMessageTime(createdAt, i18n.language);
+  if (!display) return null;
+  return (
+    <span className="message-timestamp" title={createdAt}>
+      {display}
+    </span>
+  );
+}
+
 export function CopyButton({
   text,
   label,

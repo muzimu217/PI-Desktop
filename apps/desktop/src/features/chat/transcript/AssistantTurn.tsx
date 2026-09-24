@@ -41,6 +41,7 @@ import {
   AssistantErrorMessage,
   CopyButton,
   MessageMeta,
+  MessageTimestamp,
 } from "./shared";
 import { activityItemsEqual, ActivityGroup } from "./ActivityGroup";
 import { GeneratedImages } from "./GeneratedImages";
@@ -422,6 +423,7 @@ export const AssistantTurn = memo(function AssistantTurn({
         ) : null}
         {complete && actionMessage ? (
           <div className="message-actions">
+            <MessageTimestamp createdAt={actionMessage.createdAt} />
             <CopyButton text={content} label={t("chat.copy")} />
             <TooltipButton
               className="copy-btn icon"

@@ -26,6 +26,7 @@ import {
   FileRefChip,
   LinkifiedText,
   MessageAttachmentImage,
+  MessageTimestamp,
 } from "./shared";
 import {
   useChatTextActions,
@@ -272,6 +273,7 @@ export const MessageRow = memo(function MessageRow({
         ) : null}
         {!editing && (hasAnswer || showRevisionPager) ? (
           <div className="message-actions">
+            <MessageTimestamp createdAt={message.createdAt} />
             {showRevisionPager ? (
               <div className="message-revision-pager" role="group" aria-label={t("chat.revisions")}>
                 <TooltipButton

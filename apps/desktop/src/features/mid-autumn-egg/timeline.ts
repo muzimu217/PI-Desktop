@@ -34,7 +34,7 @@ export type MidAutumnEggConfig = {
 
 /** The configuration the standalone animation was verified with. */
 export const DEFAULT_MID_AUTUMN_EGG_CONFIG: MidAutumnEggConfig = {
-  duration: 5.0,
+  duration: 2.5,
   moonSpeed: 1.5,
   skyAlpha: 0.9,
   cakes: 520,
@@ -98,11 +98,11 @@ export function createMidAutumnEggPhases(
 ): MidAutumnEggPhases {
   const rise = config.duration * 0.21 * config.moonSpeed;
   const hold = 0.25;
-  const rainStart = rise + hold;
-  const spawnDuration = 1.2;
+  const rainStart = 0;
+  const spawnDuration = 0.8;
   const flyStart = rainStart + 2.2;
   const flyStagger = 0.5;
-  const flyDuration = 0.8;
+  const flyDuration = 0.6;
   return {
     rise,
     hold,
@@ -115,7 +115,7 @@ export function createMidAutumnEggPhases(
     done: flyStart + flyStagger + flyDuration,
     poemStart: rainStart + 3.15,
     poemFade: 0.75,
-    skyIn: 0.9,
+    skyIn: 0.3,
     rainRate: config.cakes / spawnDuration,
   };
 }

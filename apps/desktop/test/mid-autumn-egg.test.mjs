@@ -47,8 +47,8 @@ test("a slow moon does not change the mooncake rain rhythm", () => {
 
   // The moon rise is the only phase that scales.
   assert.equal(slowed.rise, baseline.rise * DEFAULT_MID_AUTUMN_EGG_CONFIG.moonSpeed);
-  assert.equal(slowed.rise.toFixed(3), "1.575");
-  assert.equal(baseline.rise.toFixed(3), "1.050");
+  assert.equal(slowed.rise.toFixed(3), "0.788");
+  assert.equal(baseline.rise.toFixed(3), "0.525");
 
   assert.equal(slowed.spawnDuration, baseline.spawnDuration);
   assert.equal(slowed.flyStagger, baseline.flyStagger);
@@ -59,26 +59,26 @@ test("a slow moon does not change the mooncake rain rhythm", () => {
   );
   assert.equal(slowed.flyDuration, baseline.flyDuration);
   assert.equal(slowed.poemFade, baseline.poemFade);
+  // rainStart = 0 (fixed), so changing moonSpeed does not shift the rain start.
   assert.equal(
-    Number((slowed.rainStart - baseline.rainStart).toFixed(3)),
-    Number((slowed.rise - baseline.rise).toFixed(3)),
+    slowed.rainStart - baseline.rainStart,
+    0,
   );
 });
 
 test("the phases keep the hand-tuned absolute timeline", () => {
   const phases = createMidAutumnEggPhases(DEFAULT_MID_AUTUMN_EGG_CONFIG);
 
-  assert.equal(phases.hold, 0.25);
-  assert.equal(phases.rainStart.toFixed(3), "1.825");
-  assert.equal(phases.spawnDuration.toFixed(3), "1.200");
-  assert.equal(phases.rainEnd.toFixed(3), "3.575");
-  assert.equal(phases.flyStart.toFixed(3), "4.025");
-  assert.equal(phases.done.toFixed(3), "5.325");
-  assert.equal(phases.poemStart.toFixed(3), "4.975");
-  assert.equal(phases.skyIn, 0.9);
+  assert.equal(phases.rainStart.toFixed(3), "0.000");
+  assert.equal(phases.spawnDuration.toFixed(3), "0.800");
+  assert.equal(phases.rainEnd.toFixed(3), "1.750");
+  assert.equal(phases.flyStart.toFixed(3), "2.200");
+  assert.equal(phases.done.toFixed(3), "3.300");
+  assert.equal(phases.poemStart.toFixed(3), "3.150");
+  assert.equal(phases.skyIn, 0.3);
 
   // All 520 mooncakes are spawned inside the spawn window.
-  assert.equal(phases.rainRate.toFixed(3), (DEFAULT_MID_AUTUMN_EGG_CONFIG.cakes / 1.2).toFixed(3));
+  assert.equal(phases.rainRate.toFixed(3), (DEFAULT_MID_AUTUMN_EGG_CONFIG.cakes / 0.8).toFixed(3));
 
   // The text is assembled after the rain has landed, and the poem follows it.
   assert.ok(phases.spawnDuration < phases.rainEnd - phases.rainStart);

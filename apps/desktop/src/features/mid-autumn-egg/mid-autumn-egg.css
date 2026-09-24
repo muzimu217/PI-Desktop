@@ -15,7 +15,7 @@
   padding: 0;
   overflow: hidden;
   isolation: isolate;
-  background: var(--ds-bg-under);
+  background: var(--mid-autumn-egg-sky, #02040f);
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "SF Pro Display", "PingFang SC", sans-serif;
@@ -120,15 +120,18 @@
 /* Always-visible close affordance: high contrast, >= 32x32 hit area, focus ring. */
 .mid-autumn-egg-close {
   position: absolute;
-  top: 16px;
-  right: 16px;
+  bottom: clamp(60px, 12vh, 120px);
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 2;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-width: 32px;
   min-height: 32px;
-  padding: 6px 12px;
+  padding: 8px 20px;
+  opacity: 0;
+  animation: mid-autumn-egg-close-in 600ms ease-out 1.8s forwards;
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: var(--radius-full);
   background: rgba(12, 16, 28, 0.72);
@@ -153,4 +156,15 @@
 .mid-autumn-egg-close:focus-visible {
   outline: 2px solid var(--ds-focus);
   outline-offset: 2px;
+}
+
+@keyframes mid-autumn-egg-close-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }

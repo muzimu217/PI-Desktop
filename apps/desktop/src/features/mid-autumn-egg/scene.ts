@@ -133,6 +133,7 @@ type Cake = {
   controlX: number;
   controlY: number;
   delay: number;
+  bornAt: number;
 };
 
 type Star = {
@@ -495,38 +496,13 @@ export function createMidAutumnEggScene(
    * Mooncake rain
    * ------------------------------------------------------------------ */
 
-  function spawnCake(): void {
-    const pad = cakeRadius * CAKE_SPAWN_PAD_RATIO;
-    cakes.push({
-      x: pad + Math.random() * Math.max(1, width - pad * 2),
-      y: -cakeRadius * 2 - Math.random() * CAKE_SPAWN_ABOVE_RANGE,
-      vx: rand(-CAKE_SPAWN_VX, CAKE_SPAWN_VX),
-      vy: rand(CAKE_SPAWN_VY_MIN, CAKE_SPAWN_VY_MIN + CAKE_SPAWN_VY_RANGE),
-      rot: Math.random() * Math.PI * 2,
-      rot0: 0,
-      spin: rand(-CAKE_SPIN_RANGE, CAKE_SPIN_RANGE),
-      state: "falling",
-      targetX: 0,
-      targetY: 0,
-      originX: 0,
-      originY: 0,
-      controlX: 0,
-      controlY: 0,
-      delay: 0,
-    });
-  }
+  /** Pre-computed text target points, filled once by precomputeTextTargets(). */
+  let textPoints: TextSamplePoint[] = [];
+  let textRectX = 0;
+  let textRectY = 0;
 
-  /**
-   * Pair every mooncake with a sampled pixel of the target text.
-   *
-   * The sampler may return up to 15% more points than there are mooncakes; the
-   * points are sorted by x and thinned evenly, so the whole line stays covered
-   * instead of the surplus piling up on the right-hand glyph.
-   */
-  function buildTextTargets(): void {
-    const count = cakes.length;
-    if (!count) return;
-
+  function precomputeTextTargets(): void {
+    const count = config.cakes;
     let rectWidth = Math.min(width * TEXT_RECT_WIDTH_RATIO, TEXT_RECT_MAX_WIDTH);
     let rectHeight = rectWidth / TEXT_RECT_ASPECT;
     const maxRectHeight = height * TEXT_RECT_MAX_HEIGHT_RATIO;
@@ -534,45 +510,57 @@ export function createMidAutumnEggScene(
       rectHeight = maxRectHeight;
       rectWidth = rectHeight * TEXT_RECT_ASPECT;
     }
-    const rectX = (width - rectWidth) / 2;
-    const rectY = height * TEXT_RECT_CENTER_Y_RATIO - rectHeight * 0.5;
+    textRectX = (width - rectWidth) / 2;
+    textRectY = height * TEXT_RECT_CENTER_Y_RATIO - rectHeight * 0.5;
+    textRect = { x: textRectX, y: textRectY, w: rectWidth, h: rectHeight };
 
     const raw = sampleTextPoints(config.text, count, rectWidth, rectHeight);
     if (!raw.length) return;
-    textRect = { x: rectX, y: rectY, w: rectWidth, h: rectHeight };
-
     raw.sort((left, right) => left.x - right.x);
-    const points: TextSamplePoint[] = [];
+
     if (raw.length > count) {
       const last = raw.length - 1;
-      for (let index = 0; index < count; index++) {
-        points.push(raw[Math.round((index * last) / Math.max(1, count - 1))]);
+      for (let i = 0; i < count; i++) {
+        textPoints.push(raw[Math.round((i * last) / Math.max(1, count - 1))]);
       }
     } else {
-      for (const point of raw) points.push(point);
-    }
-
-    // Left cakes fly to the left points, which produces the sweeping stagger.
-    const ordered = cakes.slice().sort((left, right) => left.x - right.x);
-    const total = Math.max(1, points.length);
-
-    for (let index = 0; index < ordered.length; index++) {
-      const cake = ordered[index];
-      const point = points[index % total];
-      const stacked = index >= total;
-      const jitter = cakeRadius * TEXT_STACK_JITTER_RATIO;
-      cake.targetX = rectX + point.x + (stacked ? rand(-jitter, jitter) : 0);
-      cake.targetY = rectY + point.y + (stacked ? rand(-jitter, jitter) : 0);
-      cake.originX = cake.x;
-      cake.originY = cake.y;
-      cake.controlX = (cake.originX + cake.targetX) * 0.5 + rand(-TEXT_CONTROL_SPREAD, TEXT_CONTROL_SPREAD);
-      cake.controlY =
-        Math.min(cake.originY, cake.targetY) - TEXT_ARC_LIFT - Math.random() * TEXT_ARC_LIFT_RANDOM;
-      cake.delay =
-        (cake.originX / Math.max(1, width)) * phases.flyStagger + Math.random() * TEXT_DELAY_RANDOM;
-      cake.rot0 = cake.rot;
+      textPoints = raw.slice();
     }
   }
+
+  function spawnCake(): void {
+    const pad = cakeRadius * CAKE_SPAWN_PAD_RATIO;
+    const spawnX = pad + Math.random() * Math.max(1, width - pad * 2);
+    const spawnY = -cakeRadius * 2 - Math.random() * CAKE_SPAWN_ABOVE_RANGE;
+    const idx = cakes.length;
+    const total = Math.max(1, textPoints.length);
+    const point = textPoints[idx % total];
+    const stacked = idx >= total;
+    const jitter = cakeRadius * TEXT_STACK_JITTER_RATIO;
+    const tx = textRectX + (point ? point.x : 0) + (stacked ? rand(-jitter, jitter) : 0);
+    const ty = textRectY + (point ? point.y : 0) + (stacked ? rand(-jitter, jitter) : 0);
+
+    cakes.push({
+      x: spawnX,
+      y: spawnY,
+      vx: 0,
+      vy: 0,
+      rot: Math.random() * Math.PI * 2,
+      rot0: Math.random() * Math.PI * 2,
+      spin: 0,
+      state: "falling",
+      targetX: tx,
+      targetY: ty,
+      originX: spawnX,
+      originY: spawnY,
+      controlX: (spawnX + tx) * 0.5 + rand(-TEXT_CONTROL_SPREAD, TEXT_CONTROL_SPREAD),
+      controlY: Math.min(spawnY, ty) - TEXT_ARC_LIFT - Math.random() * TEXT_ARC_LIFT_RANDOM,
+      delay: 0,
+      bornAt: elapsed,
+    });
+  }
+
+
 
   /* ------------------------------------------------------------------ *
    * Poem layer
@@ -650,7 +638,13 @@ export function createMidAutumnEggScene(
       burst(moonPath.end.x, moonPath.end.y, MOON_SPARK_COUNT);
     }
 
-    /* Phase 2: the mooncake rain */
+    /* Phase 2+3: spawn mooncakes and fly them directly to text targets */
+    if (elapsed >= phases.rainStart && !textTargetsBuilt) {
+      // Pre-compute text targets so each cake gets one on spawn.
+      precomputeTextTargets();
+      textTargetsBuilt = true;
+    }
+
     if (elapsed >= phases.rainStart && elapsed < phases.rainStart + phases.spawnDuration) {
       spawnAccumulator += dt * phases.rainRate;
       let guard = 0;
@@ -660,45 +654,30 @@ export function createMidAutumnEggScene(
       }
     }
 
-    /* Phase 3: build text targets right after spawning ends and fly directly */
-    const flyRef = phases.rainStart + phases.spawnDuration;
-    if (elapsed >= flyRef && !textTargetsBuilt) {
-      for (const cake of cakes) {
-        if (cake.state === "falling") {
-          cake.state = "landed";
-          cake.vy = 0;
-          cake.rot0 = cake.rot;
-        }
-      }
-      buildTextTargets();
-      textTargetsBuilt = true;
-    }
+    // Fly every spawned cake toward its target immediately.
+    for (const cake of cakes) {
+      if (cake.state === "placed") continue;
 
-    if (textTargetsBuilt) {
-      for (const cake of cakes) {
-        if (cake.state === "placed") continue;
+      const local = elapsed - cake.bornAt;
+      if (local <= 0) continue;
 
-        const local = elapsed - flyRef - cake.delay;
-        if (local <= 0) continue;
+      const progress = Math.min(1, local / phases.flyDuration);
+      const eased = easeInOutCubic(progress);
+      const inverse = 1 - eased;
 
-        const progress = Math.min(1, local / phases.flyDuration);
-        const eased = easeInOutCubic(progress);
-        const inverse = 1 - eased;
+      cake.x = inverse * inverse * cake.originX + 2 * inverse * eased * cake.controlX + eased * eased * cake.targetX;
+      cake.y = inverse * inverse * cake.originY + 2 * inverse * eased * cake.controlY + eased * eased * cake.targetY;
+      cake.rot = cake.rot0 * (1 - eased);
 
-        cake.x = inverse * inverse * cake.originX + 2 * inverse * eased * cake.controlX + eased * eased * cake.targetX;
-        cake.y = inverse * inverse * cake.originY + 2 * inverse * eased * cake.controlY + eased * eased * cake.targetY;
-        cake.rot = cake.rot0 * (1 - eased);
-
-        if (progress >= 1) {
-          cake.state = "placed";
-          cake.x = cake.targetX;
-          cake.y = cake.targetY;
-          cake.rot = 0;
-        }
+      if (progress >= 1) {
+        cake.state = "placed";
+        cake.x = cake.targetX;
+        cake.y = cake.targetY;
+        cake.rot = 0;
       }
     }
 
-    if (!textSparkDone && elapsed >= phases.done) {
+    if (!textSparkDone && elapsed >= phases.rainStart + phases.spawnDuration + phases.flyDuration + 0.1) {
       textSparkDone = true;
       if (textRect) burst(textRect.x + textRect.w / 2, textRect.y + textRect.h / 2, TEXT_SPARK_COUNT);
       showCaption();

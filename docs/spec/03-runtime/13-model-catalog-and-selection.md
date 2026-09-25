@@ -327,7 +327,10 @@ model window. Every binding records where its `contextWindow` came from
   published `limit.context` replaces it. A refreshed record such as
   `gpt-5.6-luna` (`1,050,000` tokens) stops appearing as a 128k model, and a limit
   that models.dev corrects reaches the binding without deleting and re-adding the
-  model.
+  model. Only a resolved models.dev record counts as published: when the lookup
+  misses and falls back to the generic shape (for example a custom gateway URL
+  serving an id several publishers list), its `128,000` is not a correction, and
+  the stored catalog snapshot stays in force.
 - `user` — the number was entered through the per-model Advanced control (or the
   preset ladder in it) and is never replaced by the catalog, including the
   `128,000` value that is otherwise the generic seed.

@@ -30,10 +30,7 @@ import {
   type KeybindingOverrides,
   type PlanExecutionFinishStatus,
 } from "@pi-desktop/shared";
-import {
-  genericModelConfig,
-  summarizeSessionTitle,
-} from "@pi-desktop/agent-runtime";
+import { summarizeSessionTitle } from "@pi-desktop/agent-runtime";
 import { AgentExtensionBridge } from "./agent-extensions";
 import { registerAgentExtensionIpc } from "./agent-extensions-ipc";
 import { isTemplateName, scaffold } from "@pi-desktop/plugin-devkit";
@@ -57,7 +54,7 @@ import {
 } from "./host-boot-diagnostics";
 import {
   ModelsDevCatalog,
-  modelConfigFromModelsDev,
+  catalogModelConfigFor,
 } from "./models-dev-catalog";
 import { VendorOAuth } from "./oauth";
 import { AppUpdaterController } from "./updater";
@@ -618,14 +615,12 @@ const vendorOAuth = new VendorOAuth({
   log: (level, message, data) => logger.app("provider", level, message, { data }),
   modelConfigFor: async ({ vendorKey, option }) => {
     await modelsDevCatalog.ensureLoaded();
-    const model = modelsDevCatalog.findModel({
+    return catalogModelConfigFor(modelsDevCatalog, {
       vendorKey,
       baseUrl: option.baseUrl,
+      apiStyle: option.apiStyle,
       modelId: option.modelId,
     });
-    return model
-      ? modelConfigFromModelsDev(model, option.baseUrl)
-      : genericModelConfig(option.modelId, option.baseUrl);
   },
 });
 
@@ -685,7 +680,6 @@ const providerCatalogRuntime = createProviderCatalogRuntime({
 });
 const {
   bindingForModel,
-  modelsDevModelFor,
   effectiveSubagentModelConfig,
   enrichProvider,
   enrichProviderList,
@@ -709,7 +703,6 @@ const createdSessionLaunchRuntime = createSessionLaunchRuntime({
   getWorkspacePath: currentWorkspacePath,
   pluginActiveInProject,
   bindingForModel,
-  modelsDevModelFor,
   effectiveSubagentModelConfig,
   normalizeThinkingLevel,
 });

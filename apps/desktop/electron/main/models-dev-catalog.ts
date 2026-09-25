@@ -13,7 +13,7 @@ import type {
   ModelReasoningOption,
   ThinkingLevel,
 } from "@pi-desktop/shared";
-import type { ModelConfig } from "@pi-desktop/agent-runtime";
+import { genericModelConfig, type ModelConfig } from "@pi-desktop/agent-runtime";
 
 export const MODELS_DEV_API_URL = "https://models.dev/api.json";
 export const MODELS_DEV_TIMEOUT_MS = 10_000;
@@ -760,6 +760,32 @@ export function modelConfigFromModelsDev(
   if (model.modelApi !== undefined) config.api = model.modelApi;
   return config;
 }
+
+/**
+ * Sidecar model config for one provider row: the catalog record when the
+ * lookup resolves one, otherwise the generic shape.
+ *
+ * An Anthropic Messages row the catalog cannot identify (a custom gateway URL
+ * serving an id several publishers list) still needs the right thinking wire
+ * shape: Opus 4.7+ and the Claude 5 family reject budget thinking with a 400.
+ * Whether a Claude id takes adaptive or budget thinking is a property of the
+ * model, which Anthropic's own record states, not of the deployment. So only
+ * the exact Anthropic id's reasoning options transfer; limits and modalities
+ * stay generic because they describe the deployment (#990).
+ */
+export function catalogModelConfigFor(
+  catalog: Pick<ModelsDevCatalog, "findModel" | "anthropicThinkingFor">,
+  input: { vendorKey?: string; baseUrl?: string; apiStyle?: string; modelId: string },
+): ModelConfig {
+  const model = catalog.findModel(input);
+  if (model) return modelConfigFromModelsDev(model, input.baseUrl);
+  const generic = genericModelConfig(input.modelId, input.baseUrl ?? "");
+  const thinking = input.apiStyle === "anthropic_messages"
+    ? catalog.anthropicThinkingFor(input.modelId)
+    : undefined;
+  return thinking ? { ...generic, ...thinking } : generic;
+}
+
 type IndexedModel = { model: ModelsDevModel; provider: ModelsDevProvider };
 
 /**
@@ -1177,6 +1203,29 @@ export class ModelsDevCatalog {
       matches.push(model);
     }
     return borrowedModel(matches);
+  }
+
+  /**
+   * Thinking wire metadata Anthropic publishes for exactly this id, or nothing.
+   * Aliases and other publishers' copies never answer: only Anthropic's own
+   * record states which thinking shape a Claude model accepts.
+   */
+  anthropicThinkingFor(
+    modelId: string,
+  ): Pick<ModelConfig, "reasoningOptions" | "thinkingLevelMap"> | undefined {
+    const requested = normalizedModelId(modelId);
+    const model = this.providers.get("anthropic")?.models.find(
+      (candidate) => normalizedModelId(candidate.modelId) === requested,
+    );
+    if (!model?.reasoning || !model.reasoningOptions?.length) return undefined;
+    const thinkingLevelMap = thinkingLevelMapFromModelsDev(
+      model.reasoningOptions,
+      model.thinkingLevels,
+    );
+    return {
+      reasoningOptions: model.reasoningOptions,
+      ...(thinkingLevelMap ? { thinkingLevelMap } : {}),
+    };
   }
 
   modelsForProvider(input: { vendorKey?: string; baseUrl?: string; providerId: string }): ModelInfo[] {

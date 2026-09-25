@@ -9,6 +9,7 @@ import { apiStyleForAdapter, catalogModelIdsMatch, modelIdsMatch } from "@pi-des
 import {
   MODELS_DEV_API_URL,
   ModelsDevCatalog,
+  catalogModelConfigFor,
   modelConfigFromModelsDev,
   modelInfoFromModelsDev,
   parseModelsDevCatalog,
@@ -1300,4 +1301,127 @@ test("the wire API style is derived from the published adapter package", () => {
   // The long tail of gateways is OpenAI-compatible chat completions.
   assert.equal(apiStyleForAdapter("@ai-sdk/openai-compatible"), "chat_completions");
   assert.equal(apiStyleForAdapter(undefined), "chat_completions");
+});
+
+// A custom Anthropic Messages gateway (unknown base URL, vendorKey "custom")
+// serving a Claude id that several catalog providers publish with differing
+// reasoning options. The lookup refuses to pick one publisher, but the thinking
+// wire shape of an exact Anthropic id is Anthropic's own (#990).
+const ambiguousClaudeFixture = {
+  anthropic: {
+    name: "Anthropic",
+    npm: "@ai-sdk/anthropic",
+    models: {
+      "claude-opus-5-5": {
+        id: "claude-opus-5-5",
+        name: "Claude Opus 5.5",
+        reasoning: true,
+        reasoning_options: [{ type: "effort", values: ["low", "medium", "high", "xhigh", "max"] }],
+        tool_call: true,
+        modalities: { input: ["text", "image"], output: ["text"] },
+        limit: { context: 1_000_000, output: 128_000 },
+      },
+    },
+  },
+  requesty: {
+    name: "Requesty",
+    npm: "@ai-sdk/openai-compatible",
+    api: "https://router.requesty.ai/v1",
+    models: {
+      "claude-opus-5-5": {
+        id: "claude-opus-5-5",
+        name: "Claude Opus 5.5",
+        reasoning: true,
+        reasoning_options: [
+          { type: "effort", values: ["none", "low", "medium", "high", "max"] },
+          { type: "budget_tokens" },
+        ],
+        tool_call: true,
+        modalities: { input: ["text"], output: ["text"] },
+        limit: { context: 200_000, output: 64_000 },
+      },
+      "glm-5": {
+        id: "glm-5",
+        name: "GLM 5",
+        reasoning: true,
+        reasoning_options: [{ type: "effort", values: ["low", "high"] }],
+        tool_call: true,
+        modalities: { input: ["text"], output: ["text"] },
+        limit: { context: 200_000, output: 32_000 },
+      },
+    },
+  },
+};
+
+const customGateway = {
+  vendorKey: "custom",
+  baseUrl: "https://gateway.example/v1",
+};
+
+test("a custom Anthropic gateway takes Anthropic's thinking options for an exact Claude id", async (t) => {
+  const catalog = await loadFixtureCatalog(t, ambiguousClaudeFixture);
+  const config = catalogModelConfigFor(catalog, {
+    ...customGateway,
+    apiStyle: "anthropic_messages",
+    modelId: "claude-opus-5-5",
+  });
+
+  // The ambiguous record itself is still not borrowed: limits stay generic.
+  assert.equal(config.source, "generic");
+  assert.equal(config.contextWindow, 128_000);
+  assert.equal(config.reasoning, false);
+  // Only the thinking wire shape comes from the Anthropic record.
+  assert.deepEqual(config.reasoningOptions, [
+    { type: "effort", values: ["low", "medium", "high", "xhigh", "max"] },
+  ]);
+  assert.deepEqual(config.thinkingLevelMap, {
+    low: "low",
+    medium: "medium",
+    high: "high",
+    xhigh: "xhigh",
+    max: "max",
+    off: null,
+  });
+});
+
+test("the Anthropic thinking fallback stays off other wire APIs and non-Claude ids", async (t) => {
+  const catalog = await loadFixtureCatalog(t, ambiguousClaudeFixture);
+  const completions = catalogModelConfigFor(catalog, {
+    ...customGateway,
+    apiStyle: "chat_completions",
+    modelId: "claude-opus-5-5",
+  });
+  assert.equal(completions.reasoningOptions, undefined);
+  assert.equal(completions.thinkingLevelMap, undefined);
+
+  // An id absent from every publisher stays generic, even on Anthropic Messages.
+  const unlisted = catalogModelConfigFor(catalog, {
+    ...customGateway,
+    apiStyle: "anthropic_messages",
+    modelId: "unlisted-reasoning-model",
+  });
+  assert.equal(unlisted.source, "generic");
+  assert.equal(unlisted.reasoningOptions, undefined);
+  assert.equal(unlisted.thinkingLevelMap, undefined);
+
+  // Aliases of a Claude id are not an exact Anthropic id.
+  const renamed = catalogModelConfigFor(catalog, {
+    ...customGateway,
+    apiStyle: "anthropic_messages",
+    modelId: "my-claude-opus-5-5-thinking",
+  });
+  assert.equal(renamed.reasoningOptions, undefined);
+});
+
+test("a resolved catalog record still wins over the Anthropic thinking fallback", async (t) => {
+  const catalog = await loadFixtureCatalog(t, ambiguousClaudeFixture);
+  const config = catalogModelConfigFor(catalog, {
+    vendorKey: "requesty",
+    baseUrl: "https://router.requesty.ai/v1",
+    apiStyle: "anthropic_messages",
+    modelId: "claude-opus-5-5",
+  });
+  assert.equal(config.source, "models.dev");
+  assert.equal(config.contextWindow, 200_000);
+  assert.ok(config.reasoningOptions?.some((option) => option.type === "budget_tokens"));
 });

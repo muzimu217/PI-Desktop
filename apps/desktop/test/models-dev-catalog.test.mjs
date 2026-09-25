@@ -164,7 +164,7 @@ test("cached matches remain scoped to the requested provider and endpoint", asyn
   }
 });
 
-test("unknown endpoints do not inherit ambiguous cross-provider metadata", async (t) => {
+test("an unknown endpoint borrows only what every publisher of the id agrees on", async (t) => {
   for (const order of [["alpha", "beta"], ["beta", "alpha"]]) {
     const fixture = Object.fromEntries(order.map((key) => [key, {
       api: `https://${key}.example/v1`,
@@ -177,11 +177,25 @@ test("unknown endpoints do not inherit ambiguous cross-provider metadata", async
       },
     }]));
     const catalog = await loadFixtureCatalog(t, fixture);
-    for (const modelId of ["shared-model", "proxy/shared-model"]) {
-      const unknown = { vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId };
-      assert.equal(catalog.findModel(unknown), undefined, `ambiguous ${modelId} must miss`);
-      assert.equal(catalog.findModel(unknown), undefined, "ambiguous misses are cached");
-    }
+    /*
+      No provider identity: neither publisher may answer alone. What every one of
+      them states can be claimed, and it under-claims — reasoning only when all
+      report it, limits as the lower median of the claims.
+    */
+    const unknown = { vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId: "shared-model" };
+    const consensus = catalog.findModel(unknown);
+    assert.equal(consensus?.limit.context, 32_000, "the lower median, not the larger claim");
+    assert.equal(consensus?.limit.output, 8_192);
+    assert.equal(consensus?.reasoning, false, "one publisher's reasoning claim must not transfer");
+    assert.equal(catalog.findModel(unknown), consensus, "a consensus is cached like any other answer");
+    /*
+      Two routes that merely share a leaf are not one model, so the borrow is not
+      offered to them and the id stays unresolved.
+    */
+    assert.equal(
+      catalog.findModel({ vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId: "proxy/shared-model" }),
+      undefined,
+    );
     const alpha = catalog.findModel({
       vendorKey: "custom", baseUrl: "https://alpha.example/v1", modelId: "shared-model",
     });
@@ -231,7 +245,17 @@ test("a shared catalog API with no vendor key cannot select the first publisher"
         limit: { context: key === "alpha" ? 128_000 : 32_000, output: 8_192 } } },
     }])));
     assert.equal(catalog.providerKeyForRow({ vendorKey: "custom", baseUrl: "https://gateway.example/v1" }), undefined);
-    assert.equal(catalog.findModel({ vendorKey: "custom", baseUrl: "https://gateway.example/v1", modelId: "shared-model" }), undefined);
+    /*
+      The row has no publisher of its own, so the id answers with what both
+      publishers of that endpoint state — never with the first one indexed.
+    */
+    const consensus = catalog.findModel({
+      vendorKey: "custom",
+      baseUrl: "https://gateway.example/v1",
+      modelId: "shared-model",
+    });
+    assert.equal(consensus?.reasoning, false);
+    assert.equal(consensus?.limit.context, 32_000);
     assert.equal(catalog.findModel({ vendorKey: "beta", baseUrl: "https://gateway.example/v1", modelId: "shared-model" })?.providerKey, "beta");
   }
 });
@@ -1362,7 +1386,7 @@ const customGateway = {
   baseUrl: "https://gateway.example/v1",
 };
 
-test("a custom Anthropic gateway takes Anthropic's thinking options for an exact Claude id", async (t) => {
+test("a custom Anthropic gateway borrows the consensus and keeps Anthropic's thinking shape", async (t) => {
   const catalog = await loadFixtureCatalog(t, ambiguousClaudeFixture);
   const config = catalogModelConfigFor(catalog, {
     ...customGateway,
@@ -1370,11 +1394,21 @@ test("a custom Anthropic gateway takes Anthropic's thinking options for an exact
     modelId: "claude-opus-5-5",
   });
 
-  // The ambiguous record itself is still not borrowed: limits stay generic.
-  assert.equal(config.source, "generic");
-  assert.equal(config.contextWindow, 128_000);
-  assert.equal(config.reasoning, false);
-  // Only the thinking wire shape comes from the Anthropic record.
+  /*
+    Anthropic (1M / 128k) and Requesty (200k / 64k) both publish this id and
+    disagree, so neither record answers alone: the limits are the lower median of
+    what they state, which under-claims rather than adopting one deployment's
+    numbers.
+  */
+  assert.equal(config.source, "models.dev");
+  assert.equal(config.contextWindow, 200_000);
+  assert.equal(config.maxTokens, 64_000);
+  assert.equal(config.reasoning, true);
+  /*
+    No publisher describes this endpoint's reasoning wire shape, so the borrowed
+    record states none — and Anthropic's own record is what says whether the id
+    takes adaptive or budget thinking.
+  */
   assert.deepEqual(config.reasoningOptions, [
     { type: "effort", values: ["low", "medium", "high", "xhigh", "max"] },
   ]);
@@ -1480,11 +1514,17 @@ test("an exact record answers an id its shorter siblings would only alias", asyn
   const borrowed = catalog.findModel({ vendorKey: "alpha", modelId: "foo-v2-0815" });
   assert.equal(borrowed?.modelId, "foo-v2");
 
-  // Two publishers of the alias cannot answer for an unknown endpoint…
-  assert.equal(
-    catalog.findModel({ vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId: "foo-v2" }),
-    undefined,
-  );
+  /*
+    An id only its siblings state answers with their consensus rather than with
+    one publisher's record — the dated sibling's claim included, the lower
+    median of the three is what every publisher can be said to support.
+  */
+  const consensus = catalog.findModel({
+    vendorKey: "custom",
+    baseUrl: "https://relay.example/v1",
+    modelId: "foo-v2",
+  });
+  assert.equal(consensus?.limit.context, 64_000);
   // …but a record the catalog publishes in full answers for itself.
   const published = catalog.findModel({
     vendorKey: "custom",
@@ -1493,4 +1533,75 @@ test("an exact record answers an id its shorter siblings would only alias", asyn
   });
   assert.equal(published?.providerKey, "alpha");
   assert.equal(published?.limit.context, 128_000);
+});
+
+/*
+  A custom endpoint is often the same publisher on another path.
+
+  The reported failure: a custom row at `https://open.bigmodel.cn/api/v1` listed
+  its models but every one of them showed generic defaults, because provider
+  matching only accepted models.dev's own path for that host.
+*/
+test("a custom endpoint on a uniquely published host inherits that publisher", async (t) => {
+  const catalog = await loadFixtureCatalog(t, {
+    alpha: {
+      api: "https://alpha.example/api/paas/v4",
+      models: {
+        "glm-5.3": {
+          id: "glm-5.3",
+          reasoning: true,
+          tool_call: true,
+          limit: { context: 1_000_000, output: 131_072 },
+        },
+      },
+    },
+  });
+  const model = catalog.findModel({
+    vendorKey: "custom",
+    baseUrl: "https://alpha.example/api/v1",
+    modelId: "glm-5.3",
+  });
+  assert.equal(model?.providerKey, "alpha");
+  assert.equal(model?.limit.context, 1_000_000);
+  assert.equal(model?.toolCall, true);
+
+  // The whole row's records are reachable, not just the one id.
+  assert.equal(
+    catalog.modelsForProvider({ vendorKey: "custom", baseUrl: "https://alpha.example/api/v1", providerId: "row" }).length,
+    1,
+  );
+});
+
+test("a host two publishers share borrows only their consensus", async (t) => {
+  const catalog = await loadFixtureCatalog(t, {
+    alpha: {
+      api: "https://shared.example/api/paas/v4",
+      models: { "glm-5.3": { id: "glm-5.3", reasoning: true, limit: { context: 1_000_000 } } },
+    },
+    beta: {
+      api: "https://shared.example/api/coding/v4",
+      models: { "glm-5.3": { id: "glm-5.3", reasoning: false, limit: { context: 32_000 } } },
+    },
+  });
+  /*
+    The typed path is not published, so the host is the only evidence — and it
+    names two publishers, neither of which may answer alone. What both state is
+    what a row without an identity gets: reasoning only when both claim it, and
+    the lower median of the limits.
+  */
+  const consensus = catalog.findModel({
+    vendorKey: "custom",
+    baseUrl: "https://shared.example/v1",
+    modelId: "glm-5.3",
+  });
+  assert.equal(consensus?.reasoning, false);
+  assert.equal(consensus?.limit.context, 32_000);
+  // Naming the publisher still resolves it to that publisher's own record.
+  const alpha = catalog.findModel({
+    vendorKey: "alpha",
+    baseUrl: "https://shared.example/v1",
+    modelId: "glm-5.3",
+  });
+  assert.equal(alpha?.providerKey, "alpha");
+  assert.equal(alpha?.limit.context, 1_000_000);
 });

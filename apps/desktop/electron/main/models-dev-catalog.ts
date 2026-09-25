@@ -629,6 +629,22 @@ export function apiMatches(left: string | undefined, right: string | undefined):
   return Boolean(normalizedLeft && normalizedRight && normalizedLeft === normalizedRight);
 }
 
+
+/**
+ * Hostname of a base URL, lowercased, or undefined when it has none.
+ *
+ * Only the host is read: two paths on one host can be the same publisher's
+ * different API surfaces, which is exactly what `apiMatches` cannot see.
+ */
+function hostOfUrl(value: string | undefined): string | undefined {
+  const raw = nonEmptyString(value);
+  if (!raw) return undefined;
+  try {
+    return new URL(raw).host.toLowerCase() || undefined;
+  } catch {
+    return undefined;
+  }
+}
 function isTextAgentModel(model: ModelsDevModel): boolean {
   return model.modalities.input.includes("text") && model.modalities.output.includes("text");
 }
@@ -783,12 +799,25 @@ export function catalogModelConfigFor(
   input: { vendorKey?: string; baseUrl?: string; apiStyle?: string; modelId: string },
 ): ModelConfig {
   const model = catalog.findModel(input);
-  if (model) return modelConfigFromModelsDev(model, input.baseUrl);
-  const generic = genericModelConfig(input.modelId, input.baseUrl ?? "");
-  const thinking = input.apiStyle === "anthropic_messages"
+  if (!model) {
+    const generic = genericModelConfig(input.modelId, input.baseUrl ?? "");
+    const thinking = input.apiStyle === "anthropic_messages"
+      ? catalog.anthropicThinkingFor(input.modelId)
+      : undefined;
+    return thinking ? { ...generic, ...thinking } : generic;
+  }
+  const config = modelConfigFromModelsDev(model, input.baseUrl);
+  /*
+    A record that states no reasoning shape cannot speak for an Anthropic
+    Messages row: a record borrowed from another publisher has its own options
+    dropped, and a reseller's record describes the reseller's API. Anthropic's
+    own record is what says whether this id takes adaptive or budget thinking,
+    and losing that would put a rejected shape on the wire (#990).
+  */
+  const thinking = input.apiStyle === "anthropic_messages" && !config.reasoningOptions?.length
     ? catalog.anthropicThinkingFor(input.modelId)
     : undefined;
-  return thinking ? { ...generic, ...thinking } : generic;
+  return thinking ? { ...config, ...thinking } : config;
 }
 
 type IndexedModel = { model: ModelsDevModel; provider: ModelsDevProvider };
@@ -944,6 +973,53 @@ function medianOf(values: readonly (number | undefined)[]): number | undefined {
  *   publishers state, so neither one host's cap nor one host's round-up
  *   decides them.
  */
+/**
+ * Whether two ids name one model under different spellings.
+ *
+ * A publisher-prefixed copy (`anthropic/claude-sonnet-4-5` for
+ * `claude-sonnet-4-5`, `mify/mimo-v2.5-pro-0731` for `mimo-v2.5-pro`) and a
+ * dated or variant spelling of one id are the same model, so their records may
+ * be compared with each other. Two unrelated routes that happen to share a leaf
+ * (`provider-a/foo` vs `gateway/foo`) are not: that relation is a coincidence of
+ * naming, and nothing may treat it as identity.
+ *
+ * `catalogModelIdsMatch` stays the matcher of record; this only decides which of
+ * its matches a borrow without a provider identity may average.
+ */
+function sameModelSpelling(catalogId: string, requested: string): boolean {
+  const left = catalogId.trim().toLowerCase();
+  const right = requested.trim().toLowerCase();
+  if (!left || !right) return false;
+  if (left === right) return true;
+  if (left.endsWith(`/${right}`)) return true;
+  const plain = (id: string) => stripReleaseSuffix(stripVariantSuffix(id));
+  const plainLeft = plain(left);
+  const plainRight = plain(right);
+  if (!plainLeft || !plainRight) return false;
+  return plainLeft === plainRight || plainLeft.endsWith(`/${plainRight}`);
+}
+
+/**
+ * Record to use when nothing identifies the row's provider.
+ *
+ * A relay or a gateway the catalog cannot place still serves models the catalog
+ * knows, and asking for one of them by id used to answer nothing at all. What
+ * every publisher of that model agrees on can be claimed instead: the same
+ * intersection and median `borrowedModel` computes for an anchored row.
+ *
+ * One thing is deliberately not claimed. Which *wire shape* a deployment accepts
+ * for reasoning is a property of that deployment — the same model behind an
+ * OpenAI-compatible gateway and behind Anthropic's own API takes different
+ * reasoning fields — so a record borrowed this way drops its `reasoningOptions`
+ * rather than speaking for an endpoint no publisher describes. `catalogModelConfigFor`
+ * still applies Anthropic's own shape to an Anthropic Messages row that is left
+ * without one.
+ */
+function unanchoredConsensus(entries: readonly ModelsDevModel[]): ModelsDevModel | undefined {
+  const consensus = borrowedModel(entries);
+  return consensus ? { ...consensus, reasoningOptions: undefined } : undefined;
+}
+
 function borrowedModel(entries: readonly ModelsDevModel[]): ModelsDevModel | undefined {
   if (entries.length === 0) return undefined;
   const toolCall = entries[0].toolCall;
@@ -989,6 +1065,8 @@ function borrowedModel(entries: readonly ModelsDevModel[]): ModelsDevModel | und
 export class ModelsDevCatalog {
   private providers = new Map<string, ModelsDevProvider>();
   private lookupIndex: ModelsDevLookupIndex | undefined;
+  /** Host → publishers, derived from the current provider map. */
+  private hostIndex: Map<string, ModelsDevProvider[]> | undefined;
   private readonly lookupMemo = new Map<string, ModelsDevModel | undefined>();
   private loadPromise: Promise<boolean> | undefined;
   private loaded = false;
@@ -1022,6 +1100,7 @@ export class ModelsDevCatalog {
         this.providers = new Map(parsed.map((provider) => [provider.providerKey, provider]));
         // Replacing the provider map invalidates the derived lookup index.
         this.lookupIndex = undefined;
+        this.hostIndex = undefined;
         this.lookupMemo.clear();
         this.loaded = true;
         this.source = "bundled";
@@ -1063,6 +1142,7 @@ export class ModelsDevCatalog {
         this.providers = new Map(parsed.map((provider) => [provider.providerKey, provider]));
         // Replacing the provider map invalidates the derived lookup index.
         this.lookupIndex = undefined;
+        this.hostIndex = undefined;
         this.lookupMemo.clear();
         this.loaded = true;
         this.source = "remote";
@@ -1117,9 +1197,41 @@ export class ModelsDevCatalog {
       );
       if (knownProvider) return knownProvider;
     }
-    return [...this.providers.values()].find((provider) =>
+    const byKey = [...this.providers.values()].find((provider) =>
       candidates.has(normalizedProviderKey(provider.providerKey)),
     );
+    return byKey ?? this.providerForUniqueHost(input.baseUrl);
+  }
+
+  /**
+   * Publisher that uniquely owns this host, when nothing else identified the row.
+   *
+   * A custom endpoint on a published host is still that publisher's deployment:
+   * a user who types `https://open.bigmodel.cn/api/v1` for the Responses API is
+   * on Zhipu, not on an anonymous gateway. The catalog's own `api` host is the
+   * evidence, and it is only used when exactly one provider publishes from it,
+   * so a shared or unknown host still resolves to nothing — missing metadata
+   * stays ahead of wrong metadata.
+   *
+   * Built lazily from the current provider map and cleared with the lookup
+   * index, so it can never describe a previous catalog generation.
+   */
+  private providerForUniqueHost(baseUrl: string | undefined): ModelsDevProvider | undefined {
+    const host = hostOfUrl(baseUrl);
+    if (!host) return undefined;
+    if (!this.hostIndex) {
+      const index = new Map<string, ModelsDevProvider[]>();
+      for (const provider of this.providers.values()) {
+        const providerHost = hostOfUrl(provider.api);
+        if (!providerHost) continue;
+        const bucket = index.get(providerHost);
+        if (bucket) bucket.push(provider);
+        else index.set(providerHost, [provider]);
+      }
+      this.hostIndex = index;
+    }
+    const bucket = this.hostIndex.get(host);
+    return bucket?.length === 1 ? bucket[0] : undefined;
   }
 
   findModel(input: { vendorKey?: string; baseUrl?: string; modelId: string }): ModelsDevModel | undefined {
@@ -1189,11 +1301,25 @@ export class ModelsDevCatalog {
        dropping the model to the generic shape.
 
        This only fills a miss the lookup already had — a record the preferred
-       provider does publish stays authoritative. Without that anchor the scores
-       prove nothing about identity, and an unknown endpoint keeps the existing
-       behaviour: a unique unambiguous match, or nothing. */
+       provider does publish stays authoritative.
+
+       With no provider identity at all the scores still prove nothing about
+       identity, so no single publisher's record is adopted. What every publisher
+       of the *same model in another spelling* states is a different question,
+       and its answer can be claimed without adopting any one deployment's
+       claims: the intersection keeps tool support only when all of them agree,
+       under-claims capabilities, and takes the lower median of the limits. Two
+       routes that merely share a leaf (`provider-a/foo` vs `gateway/foo`) never
+       enter that set, so an id whose identity is genuinely unknown still
+       resolves to nothing. */
     const borrowed = result ??
-      (preferredProvider ? this.borrowedAcrossProviders(input) : undefined);
+      (preferredProvider
+        ? this.borrowedAcrossProviders(input)
+        : unanchoredConsensus(
+            candidates
+              .filter((candidate) => sameModelSpelling(candidate.model.modelId, requested))
+              .map((candidate) => candidate.model),
+          ));
     // Cache the result (a miss included) so a repeated miss is also O(1) and
     // cannot grow the candidate index with query-dependent keys.
     this.lookupMemo.set(memoKey, borrowed);

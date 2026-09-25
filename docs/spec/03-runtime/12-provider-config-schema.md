@@ -724,6 +724,28 @@ as empty. Connection testing reuses
 the same request builder, so "the model list loaded" and "the connection test
 passed" always describe the same URL, auth header and format.
 
+### Which publisher a row is read against
+
+A row that names no publisher of its own is read against the publisher its
+endpoint identifies, in this order: the catalog entry whose published base URL
+matches, the endpoint registry for a known host, then the catalog's own host
+when exactly one provider publishes from it. That is what keeps a custom row on
+a vendor's alternative API path — `https://open.bigmodel.cn/api/v1` for Zhipu's
+OpenAI Responses endpoint — from showing generic 128k / 8k / text-only defaults
+for models the catalog describes in full.
+
+When nothing identifies a publisher at all — a relay, or a host the catalog does
+not know — no single publisher's record is adopted, and such a row used to get
+nothing. What *every* publisher of the same model states is claimed instead: a
+capability only when all of them state it, and the lower median of their limits,
+so the answer can only under-claim. Publishers that disagree on tool support are
+not borrowed from at all. Two routes that merely share a name leaf
+(`provider-a/foo` vs `gateway/foo`) are not one model, so an ID whose identity is
+genuinely unknown still resolves to nothing. A record borrowed this way states no
+reasoning wire shape — that is a property of the deployment — and an Anthropic
+Messages row keeps Anthropic's own shape. A model ID never decides which
+publisher is read.
+
 Metadata matching may follow a release stamp: `mify/mimo-v2.5-pro-0731` borrows
 the published record of `mimo-v2.5-pro`, and a record the catalog publishes
 under exactly the requested ID still wins over such an alias. The alias is

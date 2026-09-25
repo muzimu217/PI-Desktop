@@ -512,22 +512,31 @@ test("a borrowed record under-claims instead of asserting one publisher's extras
   assert.equal(info.capabilities.includes("reasoning"), false);
 });
 
-test("publishers split on tool support are not borrowed from at all", async (t) => {
-  // Tool support is the gate: a wrong `true` would put tool declarations on the
-  // wire that the endpoint may reject, so a split here refuses the borrow.
+test("an even split on tool support claims no tools but still borrows the limits", async (t) => {
+  /*
+    Tool support follows the majority of the publishers that state it. One
+    dissenting reseller must not decide the claim for a deployment it does not
+    describe, but neither may one agreeing reseller: an id a relay lists can be
+    stated by a hundred publishers. Two publishers that split evenly state no
+    majority, so the borrow keeps the limits and leaves tool support unclaimed
+    instead of refusing outright — refusing is what left whole model lists on
+    the generic seed.
+  */
   const catalog = await loadFixtureCatalog(t, {
     gateway: { api: "https://gateway.example/v1", models: {} },
     publisherA: { models: { "Vendor/Split": { id: "Vendor/Split", tool_call: true, limit: { context: 262_144 } } } },
     publisherB: { models: { "Vendor/Split": { id: "Vendor/Split", tool_call: false, limit: { context: 262_144 } } } },
   });
-  assert.equal(
-    catalog.findModel({
-      vendorKey: "gateway",
-      baseUrl: "https://gateway.example/v1",
-      modelId: "Vendor/Split",
-    }),
-    undefined,
-  );
+  const match = catalog.findModel({
+    vendorKey: "gateway",
+    baseUrl: "https://gateway.example/v1",
+    modelId: "Vendor/Split",
+  });
+  assert.ok(match, "a split must not drop the id to the generic shape");
+  assert.equal(match.toolCall, undefined, "an even split claims no tool support");
+  assert.equal(match.limit.context, 262_144);
+  const info = modelInfoFromModelsDev(match, "provider-1");
+  assert.equal(info.capabilities.includes("tools"), false);
 });
 
 test("a borrowed record never replaces what the row's own catalog provider publishes", async (t) => {
@@ -549,7 +558,11 @@ test("a borrowed record never replaces what the row's own catalog provider publi
   assert.equal(match.toolCall, false);
 });
 
-test("publishers that disagree about capabilities are not borrowed from", async (t) => {
+test("publishers that disagree about capabilities narrow the borrowed record", async (t) => {
+  // A disputed capability shape is never resolved by picking one publisher:
+  // the disagreement narrows the claim instead of voiding the borrow.
+  // Reasoning follows the intersection, so it is reported only when every
+  // publisher states it.
   const catalog = await loadFixtureCatalog(t, {
     gateway: { api: "https://gateway.example/v1", models: {} },
     publisherA: { models: { "Vendor/Disputed": {
@@ -559,15 +572,40 @@ test("publishers that disagree about capabilities are not borrowed from", async 
       id: "Vendor/Disputed", tool_call: false, reasoning: false, limit: { context: 262_144 },
     } } },
   });
-  assert.equal(
-    catalog.findModel({
-      vendorKey: "gateway",
-      baseUrl: "https://gateway.example/v1",
-      modelId: "Vendor/Disputed",
-    }),
-    undefined,
-    "a disputed capability shape must not be resolved by picking one publisher",
-  );
+  const match = catalog.findModel({
+    vendorKey: "gateway",
+    baseUrl: "https://gateway.example/v1",
+    modelId: "Vendor/Disputed",
+  });
+  assert.ok(match, "a disputed capability shape must not void the borrow");
+  assert.equal(match.toolCall, undefined);
+  assert.equal(match.reasoning, false);
+  assert.equal(match.limit.context, 262_144);
+});
+
+test("a majority of the publishers that state tool support decides the borrow", async (t) => {
+  // The counterpart of the even split above: with a clear majority the claim
+  // is stated, so a relay listing an id many publishers agree on keeps its
+  // tool support instead of dropping to text-only defaults.
+  const catalog = await loadFixtureCatalog(t, {
+    gateway: { api: "https://gateway.example/v1", models: {} },
+    publisherA: { models: { "Vendor/Majority": { id: "Vendor/Majority", tool_call: true, limit: { context: 262_144 } } } },
+    publisherB: { models: { "Vendor/Majority": { id: "Vendor/Majority", tool_call: true, limit: { context: 1_048_576 } } } },
+    publisherC: { models: { "Vendor/Majority": { id: "Vendor/Majority", tool_call: true, limit: { context: 1_048_576 } } } },
+    publisherD: { models: { "Vendor/Majority": { id: "Vendor/Majority", tool_call: false, limit: { context: 1_048_576 } } } },
+  });
+  const match = catalog.findModel({
+    vendorKey: "gateway",
+    baseUrl: "https://gateway.example/v1",
+    modelId: "Vendor/Majority",
+  });
+  assert.ok(match, "a clear majority still borrows");
+  assert.equal(match.toolCall, true);
+  // Limits are still the lower median, so one small window is not rounded up
+  // and one dissenting publisher does not drag the majority's window down.
+  assert.equal(match.limit.context, 1_048_576);
+  const info = modelInfoFromModelsDev(match, "provider-1");
+  assert.equal(info.capabilities.includes("tools"), true);
 });
 
 test("borrowing stays exact-id, provider-scoped and absent for unknown ids", async (t) => {

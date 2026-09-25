@@ -736,15 +736,23 @@ for models the catalog describes in full.
 
 When nothing identifies a publisher at all — a relay, or a host the catalog does
 not know — no single publisher's record is adopted, and such a row used to get
-nothing. What *every* publisher of the same model states is claimed instead: a
-capability only when all of them state it, and the lower median of their limits,
-so the answer can only under-claim. Publishers that disagree on tool support are
-not borrowed from at all. Two routes that merely share a name leaf
+nothing. What the publishers of the same model agree on is claimed instead: the
+lower median of their limits and, for every capability but tool support, only
+what all of them state, so the answer can only under-claim. Tool support follows
+the majority of the publishers that state it: an ID a relay lists can be stated
+by a hundred publishers, and one dissenting reseller must not decide — or void —
+the claim for a deployment it does not describe. An even split states no majority
+and claims nothing. Two routes that merely share a name leaf
 (`provider-a/foo` vs `gateway/foo`) are not one model, so an ID whose identity is
 genuinely unknown still resolves to nothing. A record borrowed this way states no
 reasoning wire shape — that is a property of the deployment — and an Anthropic
 Messages row keeps Anthropic's own shape. A model ID never decides which
 publisher is read.
+
+The lookup answers for the IDs a row already lists, so a served ID whose published
+record is an audio model — a TTS or ASR sibling — resolves to that record too.
+Only the catalog listing is scoped to text/agent models, because it decides which
+models a row offers.
 
 Metadata matching may follow a release stamp: `mify/mimo-v2.5-pro-0731` borrows
 the published record of `mimo-v2.5-pro`, and a record the catalog publishes

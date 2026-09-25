@@ -836,7 +836,13 @@ class ModelsDevLookupIndex {
   constructor(providers: ReadonlyMap<string, ModelsDevProvider>) {
     for (const provider of providers.values()) {
       for (const model of provider.models) {
-        if (!isTextAgentModel(model)) continue;
+        /*
+          Every published model is indexed, including the audio-only ones the
+          listing drops: `modelsForProvider` decides which models a row
+          *offers*, while this index answers for an ID a row already lists, and
+          an endpoint that serves a TTS or ASR id has a published record for
+          it. Filtering here is what left such a row on the generic seed.
+        */
         const entry: IndexedModel = { model, provider };
         for (const key of registrationKeys(model.modelId)) {
           let bucket = this.byModelId.get(key);
@@ -962,10 +968,11 @@ function medianOf(values: readonly (number | undefined)[]): number | undefined {
  *
  * Two rules keep the result honest about what the endpoint will accept:
  *
- * - Tool support is the gate. Every publisher of the id must agree, because a
- *   wrong `true` puts tool declarations on the wire that the endpoint may
- *   reject and break the turn. Publishers that split on this id are describing
- *   different deployments, so nothing is borrowed.
+ * - Tool support follows the majority of the publishers that state it. One
+ *   dissenting reseller must not decide the claim for a deployment it does not
+ *   describe, and neither may one agreeing reseller: an id a relay lists can be
+ *   stated by a hundred publishers, which is what left whole model lists on the
+ *   generic seed before. An even split states no majority and claims nothing.
  * - Every other capability is the *intersection*, so the borrow may only
  *   under-claim. Reasoning, image input and image/PDF attachment are reported
  *   only when every publisher states them, and a user who knows the endpoint
@@ -1020,10 +1027,26 @@ function unanchoredConsensus(entries: readonly ModelsDevModel[]): ModelsDevModel
   return consensus ? { ...consensus, reasoningOptions: undefined } : undefined;
 }
 
+/**
+ * The value most entries that state one agree on, or undefined when they split.
+ *
+ * A single dissenting publisher must not decide a claim, and a single agreeing
+ * one must not either: an id in a relay's list can be stated by a hundred
+ * resellers, and one reseller's flag is not evidence about the deployment this
+ * row talks to. An even split states no majority, so nothing is claimed.
+ */
+function majorityOf(values: readonly (boolean | undefined)[]): boolean | undefined {
+  const stated = values.filter((value): value is boolean => value !== undefined);
+  if (stated.length === 0) return undefined;
+  const yes = stated.filter(Boolean).length;
+  if (yes * 2 > stated.length) return true;
+  if (yes * 2 < stated.length) return false;
+  return undefined;
+}
+
 function borrowedModel(entries: readonly ModelsDevModel[]): ModelsDevModel | undefined {
   if (entries.length === 0) return undefined;
-  const toolCall = entries[0].toolCall;
-  if (entries.some((model) => model.toolCall !== toolCall)) return undefined;
+  const toolCall = majorityOf(entries.map((model) => model.toolCall));
   const every = (pick: (model: ModelsDevModel) => boolean | undefined): boolean | undefined =>
     entries.every((model) => pick(model) === true) ? true
       : entries.every((model) => pick(model) === false) ? false

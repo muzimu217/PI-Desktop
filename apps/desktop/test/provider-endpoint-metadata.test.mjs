@@ -162,3 +162,48 @@ test("a hand-typed id on the same relay answers with the same record", async (t)
   const unknown = await lookup({ modelId: "some-private-model", baseUrl: row.baseUrl });
   assert.equal(unknown.info, null);
 });
+
+test("a relay's list keeps the tool support a majority of publishers states", async (t) => {
+  /*
+    Reported misses from a relay's own list. `deepseek-v4-flash` is stated by
+    dozens of publishers and `mimo-v2.5-pro` by many, a few of which say
+    `tool_call: false`, so requiring unanimity dropped both to the generic seed
+    even though the id is plainly published. Tool support now follows the
+    majority. A served id whose own record is an audio model resolves with it
+    too, while an id no publisher states still gets nothing.
+  */
+  const row = rowOf({ id: "row-4", name: "Relay", baseUrl: "https://relay.example/v1" });
+  const { result } = await handlersFor(t, row, {
+    data: [
+      { id: "deepseek-v4-flash" },
+      { id: "mimo-v2.5-pro" },
+      { id: "mimo-v2.5-tts" },
+      { id: "gemini-2.5-pro-1m" },
+    ],
+  });
+
+  const byId = new Map(result.models.map((model) => [model.modelId, model]));
+
+  const deepseek = byId.get("deepseek-v4-flash");
+  assert.equal(deepseek.catalogSource, "models.dev");
+  assert.ok(deepseek.capabilities.includes("tools"), "a stated majority must be claimed");
+  assert.equal(deepseek.contextWindow, 1_000_000);
+
+  const mimo = byId.get("mimo-v2.5-pro");
+  assert.equal(mimo.catalogSource, "models.dev");
+  assert.ok(mimo.capabilities.includes("tools"));
+  assert.equal(mimo.contextWindow, 1_048_576);
+
+  // The listing decides which models a row *offers*; the lookup answers for the
+  // ids the service actually serves, audio-only ones included.
+  const tts = byId.get("mimo-v2.5-tts");
+  assert.equal(tts.catalogSource, "models.dev");
+  assert.ok(tts.capabilities.includes("audio"));
+  assert.equal(tts.contextWindow, 8_192);
+
+  // A context-variant suffix no publisher uses is not guessed at: the catalog
+  // names `-128k`/`-256k` models of their own, so `-1m` stays unknown.
+  const variant = byId.get("gemini-2.5-pro-1m");
+  assert.equal(variant.catalogSource, undefined);
+  assert.equal(variant.contextWindow, 128_000);
+});

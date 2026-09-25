@@ -3,7 +3,7 @@ import {
   ErrorCodes,
   inferEndpointProfile,
   normalizeApiStyle,
-  resolveBindingContextWindow,
+  resolveBindingLimits,
   type ModelBinding,
   type ProviderReorderInput,
   type OAuthRespondInput,
@@ -404,7 +404,7 @@ export function registerProviderIpc({
           modelId: model.modelId,
         });
         const storedModel = provider ? bindingForModel(provider, model.modelId) : undefined;
-        const resolvedModel = resolveBindingContextWindow(catalogModelConfig, storedModel);
+        const resolvedModel = resolveBindingLimits(catalogModelConfig, storedModel);
         const modelConfig = modelConfigWithBinding(
           resolvedModel.catalogConfig,
           resolvedModel.binding,
@@ -651,10 +651,14 @@ export function registerProviderIpc({
 
       // The endpoint published nothing usable (no /models route, an auth error,
       // or an empty list). The catalog is the fallback, not the primary source.
+      // The list is the service's own published set, so a key that can call an
+      // embedding or image endpoint sees it here too; nothing is preselected
+      // from those, and `recommendModels` still picks chat models only.
       const catalogModels = modelsDevCatalog.modelsForProvider({
         vendorKey: catalogVendorKey,
         baseUrl: endpointBaseUrl,
         providerId: provider?.id ?? "",
+        includeNonChat: true,
       });
       if (catalogModels.length > 0) {
         return {

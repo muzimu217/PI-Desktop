@@ -117,7 +117,7 @@ test("a custom row on a published host gets that publisher's model metadata", as
   }
 });
 
-test("a relay's list gets what every publisher of an id agrees on", async (t) => {
+test("a relay's list reads the shipped publisher's record for a known id", async (t) => {
   const row = rowOf({
     id: "row-2",
     name: "Relay",
@@ -130,8 +130,10 @@ test("a relay's list gets what every publisher of an id agrees on", async (t) =>
   const byId = new Map(result.models.map((model) => [model.modelId, model]));
   const known = byId.get("claude-sonnet-4-5");
   assert.equal(known.catalogSource, "models.dev", "several publishers state this id");
-  // Under-claimed: the lower median of the claims, not one publisher's number.
-  assert.ok(known.contextWindow >= 128_000 && known.contextWindow < 1_000_000);
+  // Anthropic's published window, not a median dragged down by resellers that
+  // state a smaller deployment of the same id.
+  assert.equal(known.contextWindow, 1_000_000);
+  assert.equal(known.maxTokens, 64_000);
   assert.ok(known.capabilities.includes("tools"));
   // An id no publisher states still lands on the generic seed.
   const unknown = byId.get("some-private-model");
@@ -201,9 +203,27 @@ test("a relay's list keeps the tool support a majority of publishers states", as
   assert.ok(tts.capabilities.includes("audio"));
   assert.equal(tts.contextWindow, 8_192);
 
-  // A context-variant suffix no publisher uses is not guessed at: the catalog
-  // names `-128k`/`-256k` models of their own, so `-1m` stays unknown.
+  // A `-1m` marker names a context variant of the same published model, so the
+  // served id reads that model's record — and an id whose marker names another
+  // model of the catalog's own (`-asr`, `-tts`) is still not folded into it.
   const variant = byId.get("gemini-2.5-pro-1m");
-  assert.equal(variant.catalogSource, undefined);
-  assert.equal(variant.contextWindow, 128_000);
+  assert.equal(variant.catalogSource, "models.dev");
+  assert.equal(variant.contextWindow, 1_048_576);
+});
+
+test("a relay reads a shipped publisher's own record, not a reseller's", async (t) => {
+  /*
+    `doubao-seed-2-0-pro-260215` is published both by Volcengine, which the app
+    ships a provider for, and by a reseller that states the opposite tool support
+    for a smaller deployment. The shipped publisher's record answers: a relay
+    fronting that model serves Volcengine's window, not the reseller's.
+  */
+  const row = rowOf({ id: "row-5", name: "Relay", baseUrl: "https://relay.example/v1" });
+  const { result } = await handlersFor(t, row, { data: [{ id: "doubao-seed-2-0-pro-260215" }] });
+
+  const [model] = result.models;
+  assert.equal(model.catalogSource, "models.dev");
+  assert.ok(model.capabilities.includes("tools"));
+  assert.equal(model.contextWindow, 256_000);
+  assert.equal(model.maxTokens, 128_000);
 });

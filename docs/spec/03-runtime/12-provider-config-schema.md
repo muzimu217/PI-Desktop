@@ -735,14 +735,18 @@ OpenAI Responses endpoint — from showing generic 128k / 8k / text-only default
 for models the catalog describes in full.
 
 When nothing identifies a publisher at all — a relay, or a host the catalog does
-not know — no single publisher's record is adopted, and such a row used to get
-nothing. What the publishers of the same model agree on is claimed instead: the
-lower median of their limits and, for every capability but tool support, only
-what all of them state, so the answer can only under-claim. Tool support follows
-the majority of the publishers that state it: an ID a relay lists can be stated
-by a hundred publishers, and one dissenting reseller must not decide — or void —
-the claim for a deployment it does not describe. An even split states no majority
-and claims nothing. Two routes that merely share a name leaf
+not know — the publishers this app ships a provider for answer first: they are
+the vendors and gateways behind the first-class presets, so their records
+describe the model, while a reseller's own flags describe its own deployment of
+it. Only when none of them states the ID does the pool widen to every publisher
+that does, because an ID a relay alone carries would otherwise be shown as a
+generic 128k text-only row. Within that pool the publishers' agreement is
+claimed: the lower median of their limits and, for every capability but tool
+support, only what all of them state, so the answer can only under-claim. Tool
+support follows the majority of the publishers that state it: an ID a relay lists
+can be stated by a hundred publishers, and one dissenting reseller must not decide
+— or void — the claim for a deployment it does not describe. An even split states
+no majority and claims nothing. Two routes that merely share a name leaf
 (`provider-a/foo` vs `gateway/foo`) are not one model, so an ID whose identity is
 genuinely unknown still resolves to nothing. A record borrowed this way states no
 reasoning wire shape — that is a property of the deployment — and an Anthropic

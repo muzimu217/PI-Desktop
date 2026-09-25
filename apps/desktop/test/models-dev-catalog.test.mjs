@@ -189,13 +189,20 @@ test("an unknown endpoint borrows only what every publisher of the id agrees on"
     assert.equal(consensus?.reasoning, false, "one publisher's reasoning claim must not transfer");
     assert.equal(catalog.findModel(unknown), consensus, "a consensus is cached like any other answer");
     /*
-      Two routes that merely share a leaf are not one model, so the borrow is not
-      offered to them and the id stays unresolved.
+      A deployment that puts the model behind a route prefix still serves that
+      model: `proxy/shared-model` reads the record `shared-model` is published
+      under, with the same consensus rules. Two *different* route paths that
+      merely share a leaf are still not one model — the matcher rejects those
+      rather than averaging them.
     */
-    assert.equal(
-      catalog.findModel({ vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId: "proxy/shared-model" }),
-      undefined,
-    );
+    const prefixed = catalog.findModel({
+      vendorKey: "custom",
+      baseUrl: "https://relay.example/v1",
+      modelId: "proxy/shared-model",
+    });
+    assert.equal(prefixed?.modelId, "shared-model");
+    assert.equal(prefixed?.limit.context, 32_000);
+    assert.equal(prefixed?.reasoning, false);
     const alpha = catalog.findModel({
       vendorKey: "custom", baseUrl: "https://alpha.example/v1", modelId: "shared-model",
     });
@@ -606,6 +613,155 @@ test("a majority of the publishers that state tool support decides the borrow", 
   assert.equal(match.limit.context, 1_048_576);
   const info = modelInfoFromModelsDev(match, "provider-1");
   assert.equal(info.capabilities.includes("tools"), true);
+});
+
+test("the publishers this app ships decide an id that resellers also state", async (t) => {
+  /*
+    A relay's list names ids arbitrary resellers carry too, and a reseller's
+    flags describe its own deployment: here two resellers outvote the shipped
+    publisher and both are wrong about the tools it accepts.
+  */
+  const catalog = await loadFixtureCatalog(t, {
+    gateway: { api: "https://gateway.example/v1", models: {} },
+    deepseek: { models: { "shared-model": {
+      id: "shared-model", tool_call: true, limit: { context: 1_000_000, output: 393_216 },
+    } } },
+    resellerA: { models: { "shared-model": {
+      id: "shared-model", tool_call: false, limit: { context: 128_000, output: 8_192 },
+    } } },
+    resellerB: { models: { "shared-model": {
+      id: "shared-model", tool_call: false, limit: { context: 131_072, output: 8_192 },
+    } } },
+  });
+  const match = catalog.findModel({
+    vendorKey: "custom",
+    baseUrl: "https://relay.example/v1",
+    modelId: "shared-model",
+  });
+  assert.ok(match, "a shipped publisher states the id");
+  assert.equal(match.providerKey, "deepseek", "the shipped publisher's record answers");
+  assert.equal(match.toolCall, true);
+  assert.equal(match.limit.context, 1_000_000);
+  assert.equal(match.limit.output, 393_216);
+});
+
+test("resellers still answer for an id no shipped publisher states", async (t) => {
+  // The preference above is not a filter: an id only resellers publish would
+  // otherwise be shown as a generic 128k text-only row.
+  const catalog = await loadFixtureCatalog(t, {
+    gateway: { api: "https://gateway.example/v1", models: {} },
+    resellerA: { models: { "reseller-only-model": {
+      id: "reseller-only-model", tool_call: true, limit: { context: 262_144 },
+    } } },
+    resellerB: { models: { "reseller-only-model": {
+      id: "reseller-only-model", tool_call: true, limit: { context: 262_144 },
+    } } },
+  });
+  const match = catalog.findModel({
+    vendorKey: "custom",
+    baseUrl: "https://relay.example/v1",
+    modelId: "reseller-only-model",
+  });
+  assert.ok(match, "a published id must not drop to the generic shape");
+  assert.equal(match.toolCall, true);
+  assert.equal(match.limit.context, 262_144);
+});
+
+test("a route prefix and a deployment marker still reach the published model", async (t) => {
+  /*
+    Relays name a published model behind a route of their own and append markers
+    of their own: `test/mimo-v2.5`, `mimo-v2.5-thinking`, `test/mimo-v2.5-pro-test`.
+    All three are that published model. A suffix the catalog uses for a model of
+    its own — `-asr` — is not a marker, so an id carrying one stays unknown.
+  */
+  const catalog = await loadFixtureCatalog(t, {
+    gateway: { api: "https://gateway.example/v1", models: {} },
+    xiaomi: { models: {
+      "mimo-v2.5": {
+        id: "mimo-v2.5", tool_call: true,
+        modalities: { input: ["text", "image"], output: ["text"] },
+        limit: { context: 1_048_576, output: 131_072 },
+      },
+      "mimo-v2.5-pro": {
+        id: "mimo-v2.5-pro", tool_call: true, limit: { context: 1_048_576, output: 131_072 },
+      },
+    } },
+  });
+  const relay = (modelId) =>
+    catalog.findModel({ vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId });
+
+  for (const served of ["test/mimo-v2.5", "mimo-v2.5-thinking", "mimo-v2.5"]) {
+    assert.equal(relay(served)?.modelId, "mimo-v2.5", `${served} reads the published model`);
+    assert.equal(relay(served)?.limit.context, 1_048_576);
+  }
+  const info = modelInfoFromModelsDev(relay("test/mimo-v2.5"), "provider-1");
+  assert.ok(info.capabilities.includes("vision"));
+
+  // The prefix and the marker together, as one deployment writes them.
+  assert.equal(relay("test/mimo-v2.5-pro-test")?.modelId, "mimo-v2.5-pro");
+  assert.equal(relay("test/mimo-v2.5-pro-test")?.limit.output, 131_072);
+
+  // `-asr` names a model of its own, so nothing is borrowed for it.
+  assert.equal(relay("mimo-v2.5-asr"), undefined);
+});
+
+test("a shipped publisher answers first for a row anchored to a reseller", async (t) => {
+  // The row's own publisher is known and publishes nothing for this id, so the
+  // borrow runs — and it reads the publisher the app ships before the resellers
+  // that also carry the id.
+  const catalog = await loadFixtureCatalog(t, {
+    reseller: { api: "https://reseller.example/v1", models: { "reseller/own": { id: "reseller/own" } } },
+    xai: { models: { "Vendor/Model": {
+      id: "Vendor/Model", tool_call: true, limit: { context: 500_000, output: 500_000 },
+    } } },
+    otherA: { models: { "Vendor/Model": {
+      id: "Vendor/Model", tool_call: false, limit: { context: 128_000, output: 8_192 },
+    } } },
+    otherB: { models: { "Vendor/Model": {
+      id: "Vendor/Model", tool_call: false, limit: { context: 131_072, output: 8_192 },
+    } } },
+  });
+  const match = catalog.findModel({
+    vendorKey: "reseller",
+    baseUrl: "https://reseller.example/v1",
+    modelId: "Vendor/Model",
+  });
+  assert.equal(match?.providerKey, "xai", "the shipped publisher's record answers");
+  assert.equal(match.toolCall, true);
+  assert.equal(match.limit.context, 500_000);
+  assert.equal(match.limit.output, 500_000);
+});
+
+test("an exact record outranks a shipped publisher's other spelling of the id", async (t) => {
+  /*
+    Both are shipped publishers, and `XiaomiMiMo/MiMo-V2.5` is the same model as
+    `mimo-v2.5`. Only the exact id decides what the model can take: a publisher
+    that lists the text half alone must not narrow the model's own record into
+    text-only.
+  */
+  const catalog = await loadFixtureCatalog(t, {
+    gateway: { api: "https://gateway.example/v1", models: {} },
+    xiaomi: { models: { "mimo-v2.5": {
+      id: "mimo-v2.5", tool_call: true,
+      modalities: { input: ["text", "image", "audio"], output: ["text"] },
+      limit: { context: 1_048_576, output: 131_072 },
+    } } },
+    huggingface: { models: { "XiaomiMiMo/MiMo-V2.5": {
+      id: "XiaomiMiMo/MiMo-V2.5", tool_call: true,
+      modalities: { input: ["text"], output: ["text"] },
+      limit: { context: 1_048_576, output: 131_072 },
+    } } },
+  });
+  const match = catalog.findModel({
+    vendorKey: "custom",
+    baseUrl: "https://relay.example/v1",
+    modelId: "mimo-v2.5",
+  });
+  assert.equal(match?.providerKey, "xiaomi");
+  assert.deepEqual(match.modalities.input, ["text", "image", "audio"]);
+  const info = modelInfoFromModelsDev(match, "provider-1");
+  assert.ok(info.capabilities.includes("vision"), "the sibling's text-only record must not narrow it");
+  assert.ok(info.capabilities.includes("audio"));
 });
 
 test("borrowing stays exact-id, provider-scoped and absent for unknown ids", async (t) => {
@@ -1424,7 +1580,7 @@ const customGateway = {
   baseUrl: "https://gateway.example/v1",
 };
 
-test("a custom Anthropic gateway borrows the consensus and keeps Anthropic's thinking shape", async (t) => {
+test("a custom Anthropic gateway reads Anthropic's own record and its thinking shape", async (t) => {
   const catalog = await loadFixtureCatalog(t, ambiguousClaudeFixture);
   const config = catalogModelConfigFor(catalog, {
     ...customGateway,
@@ -1433,14 +1589,13 @@ test("a custom Anthropic gateway borrows the consensus and keeps Anthropic's thi
   });
 
   /*
-    Anthropic (1M / 128k) and Requesty (200k / 64k) both publish this id and
-    disagree, so neither record answers alone: the limits are the lower median of
-    what they state, which under-claims rather than adopting one deployment's
-    numbers.
+    Anthropic publishes this id, so the record of the publisher the app ships
+    answers — not a median shared with a reseller's smaller deployment of the
+    same id, which would halve the window Anthropic itself states.
   */
   assert.equal(config.source, "models.dev");
-  assert.equal(config.contextWindow, 200_000);
-  assert.equal(config.maxTokens, 64_000);
+  assert.equal(config.contextWindow, 1_000_000);
+  assert.equal(config.maxTokens, 128_000);
   assert.equal(config.reasoning, true);
   /*
     No publisher describes this endpoint's reasoning wire shape, so the borrowed

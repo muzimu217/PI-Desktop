@@ -4273,22 +4273,26 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   turn; notification inbox starts empty.
 - **Steps**: 1) Focus and view session A, then complete a turn in A. 2) While
   still focused on A, fail a turn in background session B. 3) Unfocus the
-  window and complete another turn in A. 4) Abort a fourth turn. 5) Repeat each
-  terminal RPC. 6) Confirm the main titlebar has no bell, then open the bell in
-  the expanded sidebar footer and switch between All and Unread. 7) Mark one
+  window and complete another turn in A. 4) Restore/focus the app from its
+  taskbar or Dock without switching sessions and confirm A's visible terminal
+  outcome is acknowledged. 5) Abort a fourth turn. 6) Repeat each terminal
+  RPC. 7) Confirm the main titlebar has no bell, then open the bell in
+  the expanded sidebar footer and switch between All and Unread. 8) Mark one
   row read and confirm its session has no terminal sidebar mark, then
-  close/reopen the popover and restart the app. 8) Select the other session
-  from its terminal-marked sidebar row. 9) Generate a host fixture with 205
-  eligible terminal turns. 10) Use Mark all read, then Clear. 11) While a
+  close/reopen the popover and restart the app. 9) Select the other session
+  from its terminal-marked sidebar row. 10) Generate a host fixture with 205
+  eligible terminal turns. 11) Use Mark all read, then Clear. 12) While a
   native task banner and a renderer refresh are still in flight, deliver a
   delayed `notification.changed` payload for a cleared/read durable id and a
-  duplicate payload for an id that is already present. 12) On Windows, create
+  duplicate payload for an id that is already present. 13) On Windows, create
   one unread successful outcome while the bell has no failure rows. Open the
   empty bell popover, use Mark all read, then create another success and use
-  Clear. 13) Create enough unread outcomes for a two-digit count and inspect
+  Clear. 14) Create enough unread outcomes for a two-digit count and inspect
   the taskbar overlay before and after marking all outcomes read.
-- **Expected**: A's visible-current completion creates no row or terminal sidebar mark. Exactly two rows
-  exist, newest first: the unfocused A completion and background B failure,
+- **Expected**: A's visible-current completion creates no row or terminal
+  sidebar mark. Restoring/focusing the app with A already visible clears A's
+  matching durable outcome and taskbar count without clearing B. Exactly two
+  rows exist, newest first: the unfocused A completion and background B failure,
   with localized labels, snapshotted session titles, and B's stable code.
   Abort/repeated terminal calls create no row. The former footer Help shortcut
   is absent; the 32px footer bell and its upward-opening popover replace it.

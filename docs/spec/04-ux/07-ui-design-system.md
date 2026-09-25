@@ -260,12 +260,14 @@ turn clears the prior terminal outcome; abort clears the live indicator without
 creating a failure. Opening a conversation acknowledges its unread terminal
 outcome: the terminal mark clears immediately and the matching durable task
 notification is marked read so the mark cannot return after a notification
-refresh or app restart. Outcomes already marked read never produce a terminal
-mark. Marking the row read, marking all rows read, or clearing the inbox also
-dismisses any matching task-native banner; a late event for that durable id
-cannot restore the mark, row, or banner. Reduced-motion mode disables the
-breathing animation while retaining its orange fill and localized accessible
-name.
+refresh or app restart. Restoring/focusing the app with that conversation still
+visible in the chat applies the same acknowledgement without requiring a
+session switch; other sessions remain unread. Outcomes already marked read
+never produce a terminal mark. Marking the row read, marking all rows read, or
+clearing the inbox also dismisses any matching task-native banner; a late event
+for that durable id cannot restore the mark, row, or banner. Reduced-motion mode
+disables the breathing animation while retaining its orange fill and localized
+accessible name.
 
 ### 4.6 Tailwind CSS variable stub
 

@@ -3849,6 +3849,10 @@ Sidebar footer                                        Popover (360px max)
   and scrolls the transcript to its latest content. The successful read also
   dismisses the matching task-native banner before a late activation can
   surface it again.
+- Restoring/focusing the app from its taskbar or Dock while an unread terminal
+  outcome's session is already visible in the chat marks that session's
+  matching durable notifications read; it does not mark outcomes belonging to
+  other sessions.
 - Mark all read is idempotent and preserves rows; it dismisses every outstanding
   task-native banner. Clear deletes every inbox row, dismisses all task-native
   banners, and leaves sessions, transcripts, and turns intact. These actions

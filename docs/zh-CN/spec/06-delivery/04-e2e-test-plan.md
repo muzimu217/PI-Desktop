@@ -5465,7 +5465,7 @@ eleven-tool-round desktop paths are verified by
 | M5（聊天文件引用） | E2E-CHAT-shorthand-file-ref-opens-the-matching-file、E2E-CHAT-file-ref-opens-the-surface-that-owns-it |
 | M6+（聊天文件引用） | E2E-PLUGIN-file-view-collapse-persists |
 | M6+（项目文件夹根） | E2E-PLUGIN-file-view-switches-folder-per-project |
-| 后MVP | E2E-PLUGIN-pi-npm-skill-discovery, E2E-022A、E2E-022B、E2E-022C、E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M（插件路线图 R2/R3/R6） |
+| 后MVP | E2E-022A、E2E-022B、E2E-022C、E2E-024I、E2E-024J、E2E-024K、E2E-024L、E2E-024M（插件路线图 R2/R3/R6） |
 | 基线后本地自动化 | E2E-220 |
 | MVP 后远程控制 | E2E-221、E2E-222、E2E-223、E2E-224、E2E-225、E2E-226、E2E-227、E2E-228、E2E-229、E2E-230、E2E-231、E2E-232 |
 | 受信任扩展（R7 v1） | E2E-DIALOG-long-text-boundaries、E2E-241、E2E-242、E2E-HOOKS-cancel-and-dispose、E2E-243、E2E-244、E2E-245、E2E-PLUGIN-imported-pi-package-skills、E2E-PLUGIN-import-extension-installs-dependencies、E2E-PLUGIN-import-extension-reports-missing-dependency、E2E-PLUGIN-declared-provider-appears-in-the-native-provider-list |
@@ -8799,30 +8799,6 @@ the latest destination. These assertions measure work counts, not device FPS.
   `providers::tests::a_stored_array_survives_an_entry_that_lost_a_field`）；
   宿主 RPC 路径由 `scripts/e2e-smoke.mjs` 覆盖提供商的创建与列举，但没有套件
   驱动手工编辑的 `config_json`。
-
-### E2E-PLUGIN-pi-npm-skill-discovery
-
-- **Preconditions:** Isolated npm package directory and plugin import storage;
-  a package declaring `pi.skills`, optionally executable extensions. No provider.
-- **Steps:** Open Skills, discover the candidate, cancel import, confirm import,
-  read the registered skill body and resources, reload, and attempt a duplicate.
-  Change metadata during confirmation; retry discovery after an error; discover
-  with more than 256 hoisted dependencies and an unreadable scope. Simulate a
-  runtime load failure after host registration and inspect the refreshed state.
-- **Expected:** No implicit import/execution, native explicit consent, preserved
-  resources and runtime skill body, stable imported state, no duplicate import,
-  stale consent refusal, and visible/recoverable errors. Unregistered leftover
-  directories do not count as imports; scoped packages are discovered. Unrelated
-  dependencies and unreadable scopes do not hide healthy skills. A registered
-  import remains marked imported after runtime failure while its error stays visible.
-- **Specs:** 07-plugins/16-trusted-extensions; ADR pi-npm-skill-discovery.
-- **Acceptance:** Plugin skill discovery and explicit trust boundary.
-- **Milestone:** Post-MVP compatibility.
-- **Status:** Automated via `apps/desktop/test/pi-skill-discovery.test.mjs` (real
-  import and plugin child process, native dialog boundary controlled) and
-  `node scripts/e2e-pi-skill-discovery-ui.mjs` (real React/Chromium panel with
-  controlled IPC results). Optional `PI_SKILL_PACKAGE_FIXTURE` points to an
-  unpacked published package for the reported planning-with-files path.
 
 ### E2E-SESSION-temporary-attachment-fork：临时任务预览与独立分支附件
 

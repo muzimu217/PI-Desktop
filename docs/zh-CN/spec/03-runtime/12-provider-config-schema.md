@@ -229,7 +229,7 @@ OpenCode Go（以及任何 `opencode.ai` 主机）的 LLM 请求必须带稳定�
 上发送该头，并附带 `x-opencode-client: pi-desktop` 与
 `User-Agent: pi-desktop/<APP_VERSION>`。行上可选的 `headers` 会覆盖这些默认值；留空则保持适配器默认。
 
-每行（AI 服务或 OAuth 账户）可在高级选项中用键值行编辑自定义请求头。空映射保持 pi-ai / `claude-cli` / OpenCode 默认。fetch 包装器是最后写入者，因此 Codex 与 Anthropic SDK 无法覆盖。禁止 `Authorization` / `Host` / `Content-Type` 等保留头。遗留的 `userAgent` 读取时迁入 `headers["User-Agent"]`。首次 OAuth 登录不收集请求头，登录后再编辑。覆盖 Anthropic OAuth 的 `claude-cli/…` 可能导致 Claude Pro/Max 拒绝请求。
+每行（AI 服务或 OAuth 账户）可在高级选项中用键值行编辑自定义请求头。空映射保持 pi-ai / `claude-cli` / OpenCode 默认。fetch 包装器是最后写入者，因此 Codex 与 Anthropic SDK 无法覆盖。pi-ai 的 Google 适配器改为通过流选项标头接收同样的值，因为它们会拒绝任何其他 `fetch`（issue #1072）。禁止 `Authorization` / `Host` / `Content-Type` 等保留头。遗留的 `userAgent` 读取时迁入 `headers["User-Agent"]`。首次 OAuth 登录不收集请求头，登录后再编辑。覆盖 Anthropic OAuth 的 `claude-cli/…` 可能导致 Claude Pro/Max 拒绝请求。
 
 键不区分大小写且唯一，最多 32 条，名称 ≤ 256 字节，值 ≤ 4096 字节，名称只允许字母数字与连字符，且不得含 CR/LF。值先做半角化——全角块（U+FF01–U+FF5E）与表意空格（U+3000）换成对应 ASCII——再修剪，再校验：HTAB、可打印 ASCII 与 Latin-1 补充区可以随请求发出，汉字、emoji、弯引号、NUL 及其它控制字符则以 `HEADERS_INVALID` 拒绝，并指出具体字符与字符下标。半角化覆盖的正是用户真正会撞上的情况：全角字符来自输入法或全角排版的网页，若不处理，`Headers.set` 会在回合中途抛 `Cannot convert argument to a ByteString`。这里刻意不做完整 NFKC：它会把半角片假名改写成 U+00FF 以上的码位并产生组合字符。高级编辑器也会在行旁提示哪些值会被半角化、哪些会被拒绝。
 

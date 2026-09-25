@@ -253,7 +253,9 @@ Anthropic OAuth's `claude-cli/<version>`, or OpenCode's
 outbound HTTP — session turns, subagents, prompt enhancement, plugin one-shots,
 `/models` discovery (including unsaved form values), connection tests, and
 OAuth token refresh. A fetch wrapper is the last writer so Codex and the
-Anthropic SDK cannot overwrite it. The same values are also placed on stream-
+Anthropic SDK cannot overwrite it; pi-ai's Google adapters receive the same
+values on stream-option headers instead, because they reject any other `fetch`
+(issue #1072). The same values are also placed on stream-
 option headers so OpenCode's caller-wins rule stays true. Keys are
 case-insensitive unique, at most 32 entries, name ≤ 256 bytes, value ≤ 4096
 bytes, no CR/LF, names alphanumeric plus hyphen. Values are folded to

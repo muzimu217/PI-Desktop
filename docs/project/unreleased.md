@@ -1,5 +1,11 @@
 # Unreleased changes
 
+- Google Gemini rows send requests again. A provider row on the native
+  generative-AI endpoint no longer hands pi-ai's Google adapter the internal
+  response-capture `fetch` it refuses before the request leaves, custom provider
+  headers still reach Google, and an adapter refusal now fails the turn instead
+  of spending all ten transient retries on it (issue #1072).
+
 - Deleting a provider no longer leaves a dangling image-generation default.
   An image default or marked candidate whose provider row is gone is dropped
   on the next settings read or write, instead of staying stored as a binding

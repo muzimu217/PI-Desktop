@@ -497,12 +497,12 @@ Collapsed (48px):
   64 px 启动画面；ADR 0125）。该组件订阅了
   `document.documentElement[data-theme]` 通过 `MutationObserver` 并交换
   运行时侧边栏和启动画面的源代码，无需重新加载。的
-  空屋英雄在 100 像素槽位使用 `HomeMascotLogo`。标准浅色和深色 GIF
-  保留八帧挥手动画，并各有对应静止 PNG。根元素 `lang` 以 `zh` 开头且
-  主题为深色时，CSS 会选择提供的 30 帧透明中文 GIF 及对应静止 PNG。
-  主题和语言变化无需重新加载即可生效。播放由 GIF 自身完成，指针悬停
-  不改变节奏；减少动态效果时显示对应静止图。展开和折叠侧边栏仍分别
-  使用 20px/18px 图标，启动画面仍为 64px。
+  空屋英雄在 100 像素处使用 `HomeMascotLogo` 八帧 GIF。浅色和深色主题
+  各有一套 GIF 和静止 PNG。CSS 跟随 `document.documentElement[data-theme]`，
+  无需重新加载；非 `light` 时使用深色稿。吉祥物循环一段处理后的挥手
+  动作，并在首帧稍作停留。播放由 GIF 自身完成，指针悬停不改变节奏；
+  减少运动时切换为对应静止首帧 PNG。这
+expanded/collapsed 侧边栏仍为 20px/18px 且启动画面为 64 像素。
   主目录和线程停靠的输入框提示行不会呈现领先品牌
   图标。
 - 项目和临时会话创建控件呈现专用

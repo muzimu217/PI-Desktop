@@ -175,21 +175,6 @@
 - **Status:** Documented; run after integration into main.
 
 
-### E2E-SHELL-mid-autumn-egg-first-open
-
-- **Preconditions:** A profile whose renderer storage has never recorded the
-  Mid-Autumn egg (`pi.desktop.midAutumnEggSeen` unset).
-- **Steps:** Launch the app and watch the startup splash; after the shell is
-  ready close the egg with its top-right close button, relaunch and confirm no
-  automatic playback, then open Settings → Info and activate the Mid-Autumn
-  egg row.
-- **Expected:** The automatic egg appears only once the startup splash has
-  finished; it never covers or delays the splash and never appears while the
-  app is still loading. It fills the window, exposes an obvious top-right
-  close button, and both that button and Escape dismiss it and restore focus
-  to the app. Settings → Info shows the Easter eggs card, and its row replays
-  the same animation on demand regardless of the seen flag.
-- **Status:** Documented; run after integration into main.
 - Document every user-visible and protocol-visible behavior that MVP must verify.
 - Provide a scenario catalog that maps to acceptance criteria (A–H) and milestones (M1–M6).
 - Serve as the traceability backbone: scenario ID ↔ acceptance criterion ↔ spec.
@@ -3236,20 +3221,18 @@ identify the platform validation still needed.
 
 #### E2E-046: PI-Desktop renderer branding and composer icon boundary
 
-- **Preconditions**: App running in English, zh-CN, and zh-TW locales, with
-  an empty home and a docked transcript available.
-- **Steps**: 1) Inspect the expanded and collapsed sidebar. 2) In light mode,
-  inspect the empty-home hero in English and Chinese. 3) Switch to dark mode;
-  confirm English uses the standard dark wave and `zh-CN` / `zh-TW` use the
-  30-frame Chinese GIF. Move the pointer over the mascot and confirm its
-  cadence and geometry do not change. Enable reduced motion and confirm each
-  locale/theme combination shows its matching still first frame. 4) Inspect
-  the docked composer, footer Settings and Plugins icons, and session-create
-  controls. 5) Open Settings and the composer input.
+- **Preconditions**: App running in both English and zh-CN locales, with an
+  empty home and a docked transcript available.
+- **Steps**: 1) Inspect the expanded and collapsed sidebar. 2) Inspect the
+  empty-home hero and docked composer. 3) Observe the eight-frame mascot GIF
+  looping in place, move the pointer over it, and confirm its cadence and
+  geometry do not change. Enable reduced motion and confirm the still first
+  frame is shown. 4) Focus the footer Settings and Plugins icons, then each
+  project/Temporary session create control. 5) Open Settings and the composer
+  input.
 - **Expected**: Visible shell identity reads `PI-Desktop`; the empty-home hero
-  renders the theme- and locale-matching 100px `HomeMascotLogo` GIF. Only dark
-  Chinese locales use the supplied 30-frame artwork; other combinations keep
-  their existing variants. Pointer hover does not alter cadence or geometry,
+  renders the theme-matching 100px `HomeMascotLogo` GIF with a short idle hold
+  and a looping wave. Pointer hover does not alter the cadence or geometry,
   and reduced motion shows the matching still first frame.
   The expanded/collapsed
   sidebar renders the derived `src/assets/brand/logo-*.png` asset through `BrandLogo`
@@ -5348,21 +5331,17 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
      and inspect the light eight-frame `HomeMascotLogo` GIF in the empty-home
      hero. Hover the mascot and verify that its cadence does not change.
   3. Switch the theme to dark (Settings → Basics → Appearance, or system appearance change).
-  4. In English, confirm the standard dark GIF. Switch the app language to
-     `zh-CN` and `zh-TW` and confirm the 30-frame Chinese dark GIF appears
-     without a reload. Enable reduced motion and confirm the matching Chinese
-     still frame appears.
+  4. Re-inspect the same surfaces without reloading.
   5. Switch back to light and re-inspect.
 - **Expected**:
   - Light and dark mode render `src/assets/brand/logo-light.png` /
     `src/assets/brand/logo-dark.png`
     live in the sidebar and startup splash without a window reload.
-  - The empty-home hero renders the 100px mascot GIF for the active theme and
-    locale. Light mode uses `home-mascot-light.gif`; dark mode uses
-    `home-mascot-dark.gif`, except Chinese locales use
-    `home-mascot-dark-zh.gif`. Theme and language changes swap the asset live
-    without a window reload. Pointer hover does not change cadence; reduced
-    motion shows the matching still first frame.
+  - The empty-home hero renders the 100px eight-frame mascot GIF for the
+    active theme (`home-mascot-light.gif` / `home-mascot-dark.gif`) with a
+    short idle hold and a looping wave. Switching theme swaps the pair live
+    without a window reload. Pointer hover does not change the cadence;
+    under reduced motion the matching still first frame remains visible.
   - Sizes stay stable across theme changes (sidebar 20px, hero 100px, splash
     64px), and the marks stay decorative with no click, keyboard, or focus
     behavior.
@@ -8838,12 +8817,11 @@ This test plan spec is accepted when:
   row, with no Logo/Home brand or back/forward buttons.
 
 ### US-UI-17 PI-Desktop home hero logo
-- On empty chat home, the 100px `HomeMascotLogo` renders above the title.
-  Light mode and non-Chinese dark mode use the existing eight-frame GIFs;
-  dark `zh-CN` and `zh-TW` use the 30-frame Chinese GIF and matching still.
-- Theme and locale changes select the matching art without a reload. Pointer
-  hover does not change cadence or geometry; reduced motion shows the matching
-  still first frame. The mascot remains decorative.
+- On empty chat home, the 100px `HomeMascotLogo` GIF renders above the title
+  as an eight-frame waving mascot with a short idle hold. Light and dark
+  themes each use a dedicated GIF and still PNG.
+- Pointer hover does not change the cadence or geometry; reduced motion shows
+  the matching still first frame. The mascot remains decorative.
 - Title is 28px / weight 400; active project name uses dotted underline (1px, offset 4px).
 - Composer does not render attachment or appshot controls before their payload
   reaches pi end to end.

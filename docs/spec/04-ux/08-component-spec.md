@@ -659,14 +659,14 @@ visually distinct from list content.
   splash at 3x; ADR 0125). The component subscribes to
   `document.documentElement[data-theme]` via a `MutationObserver` and swaps the
   source at runtime for the sidebar and startup splash without a reload. The
-  empty-home hero uses `HomeMascotLogo` in a 100px slot. The standard light and
-  dark GIFs remain eight-frame waves with matching still PNGs. When the root
-  `lang` begins with `zh` and the theme is dark, CSS selects the supplied
-  30-frame transparent Chinese GIF and its matching still PNG. Theme and
-  language changes take effect without a reload. Playback is native to GIF,
-  does not change on pointer hover, and reduced motion selects the matching
-  still. The expanded/collapsed sidebar remains 20px/18px and the startup
-  splash 64px.
+  empty-home hero uses `HomeMascotLogo` as a 100px eight-frame GIF. Light and
+  dark themes each have a dedicated GIF plus still PNG. CSS follows
+  `document.documentElement[data-theme]` without a reload; anything other than
+  `light` uses the dark artwork. The mascot loops a processed wave with a
+  short idle hold on the first frame. Playback is native to the GIF and does
+  not change on pointer hover; reduced motion swaps to the matching still
+  first-frame PNG. The expanded/collapsed sidebar remains 20px/18px and the
+  startup splash 64px.
   Home and thread-docked composer prompt rows do not render a leading brand
   icon.
 - Project and Temporary session creation controls render the dedicated

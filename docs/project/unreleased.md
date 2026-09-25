@@ -1,5 +1,10 @@
 # Unreleased changes
 
+- Deleting a provider no longer leaves a dangling image-generation default.
+  An image default or marked candidate whose provider row is gone is dropped
+  on the next settings read or write, instead of staying stored as a binding
+  every generation request rejects as an unavailable model.
+
 - Subagent topology cards and their live process rows now follow the main
   conversation's responsive width behavior: long descriptions, paths,
   commands, and summaries wrap inside the dock instead of requiring repeated

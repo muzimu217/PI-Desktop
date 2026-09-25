@@ -19,6 +19,10 @@ const headerEditorSource = await read("../src/components/settings/ProviderHeader
 const vendorDialogSource = await read("../src/components/settings/VendorAccountDialog.tsx");
 // The panes themselves live in the picker both dialogs render (D269).
 const pickerSource = await read("../src/components/settings/ModelSelectionPanes.tsx");
+const fetchErrorSource = await read("../src/components/settings/ModelsFetchErrorMessage.tsx");
+// The credential rows live in their own component since D625.
+const fieldsSource = await read("../src/components/settings/ProviderConnectionFields.tsx");
+const summarySource = await read("../src/components/settings/ChosenModelsSummary.tsx");
 const styles = await loadStyles();
 
 /** Declaration block for exactly one selector, so matches cannot span rules. */
@@ -50,10 +54,11 @@ test("the scrolling body keeps the credential focus ring inside the dialog", () 
 
 test("credentials use explicit rows for predictable field alignment", () => {
   assert.match(setupSource, /className="provider-setup-credentials"/);
-  assert.match(setupSource, /provider-setup-fields/);
-  assert.match(setupSource, /provider-setup-service-row/);
-  assert.match(setupSource, /provider-setup-custom-identity-row/);
-  assert.match(setupSource, /provider-setup-custom-auth-row/);
+  assert.match(setupSource, /<ProviderConnectionFields/);
+  assert.match(fieldsSource, /provider-setup-fields/);
+  assert.match(fieldsSource, /provider-setup-service-row/);
+  assert.match(fieldsSource, /provider-setup-custom-identity-row/);
+  assert.match(fieldsSource, /provider-setup-custom-auth-row/);
   const fields = block(".provider-setup-fields");
   assert.ok(fields.includes("display: flex"));
   assert.ok(fields.includes("flex-direction: column"));
@@ -70,28 +75,30 @@ test("custom API format sits beside the key, not in a disclosure", () => {
   assert.doesNotMatch(setupSource, /provider-setup-advanced-toggle/);
   assert.match(setupSource, /provider-advanced-dialog/);
   assert.match(setupSource, /settings\.advancedSettings/);
-  const fieldsBlock = setupSource.slice(
-    setupSource.indexOf("provider-setup-fields"),
-    setupSource.indexOf("<ModelSelectionPanes"),
+  assert.match(fieldsSource, /settings\.apiStyle"/);
+  assert.match(fieldsSource, /CUSTOM_PROVIDER_API_STYLES\.map/);
+  assert.doesNotMatch(fieldsSource, /settings\.apiStyleDerived/);
+  assert.match(fieldsSource, /provider-service-chip/);
+  // The format choice belongs to the custom rows only.
+  assert.ok(
+    fieldsSource.indexOf("{custom ? (") < fieldsSource.indexOf("settings.apiStyle\""),
+    "API format must sit inside the custom rows",
   );
-  assert.match(fieldsBlock, /settings\.apiStyle"/);
-  assert.match(fieldsBlock, /CUSTOM_PROVIDER_API_STYLES\.map/);
-  assert.doesNotMatch(fieldsBlock, /settings\.apiStyleDerived/);
-  assert.match(fieldsBlock, /<ServicePicker/);
   assert.match(pickerSource, /provider-chosen-advanced-toggle/);
 });
 
 test("custom Name and Base URL sit on one row without helper copy", () => {
-  assert.match(setupSource, /type="url"/);
-  assert.match(setupSource, /inputMode="url"/);
-  assert.match(setupSource, /autoComplete="url"/);
+  assert.match(fieldsSource, /type="url"/);
+  assert.match(fieldsSource, /inputMode="url"/);
+  assert.match(fieldsSource, /autoComplete="url"/);
   // Placeholder is enough; a hint under the URL would un-align the name field.
-  assert.doesNotMatch(setupSource, /settings\.baseUrlHint/);
-  assert.match(setupSource, /onBlur={commitBaseUrl}/);
+  assert.doesNotMatch(fieldsSource, /settings\.baseUrlHint/);
+  assert.match(fieldsSource, /onBlur={commitBaseUrl}/);
+  assert.match(setupSource, /commitBaseUrl=\{commitBaseUrl\}/);
   assert.match(setupSource, /normalizeBaseUrlInput\(resolvedBaseUrl, resolvedApiStyle\)/);
   assert.match(setupSource, /!baseUrlIssue/);
-  assert.match(setupSource, /aria-invalid={Boolean\(baseUrlError\)}/);
-  assert.match(setupSource, /provider-base-url-error/);
+  assert.match(fieldsSource, /aria-invalid={Boolean\(baseUrlError\)}/);
+  assert.match(fieldsSource, /provider-base-url-error/);
 
   const customIdentity = block(".provider-setup-custom-identity-row");
   assert.ok(customIdentity.includes("grid-template-columns: minmax(180px, 0.8fr)"));
@@ -103,10 +110,7 @@ test("custom Name and Base URL sit on one row without helper copy", () => {
   assert.match(styles, /\.provider-setup-base-url \.field-input\[aria-invalid="true"\]/);
   assert.match(styles, /\.provider-setup-field-error\s*\{[\s\S]*overflow-wrap: anywhere/);
 
-  const customBlock = setupSource.slice(
-    setupSource.indexOf("{custom ? ("),
-    setupSource.indexOf("<ModelSelectionPanes"),
-  );
+  const customBlock = fieldsSource.slice(fieldsSource.indexOf("{custom ? ("));
   assert.ok(
     customBlock.indexOf("settings.name") < customBlock.indexOf("provider-setup-base-url"),
     "Name must precede Base URL so they occupy the same 2-column row",
@@ -114,7 +118,7 @@ test("custom Name and Base URL sit on one row without helper copy", () => {
 });
 
 test("a failed model list uses a classified error, not a raw dump plus empty copy", () => {
-  assert.match(pickerSource, /describeModelsFetchError/);
+  assert.match(fetchErrorSource, /describeModelsFetchError/);
   assert.match(pickerSource, /ModelsFetchErrorMessage/);
   assert.match(pickerSource, /variant="placeholder"/);
   assert.match(pickerSource, /variant="banner"/);
@@ -335,12 +339,8 @@ test("Advanced offers presets plus JSON import and copy without redundant helper
   assert.match(headersViewport, /overflow-y: auto/);
   assert.match(headersViewport, /overscroll-behavior: contain/);
   // Named and custom both expose Advanced; API format stays beside the key.
-  const fieldsBlock = setupSource.slice(
-    setupSource.indexOf("provider-setup-fields"),
-    setupSource.indexOf("<ModelSelectionPanes"),
-  );
   assert.match(setupSource, /named \|\| custom/);
-  assert.match(fieldsBlock, /settings\.apiStyle"/);
+  assert.match(fieldsSource, /settings\.apiStyle"/);
 });
 
 test("the vendor account dialog hosts the same panes in the same shell", () => {
@@ -352,6 +352,7 @@ test("the vendor account dialog hosts the same panes in the same shell", () => {
   assert.match(dialog, /min-width: 0/);
   assert.match(dialog, /height: min\(720px, calc\(100vh - 64px\)\)/);
   assert.match(vendorDialogSource, /<ModelSelectionPanes/);
+  assert.match(vendorDialogSource, /<ChosenModelsSummary/);
   // The duplicated chosen-pane and custom-model rules are retired with it.
   assert.doesNotMatch(styles, /\.vendor-account-chosen/);
   assert.doesNotMatch(styles, /\.vendor-account-custom-model/);
@@ -374,4 +375,24 @@ test("Advanced says a fullwidth value folds and a non-Latin-1 value is refused",
   assert.match(headerEditorSource, /settings\.headersFullwidthFolded/);
   assert.match(headerEditorSource, /settings\.headersValueNotLatin1/);
   assert.match(block(".provider-setup-header-note"), /color: var\(--ds-text-muted\)/);
+});
+
+test("models open as a summary with the full picker one click away (D625)", () => {
+  for (const source of [setupSource, vendorDialogSource]) {
+    assert.match(source, /managing \?/);
+    assert.match(source, /<ChosenModelsSummary/);
+    assert.match(source, /onCollapse=\{\(\) => setManaging\(false\)\}/);
+    assert.match(source, /customModelInputRef=\{customModelRef\}/);
+  }
+  // Summary rows reuse the picker's row classes so both read the same.
+  assert.match(summarySource, /provider-chosen-row-id/);
+  assert.match(summarySource, /provider-chosen-remove/);
+  assert.match(summarySource, /settings\.manageModels/);
+  assert.match(summarySource, /settings\.addModelManually/);
+  assert.match(pickerSource, /settings\.collapseModels/);
+  // No model opens its advanced settings on its own any more.
+  assert.match(pickerSource, /useState<string \| null>\(null\)/);
+  const summary = block(".provider-models-summary");
+  assert.match(summary, /background: var\(--ds-bg-inset\)/);
+  assert.doesNotMatch(summary, /border:|border-top|box-shadow/);
 });

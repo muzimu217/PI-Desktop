@@ -4,8 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { apiStyleForAdapter, catalogModelIdsMatch, modelIdsMatch } from "@pi-desktop/shared";
-
+import {
+  apiStyleForAdapter,
+  bindingForCustomModelInfo,
+  catalogModelIdsMatch,
+  modelIdsMatch,
+} from "@pi-desktop/shared";
 import {
   MODELS_DEV_API_URL,
   ModelsDevCatalog,
@@ -1424,4 +1428,69 @@ test("a resolved catalog record still wins over the Anthropic thinking fallback"
   assert.equal(config.source, "models.dev");
   assert.equal(config.contextWindow, 200_000);
   assert.ok(config.reasoningOptions?.some((option) => option.type === "budget_tokens"));
+});
+
+/*
+  Release stamps in the published catalog.
+
+  A gateway serves `mify/mimo-v2.5-pro-0731` while models.dev indexes the model
+  under the id that owns the weights. The alias only ever borrows metadata: the
+  id the row is addressed with stays the discovery result.
+*/
+test("a dated snapshot borrows its published model's metadata without changing the wire id", async (t) => {
+  const catalog = await loadFixtureCatalog(t, {
+    mify: {
+      api: "https://api.mify.example/v1",
+      models: {
+        "mimo-v2.5-pro": {
+          id: "mimo-v2.5-pro",
+          name: "MiMo v2.5 Pro",
+          reasoning: true,
+          tool_call: true,
+          limit: { context: 262_144, output: 32_768 },
+        },
+      },
+    },
+  });
+  const model = catalog.findModel({ vendorKey: "mify", modelId: "mify/mimo-v2.5-pro-0731" });
+  assert.equal(model?.modelId, "mimo-v2.5-pro");
+  assert.equal(model?.limit.context, 262_144);
+
+  const info = modelInfoFromModelsDev(model, "provider-1");
+  const binding = bindingForCustomModelInfo("mify/mimo-v2.5-pro-0731", info);
+  assert.equal(binding.id, "mify/mimo-v2.5-pro-0731");
+  assert.equal(binding.contextWindow, 262_144);
+});
+
+test("an exact record answers an id its shorter siblings would only alias", async (t) => {
+  const catalog = await loadFixtureCatalog(t, {
+    alpha: { api: "https://alpha.example/v1", models: {
+      "foo-v2": { id: "foo-v2", limit: { context: 32_000 } },
+      "foo-v2-0731": { id: "foo-v2-0731", limit: { context: 128_000 } },
+    } },
+    beta: { api: "https://beta.example/v1", models: {
+      "foo-v2": { id: "foo-v2", limit: { context: 64_000 } },
+    } },
+  });
+  const exact = catalog.findModel({ vendorKey: "alpha", modelId: "foo-v2-0731" });
+  assert.equal(exact?.modelId, "foo-v2-0731");
+  assert.equal(exact?.limit.context, 128_000);
+
+  // A stamp nothing publishes borrows the model it was cut from.
+  const borrowed = catalog.findModel({ vendorKey: "alpha", modelId: "foo-v2-0815" });
+  assert.equal(borrowed?.modelId, "foo-v2");
+
+  // Two publishers of the alias cannot answer for an unknown endpoint…
+  assert.equal(
+    catalog.findModel({ vendorKey: "custom", baseUrl: "https://relay.example/v1", modelId: "foo-v2" }),
+    undefined,
+  );
+  // …but a record the catalog publishes in full answers for itself.
+  const published = catalog.findModel({
+    vendorKey: "custom",
+    baseUrl: "https://relay.example/v1",
+    modelId: "foo-v2-0731",
+  });
+  assert.equal(published?.providerKey, "alpha");
+  assert.equal(published?.limit.context, 128_000);
 });

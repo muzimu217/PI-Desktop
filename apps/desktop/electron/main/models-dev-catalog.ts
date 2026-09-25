@@ -1,5 +1,10 @@
 import { readFile } from "node:fs/promises";
-import { MODEL_VENDOR_PREFIXES, catalogModelIdsMatch, stripVariantSuffix } from "@pi-desktop/shared";
+import {
+  MODEL_VENDOR_PREFIXES,
+  catalogModelIdsMatch,
+  stripReleaseSuffix,
+  stripVariantSuffix,
+} from "@pi-desktop/shared";
 import type {
   ModelCost,
   ModelCostTier,
@@ -838,9 +843,12 @@ class ModelsDevLookupIndex {
   }
 }
 
-/** Index only aliases the matcher can accept: exact IDs, full slash-path
- * leaves, known-vendor dash/dot prefixes, and the supported suffix variants.
- * The matcher remains the final authority (including known-vendor conflicts). */
+/** Index only aliases the matcher can accept: exact IDs, the region-stripped
+ * form, full slash-path leaves, known-vendor dash/dot prefixes, the supported
+ * thinking/agent/latest variants, and published release stamps. The matcher
+ * remains the final authority (including known-vendor conflicts), but the index
+ * must register every alias the matcher accepts: a key it never indexed is a
+ * lookup that can never reach the record. */
 function candidateKeys(modelId: string): string[] {
   const normalized = normalizedModelId(modelId);
   if (!normalized) return [];
@@ -863,13 +871,27 @@ function candidateKeys(modelId: string): string[] {
     }
   };
 
-  // Strip a suffix only after the region, just as catalogModelIdsMatch does. Add
-  // aliases from both sides so a suffixed catalog ID or request can find its peer.
-  for (const value of new Set([normalized, base, stripVariantSuffix(base)])) {
-    add(value);
-    const slash = value.lastIndexOf("/");
-    if (slash >= 0 && slash < value.length - 1) add(value.slice(slash + 1));
+  /*
+    Suffixes are stripped after the region, just as `catalogModelIdsMatch`
+    does, and either suffix may be the outer one: `foo-0731-thinking` and
+    `foo-thinking-0731` both reach `foo`. Aliases are added from both sides so a
+    suffixed catalog id and a suffixed request each find the other.
+  */
+  const variants = new Set<string>();
+  for (const value of [normalized, base]) {
+    const withoutVariant = stripVariantSuffix(value);
+    const withoutRelease = stripReleaseSuffix(value);
+    for (const variant of [
+      value,
+      withoutVariant,
+      withoutRelease,
+      stripReleaseSuffix(withoutVariant),
+      stripVariantSuffix(withoutRelease),
+    ]) {
+      variants.add(variant);
+    }
   }
+  for (const value of variants) add(value);
   return [...keys];
 }
 
@@ -1121,31 +1143,45 @@ export class ModelsDevCatalog {
     for (const entry of this.lookupIndex.candidates(requested)) {
       (entry.provider === preferredProvider ? preferred : rest).push(entry);
     }
-    const candidates: Array<{ model: ModelsDevModel; score: number }> = [];
+    const candidates: Array<{ model: ModelsDevModel; score: number; exact: boolean }> = [];
     for (const { model, provider } of [...preferred, ...rest]) {
       // A known endpoint must not inherit another provider's capabilities.
       if (preferredProvider && provider !== preferredProvider) continue;
       if (!catalogModelIdsMatch(model.modelId, requested)) continue;
-      let score = model.modelId.toLowerCase() === requested ? 20 : 10;
+      const exact = model.modelId.toLowerCase() === requested;
+      let score = exact ? 20 : 10;
       if (provider === preferredProvider) score += 100;
       if (apiMatches(input.baseUrl, provider.api)) score += 80;
       if (modelMatchesProvider(model, input.vendorKey)) score += 60;
-      candidates.push({ model, score });
+      candidates.push({ model, score, exact });
     }
     candidates.sort((left, right) =>
       right.score - left.score || left.model.modelId.length - right.model.modelId.length,
     );
+    /*
+      A record the catalog publishes under exactly this id is this id's record.
+      Supported aliases — a release stamp, a thinking variant, a route leaf —
+      also reach a *shorter* sibling, and answering with that sibling would
+      attach another deployment's limits and capabilities to the row. So exact
+      candidates discard the alias-derived ones before the ambiguity test, which
+      is what keeps `foo-v2-0731` on its own record while a catalog that only
+      publishes `foo-v2` still answers it.
+    */
+    const exactCandidates = candidates.filter((candidate) => candidate.exact);
+    const pool = exactCandidates.length > 0 ? exactCandidates : candidates;
     /* Within the row's own catalog provider this is an exact-provider lookup:
        the provider identity is known, so its record for the id — a direct hit
        or a supported alias — is authoritative.
 
        With no provider identity the scores prove nothing about identity, so a
-       catalog answer is only usable when it is unambiguous. Two providers
-       publishing the same id must not have one of them chosen for the other. */
-    const resolved = candidates[0]?.model;
+       catalog answer is only usable when it is unambiguous — and only over the
+       alias-derived pool, since an exact record already outranks its aliases.
+       Two providers publishing the same id must not have one chosen for the
+       other. */
+    const resolved = pool[0]?.model;
     const result = preferredProvider
       ? resolved
-      : candidates.length === 1 ? resolved : undefined;
+      : pool.length === 1 ? resolved : undefined;
     /* The row's own catalog provider did not publish this id. Borrowing needs a
        known provider identity to anchor on: the row resolved to a catalog
        provider whose own records are authoritative, so anything missing from it

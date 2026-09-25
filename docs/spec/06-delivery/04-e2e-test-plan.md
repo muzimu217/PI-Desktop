@@ -628,8 +628,8 @@ identify the platform validation still needed.
 
 - **Preconditions**: App running; provider A saved and set as the app default model; a second provider B serving different models; one image-capable model configured on A and another on a different service.
 - **Steps**: 1) Open Settings → Model configuration and add provider B; save without touching the Default model row. 2) Confirm the Default model row still names provider A and its exact model, and that a new session starts on it. 3) Set an image model as the default image model, then add a provider that also serves image models; save. 4) Confirm the Default image model row still names the earlier binding while the picker lists the new provider's image models as candidates. 5) Delete the provider that owned a default, then add a service that serves a model and an image model; save. 6) Confirm both defaults now resolve to that newly added provider.
-- **Expected**: Saving a new provider never repoints an app default that still resolves: the model default keeps the pairing the Default model row already renders, and the image default keeps its stored binding while its candidate list grows. A removed image model is cleared and requires an explicit new selection; a removed chat default still uses the existing chat repair rule. The explicit make-default actions and the edit path remain unchanged.
-- **Specs linked**: `03-runtime/13-model-catalog-and-selection.md`
+- **Expected**: Saving a new provider never repoints an app default that still resolves: the model default keeps the pairing the Default model row already renders, and the image default keeps its stored binding while its candidate list grows. A removed image model is cleared and requires an explicit new selection; a removed chat default still uses the existing chat repair rule. Deleting the provider row that owned an image default needs no manual repair either: the next settings read or write drops the binding and candidate whose provider row is gone, so the Default image model row reports no default instead of a binding the runtime rejects. The explicit make-default actions and the edit path remain unchanged.
+- **Specs linked**: `03-runtime/13-model-catalog-and-selection.md`, `03-runtime/21-image-generation.md`
 - **Acceptance**: B (model selection)
 - **Milestone**: M6
 - **Status**: Documented; covered by `apps/desktop/test/default-model-display.test.mjs`, `apps/desktop/test/image-generation-default.test.mjs`, `apps/desktop/test/provider-model-config.test.mjs`
@@ -794,18 +794,32 @@ identify the platform validation still needed.
 
 - **Preconditions**: App running; the add-provider dialog is open with Custom
   endpoint selected.
-- **Steps**: 1) Enter a valid gateway URL ending in `/v1/messages`, then leave
-  the Base URL field. 2) Confirm the field keeps the service base URL ending in
-  `/v1`, and that its helper identifies the API path that will be targeted. 3)
-  Replace the value with `ftp://gateway.example.com`, then leave the field.
-  4) Enter a valid URL again and confirm model discovery can run; paste a full
-  `/models` path and leave the field.
-- **Expected**: Full operation paths are normalized to the service root on
-  blur, without changing the selected API style. A non-http(s) URL shows an
-  inline, accessible error, does not start discovery, and keeps Save disabled.
-  A valid URL restores discovery; the `/models` suffix is also removed before
-  the request is made. The long URL field uses a full row on wide dialogs and
-  stacks cleanly with the other credentials at the responsive breakpoint.
+- **Steps**: 1) Enter `api.gateway.example.com` with no scheme and leave the
+  Base URL field. 2) Confirm the field settles on
+  `https://api.gateway.example.com` and discovery runs. 3) Paste
+  `https://api.gateway.example.com/v1/messages` and leave the field. 4) Confirm
+  the field settles on `https://api.gateway.example.com/v1`, the API format
+  reads Anthropic Messages, and the form says that format was auto detected. 5)
+  Change the API format by hand to OpenAI Chat Completions, then paste the
+  `/v1/responses` URL: confirm the hand-picked format survives and the operation
+  is left in place until the suggestion is applied. 6) Replace the value with
+  `ftp://gateway.example.com`, then leave the field. 7) Enter a valid URL again
+  and confirm model discovery can run; paste a full `/models` path and leave the
+  field. 8) Point the row at a gateway whose `/models` route answers only under
+  `/v1` and confirm the field and the saved row show that address.
+- **Expected**: A bare host is completed with `https://` inside the origin the
+  user typed; credentials, queries and fragments are still refused. A pasted
+  operation path names the matching format, selects it and is stripped from the
+  base endpoint, and `/models` is removed as well — unless the operation
+  contradicts a format the user picked by hand, which is then preserved and
+  offered as a suggestion instead. When the endpoint itself decided the format,
+  the form says so next to the selector. When only the `/v1` candidate answers,
+  the field and the saved row show that address rather than a hidden rewrite,
+  and every probed candidate stays on the typed origin. A non-http(s) URL shows
+  an inline, accessible error, does not start discovery, and keeps Save
+  disabled. A valid URL restores discovery. The long URL field uses a full row
+  on wide dialogs and stacks cleanly with the other credentials at the
+  responsive breakpoint.
 - **Specs linked**: `04-ux/06-settings-ia.md`,
   `03-runtime/12-provider-config-schema.md`
 - **Acceptance**: B (custom provider configuration)
@@ -2791,8 +2805,8 @@ identify the platform validation still needed.
 #### E2E-024D: Isolated plugin panel host bridge
 
 - **Preconditions**: Plugin with `ui.panel` enabled.
-- **Steps**: 1) Set the app language to English and open a panel whose manifest declares localized `ui.title.en` and `ui.title.zh-CN`; confirm the native window/launcher identity remains available without a host-rendered title. 2) Set the app language to Simplified Chinese and reopen the panel; confirm the panel content remains plugin-owned. 3) While the panel stays open, switch the app language to Korean and confirm the live `appearance:changed` event updates the panel controls, safe-area reminder, and accessible labels without reopening it. 4) Open the panel on macOS, Windows, and Linux; confirm the same frameless 46px drag band, fixed top-right capsule fully contained inside that band, and exactly three accessible controls. 5) Exercise minimize, maximize, restore, close, keyboard focus, light/dark themes, page-defined light/dark backgrounds, and reduced motion on every platform. 6) Render a plugin-owned titlebar/toolbar; verify fixed/sticky UI uses `--pi-plugin-titlebar-height`, its interactive controls use `no-drag`, and clicks outside the capsule in the top 46px are treated as window dragging. 7) On Windows with classic scrollbars, scroll a panel with content overflow and inspect the right edge. 8) Open a development plugin and confirm the localized reminder explains that the top 46px is not clickable outside the capsule. 9) Reopen a minimized panel. 10) Invoke panel bridge APIs (`ui.showToast`, optional fs/net with grants). 11) Close the panel from the capsule and by disabling or uninstalling the plugin.
-- **Expected**: Panel runs in its sandboxed window/partition; all three platforms use one host-owned frameless chrome contract with no native traffic lights, host-rendered title, or application menu; the top drag band is exactly 46px, and the minimal capsule stays fixed at the top-right without exceeding it. The capsule contains minimize/maximize-or-restore/close, follows the plugin page's surface/text colors, and never forces a black surface onto a light page. A v2 page marked `pi-plugin-chrome` uses `--pi-plugin-titlebar-height` and starts its own content directly below the 46px band without an additive duplicate spacer; a legacy page keeps the compatibility offset. A panel's stable scrollbar gutter is scoped to its actual content scroller; Windows does not show a second root-level empty side rail outside the page surface. The plugin owns its title and toolbar; the host drag strip remains usable, blocks clicks outside the capsule, and development panels alone show the reminder. Reopening restores the existing panel; switching to Korean while the panel remains open updates the host capsule, reminder, and accessible labels in place; bridge calls remain permission-checked and the host remains stable on panel close. Closing a panel must not throw a main-process `TypeError: Object has been destroyed` or show an uncaught-exception dialog.
+- **Steps**: 1) Set the app language to English and open a panel whose manifest declares localized `ui.title.en` and `ui.title.zh-CN`; confirm the native window/launcher identity remains available without a host-rendered title. 2) Set the app language to Simplified Chinese and reopen the panel; confirm the panel content remains plugin-owned. 3) While the panel stays open, switch the app language to Korean and confirm the live `appearance:changed` event updates the panel controls, safe-area reminder, and accessible labels without reopening it. 4) Open the panel on macOS, Windows, and Linux; confirm the same frameless 46px drag band, fixed top-right capsule fully contained inside that band, and exactly three accessible controls. 5) Exercise minimize, maximize, restore, close, keyboard focus, light/dark themes, page-defined light/dark backgrounds, and reduced motion on every platform. 6) Render a plugin-owned titlebar/toolbar; verify fixed/sticky UI uses `--pi-plugin-titlebar-height`, its interactive controls use `no-drag`, and clicks outside the capsule in the top 46px are treated as window dragging. 7) On Windows with classic scrollbars, scroll a panel with content overflow and inspect the right edge. 8) Open a development plugin and confirm the localized reminder explains that the top 46px is not clickable outside the capsule. 9) Reopen a minimized panel. 10) Invoke panel bridge APIs (`ui.showToast`, optional fs/net with grants). 11) Close the panel from the capsule and by disabling or uninstalling the plugin. 12) Repeat with a panel and a docked work-panel view open and quit the app, then read the main-process log.
+- **Expected**: Panel runs in its sandboxed window/partition; all three platforms use one host-owned frameless chrome contract with no native traffic lights, host-rendered title, or application menu; the top drag band is exactly 46px, and the minimal capsule stays fixed at the top-right without exceeding it. The capsule contains minimize/maximize-or-restore/close, follows the plugin page's surface/text colors, and never forces a black surface onto a light page. A v2 page marked `pi-plugin-chrome` uses `--pi-plugin-titlebar-height` and starts its own content directly below the 46px band without an additive duplicate spacer; a legacy page keeps the compatibility offset. A panel's stable scrollbar gutter is scoped to its actual content scroller; Windows does not show a second root-level empty side rail outside the page surface. The plugin owns its title and toolbar; the host drag strip remains usable, blocks clicks outside the capsule, and development panels alone show the reminder. Reopening restores the existing panel; switching to Korean while the panel remains open updates the host capsule, reminder, and accessible labels in place; bridge calls remain permission-checked and the host remains stable on panel close. Closing a panel must not throw a main-process `TypeError: Object has been destroyed` or show an uncaught-exception dialog, and neither closing a panel nor quitting with panels and docked views open may log a panel-bridge failure for the page that is closing: a call from a page that is already gone is settled, and the panel and view pages are gone before the plugin runtime and the host stop.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`, `04-ux/07-ui-design-system.md`, `07-plugins/01-plugin-system.md`, `07-plugins/03-plugin-api.md`, `07-plugins/04-plugin-security.md`, `07-plugins/12-plugin-ipc-and-host-services.md`, ADR 0081, ADR 0082, ADR 0092, ADR 0093
 - **Acceptance**: G (isolated panel)
 - **Status**: Documented
@@ -11644,8 +11658,23 @@ are withdrawn with ADR 0165.
   and a path heading of the `Grep` result. 6) Disable the File Manager plugin,
   click a project file reference and the tool row summary again, then re-enable
   it and click both once more. 7) Click a reference that resolves in the
-  project's second folder, then one that resolves in its primary folder.
+  project's second folder, then one that resolves in its primary folder. 8)
+  Right-click the sent `@path` chip, the inline-code reference, the markdown
+  link, the local image, a tool row's file path, a tool result's file list, and
+  an attachment thumbnail; then right-click a reference that matches nothing. 9)
+  On that chip, use Copy full path and Copy relative path, then do the same on a
+  reference that resolves in the session scratch store.
 - **Expected**:
+  - Right-clicking a file reference opens the renderer's own menu with the
+    file's own folder (Show in folder) and both of its addresses (Copy full
+    path, Copy relative path). The inline-code reference, the file link, the
+    local image, a tool row's path, a tool result's file or match list, and an
+    attachment thumbnail offer the same items, and a reference that matches
+    nothing reports itself instead of revealing a same-named file elsewhere.
+  - A copy writes exactly what it names: the absolute address for the full copy
+    and the project-relative spelling for the relative one; a scratch or
+    attachment file reports that it has no relative path instead of copying an
+    absolute one under that name.
   - A project file opens in the File Manager work-panel view on that file, with
     its ancestor folders expanded and the file selected; no host `file:` tab is
     added for it.
@@ -13643,12 +13672,16 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   3. Confirm the model calls `Skill` with the exact id without calling
      `ToolSearch` first, and that the returned document is the skill body.
   4. Send `/<skill-id>` from the composer and inspect the following turn.
+  4a. Add a second active Skill with `/` after the first token, submit the
+      prompt, switch away from the session, and reopen it.
   5. Switch the session to Plan mode and inspect the tool list again.
   6. Disable or remove every Skill and start another Agent turn.
 - **Expected**: Whenever the skill catalog is non-empty, `Skill` ships with the
   first request and never appears under `# On-demand tools`, so both a matching
   task and a `/skill-id` invocation load the body without a discovery round
-  trip. `ToolSearch` still exists for the other on-demand capabilities and
+  trip. Both explicit Skills load in their selected order; after reopening,
+  each remains a separate transcript chip beside the user's prompt text.
+  `ToolSearch` still exists for the other on-demand capabilities and
   never returns `Skill`. Plan mode omits the tool and the `# Skills` section,
   and an empty catalog registers no `Skill` tool at all.
 - **Specs linked**: `03-runtime/02-agent-runtime.md` (§7.1),

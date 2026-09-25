@@ -6,9 +6,10 @@
  * entitlements, so this dialog shows what the account can actually run rather
  * than every model the vendor publishes. Choosing among those rows is
  * `ModelSelectionPanes`, the same picker the AI service dialog renders, so an
- * account is not a reduced version of a service.
+ * account is not a reduced version of a service. Like a service, the dialog
+ * opens on the chosen-models summary and the picker is one click away (D625).
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   bindingForCustomModel,
   type ModelBinding,
@@ -20,6 +21,7 @@ import { Button, Field, Input, portalOverlay } from "../ui";
 import { ProviderHeadersEditor } from "./ProviderHeadersEditor";
 import { useProviderModels } from "./useProviderModels";
 import { ModelSelectionPanes, useModelSelection } from "./ModelSelectionPanes";
+import { ChosenModelsSummary } from "./ChosenModelsSummary";
 
 export type VendorAccountForm = {
   name: string;
@@ -46,6 +48,8 @@ export function VendorAccountDialog({
   const [name, setName] = useState(initialName);
   const [headerPairs, setHeaderPairs] = useState(() => recordToPairs(provider.headers));
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [managing, setManaging] = useState(false);
+  const customModelRef = useRef<HTMLInputElement>(null);
   const [models, setModels] = useState<ModelBinding[]>(
     provider.models.length > 0
       ? provider.models
@@ -132,19 +136,37 @@ export function VendorAccountDialog({
             />
           </Field>
 
-          <ModelSelectionPanes
-            discovery={discovery}
-            selection={selection}
-            listTitle={t("settings.accountModels")}
-            busy={saving}
-            onReload={discovery.reload}
-            lookupContext={{
-              baseUrl: provider.baseUrl,
-              vendorKey: provider.vendorKey,
-              providerId: provider.id,
-            }}
-            apiStyle={provider.apiStyle ?? ""}
-          />
+          {managing ? (
+            <ModelSelectionPanes
+              discovery={discovery}
+              selection={selection}
+              listTitle={t("settings.accountModels")}
+              busy={saving}
+              onReload={discovery.reload}
+              lookupContext={{
+                baseUrl: provider.baseUrl,
+                vendorKey: provider.vendorKey,
+                providerId: provider.id,
+              }}
+              apiStyle={provider.apiStyle ?? ""}
+              customModelInputRef={customModelRef}
+              onCollapse={() => setManaging(false)}
+            />
+          ) : (
+            <ChosenModelsSummary
+              models={models}
+              discoveryStatus={discovery.status}
+              busy={saving}
+              onRemove={(id) =>
+                selection.setModels((current) => current.filter((entry) => entry.id !== id))
+              }
+              onManage={() => setManaging(true)}
+              onAddManually={() => {
+                setManaging(true);
+                window.setTimeout(() => customModelRef.current?.focus(), 0);
+              }}
+            />
+          )}
         </div>
 
         <div className="vendor-account-actions">

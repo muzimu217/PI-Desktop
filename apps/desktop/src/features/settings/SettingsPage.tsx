@@ -531,7 +531,7 @@ export function SettingsPage() {
             </div>
           )}
 
-          {tab === "voice" && settings && (
+          {tab === "voice" && !tabHidden && settings && (
             <VoiceSettingsSection
               t={t}
               settings={settings}

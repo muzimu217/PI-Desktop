@@ -1838,6 +1838,7 @@ sklm: {
       reveal: "Finder’da göster",
       binary: "İkili dosya — önizleme yok",
       tooLarge: "Dosya önizlemek için çok büyük",
+      openFailed: "Dosya varsayılan uygulamayla açılamadı.",
     },
   },
   palette: {

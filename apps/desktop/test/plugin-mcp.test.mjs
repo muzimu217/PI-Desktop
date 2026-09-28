@@ -275,7 +275,7 @@ test("a slow server times out instead of hanging the load", async () => {
 });
 
 /** Streamable-HTTP stub: JSON for the handshake, SSE for discovery. */
-async function startHttpServer(t, { slowToolDelayMs } = {}) {
+async function startHttpServer(t, { slowToolDelayMs, sseHandshakeHoldMs } = {}) {
   const requests = [];
   const server = createServer((req, res) => {
     const chunks = [];
@@ -284,14 +284,22 @@ async function startHttpServer(t, { slowToolDelayMs } = {}) {
       const message = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
       requests.push({ headers: req.headers, message });
       if (message.method === "initialize") {
+        const reply = JSON.stringify({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: { protocolVersion: message.params.protocolVersion, capabilities: {} },
+        });
+        if (sseHandshakeHoldMs) {
+          // Reply immediately over SSE but keep the stream open for a while:
+          // legal per streamable HTTP (the server decides when to close), and
+          // fatal for a client that waits for EOF before parsing (#1188).
+          res.writeHead(200, { "content-type": "text/event-stream", "mcp-session-id": "sess-42" });
+          res.write(`event: message\ndata: ${reply}\n\n`);
+          setTimeout(() => res.end(), sseHandshakeHoldMs);
+          return;
+        }
         res.writeHead(200, { "content-type": "application/json", "mcp-session-id": "sess-42" });
-        res.end(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            id: message.id,
-            result: { protocolVersion: message.params.protocolVersion, capabilities: {} },
-          }),
-        );
+        res.end(reply);
         return;
       }
       if (message.method === "notifications/initialized") {
@@ -376,6 +384,33 @@ test("a remote mcp server negotiates over http and keeps its session", async (t)
   assert.equal(requests[0].headers["mcp-session-id"], undefined);
   assert.equal(requests[0].headers["x-api-key"], "sk-test");
   assert.equal(requests.at(-1).headers["mcp-session-id"], "sess-42");
+});
+
+test("an sse handshake completes before the server closes the stream (#1188)", async (t) => {
+  // The server replies immediately but keeps the SSE stream open for longer
+  // than the connect budget — legal streamable-HTTP behavior that must not
+  // delay the handshake (the reply arrives well before EOF).
+  const { url } = await startHttpServer(t, { sseHandshakeHoldMs: 400 });
+  const client = new McpServerClient({
+    rootPath: mkdtempSync(join(tmpdir(), "pi-mcp-sse-hold-")),
+    server: { id: "remote", transport: "http", url },
+    values: {},
+    connectTimeoutMs: 250,
+    callTimeoutMs: 500,
+  });
+  t.after(() => client.close());
+
+  const started = Date.now();
+  const tools = await client.connect();
+  const elapsed = Date.now() - started;
+  assert.deepEqual(
+    tools.map((tool) => tool.name),
+    ["headers"],
+  );
+  assert.ok(
+    elapsed < 400,
+    `handshake must finish when the reply arrives, not at EOF (took ${elapsed}ms)`,
+  );
 });
 
 test("a remote MCP tool can run longer than the connection timeout", async (t) => {

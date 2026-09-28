@@ -267,24 +267,88 @@ function createStdioTransport(
   };
 }
 
+function parseSseEventBlock(block: string): JsonRpcMessage | null {
+  const data = block
+    .split(/\n/)
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice(5).trim())
+    .join("");
+  if (!data) return null;
+  try {
+    return JSON.parse(data) as JsonRpcMessage;
+  } catch {
+    // A partial event is not actionable; the request times out instead.
+    return null;
+  }
+}
+
 function parseSseMessages(body: string): JsonRpcMessage[] {
   const out: JsonRpcMessage[] = [];
   for (const block of body.split(/\n\n/)) {
-    const data = block
-      .split(/\n/)
-      .filter((line) => line.startsWith("data:"))
-      .map((line) => line.slice(5).trim())
-      .join("");
-    if (!data) continue;
-    try {
-      out.push(JSON.parse(data) as JsonRpcMessage);
-    } catch {
-      // A partial event is not actionable; the request times out instead.
-    }
+    const message = parseSseEventBlock(block);
+    if (message) out.push(message);
   }
   return out;
 }
 
+/**
+ * Stream an SSE response body, handing each event to `onMessage` the moment
+ * its terminating blank line arrives. Some streamable-HTTP servers answer
+ * `initialize` within seconds but keep the event stream open afterwards —
+ * when to close is the server's call (keep-alive included) — so a reply can
+ * only be considered received once it has been parsed, not once the body
+ * ends (issue #1188). Byte cap and decode behavior match
+ * `readBoundedHttpBody`; the surrounding request timeout still applies.
+ */
+async function readSseBodyIncremental(
+  response: Response,
+  onMessage: (message: JsonRpcMessage) => void,
+): Promise<void> {
+  const contentLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > MAX_HTTP_RESPONSE_BYTES) {
+    try {
+      await response.body?.cancel();
+    } catch {
+      // The response is already rejected; cancellation is best effort.
+    }
+    throw mcpError("LIMIT_EXCEEDED", "mcp server response is too large");
+  }
+  if (!response.body) return;
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let bytes = 0;
+  const dispatch = (block: string) => {
+    const message = parseSseEventBlock(block);
+    if (message) onMessage(message);
+  };
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      bytes += value.byteLength;
+      if (bytes > MAX_HTTP_RESPONSE_BYTES) {
+        await reader.cancel();
+        throw mcpError("LIMIT_EXCEEDED", "mcp server response is too large");
+      }
+      buffer += decoder.decode(value, { stream: true });
+      // An SSE event ends at a blank line; dispatch every complete one and
+      // keep the tail buffered until its boundary arrives (possibly across
+      // several chunks).
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary !== -1) {
+        dispatch(buffer.slice(0, boundary));
+        buffer = buffer.slice(boundary + 2);
+        boundary = buffer.indexOf("\n\n");
+      }
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) dispatch(buffer);
+  } finally {
+    reader.releaseLock();
+  }
+}
 
 async function readBoundedHttpBody(response: Response): Promise<string> {
   const contentLength = Number(response.headers.get("content-length"));
@@ -429,14 +493,17 @@ function createHttpTransport(
             return;
           }
           const contentType = response.headers.get("content-type") ?? "";
+          if (contentType.includes("text/event-stream")) {
+            // The server may keep the event stream open long after the reply
+            // (#1188); dispatch events as they arrive instead of waiting for
+            // EOF before parsing.
+            await readSseBodyIncremental(response, (entry) => handlers.onMessage(entry));
+            return;
+          }
           const body = await readBoundedHttpBody(response);
           if (!body.trim()) return;
-          const messages = contentType.includes("text/event-stream")
-            ? parseSseMessages(body)
-            : (() => {
-                const parsed = JSON.parse(body) as JsonRpcMessage | JsonRpcMessage[];
-                return Array.isArray(parsed) ? parsed : [parsed];
-              })();
+          const parsed = JSON.parse(body) as JsonRpcMessage | JsonRpcMessage[];
+          const messages = Array.isArray(parsed) ? parsed : [parsed];
           for (const entry of messages) handlers.onMessage(entry);
           return;
         }

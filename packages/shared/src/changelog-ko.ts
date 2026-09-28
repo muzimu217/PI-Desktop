@@ -2,6 +2,14 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const koEntries: ChangelogEntry[] = [
   {
+    version: "0.15.9",
+    date: "2026-09-27",
+    highlights: [
+      "macOS DMG 및 ZIP 패키지에서 오래된 첫 실행 도우미 파일을 제거합니다.",
+    ],
+  },
+
+  {
     version: "0.15.6",
     date: "2026-09-23",
     highlights: [

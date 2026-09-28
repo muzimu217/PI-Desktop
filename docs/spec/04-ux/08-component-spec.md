@@ -130,7 +130,7 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   track; the destination pane is revealed only once it has committed. A warm
   destination is revealed with no busy affordance at all. Nothing is dimmed and no
   skeleton-to-transcript animation is inserted (ADR 0137).
-- Settings, Plugins, Pull requests, and Scheduled are route-level lazy modules.
+- Settings, Plugins, and Scheduled are route-level lazy modules.
   Chat and shell chrome stay in the initial renderer bundle; first entry to a
   secondary destination shows a compact localized status indicator until its
   local chunk resolves.
@@ -242,8 +242,13 @@ expanded it owns that control, so the top bar does not duplicate it. The
 does not duplicate it. Keyboard shortcuts and the application menu remain
 available.)
 
-The conversation top bar renders for the chat route only; Pull requests, Scheduled,
-Plugins, and Settings keep the frameless drag band. It owns the task title and
+The conversation-topbar New task and Search tooltips append the effective,
+platform-formatted shortcut. A custom binding replaces the default; an
+explicitly unbound shortcut is omitted. The accessible name remains the
+localized action label.
+
+The conversation top bar renders for the chat route only; Scheduled, Plugins,
+and Settings keep the frameless drag band. It owns the task title and
 window actions only. Project scope remains in the title tooltip instead of adding
 another visible label. The Composer owns the Agent/Plan/Goal control and the
 combined model × reasoning selection (§11).
@@ -302,8 +307,8 @@ combined model × reasoning selection (§11).
   lane reserve is derived from that same control size rather than from a
   literal, and the toggle's open state is its glyph swap plus the engaged ink —
   no control in this family paints a filled or raised "on" pill.
-  With the sidebar collapsed, Plugins, Pull requests, and Scheduled render their
-  sidebar/New Task actions inside `.main-titlebar`, not the preview-only
+  With the sidebar collapsed, Plugins and Scheduled render their sidebar/New Task
+  actions inside `.main-titlebar`, not the preview-only
   `.window-chrome-row`. Both containers must share the same geometry, rest,
   hover, and disabled rules; route actions must not duplicate those declarations.
 - Band reservation is platform-independent (D269). The band is opaque and
@@ -311,7 +316,7 @@ combined model × reasoning selection (§11).
   every platform, macOS included. Every route surface that starts its own
   content at the top edge reserves the band: the transcript
   (`.thread-content`) and the destination-page frame (`.page-frame`, shared by
-  Plugins, Scheduled, and Pull requests) both pad by `--ds-toolbar-height`.
+  Plugins and Scheduled) both pad by `--ds-toolbar-height`.
   Destination pages scroll in a route-owned content container separate from the
   chat transcript scroller; Composer-specific occlusion and follow behavior must
   not fade or hide destination rows at the bottom of the page.
@@ -360,7 +365,7 @@ not additional host workspaces.
 The sidebar body is reserved for Pinned, Sessions, and Projects; the footer exposes the
 Plugins and Scheduled destinations beside Settings. Scheduled uses a clock
 action with a localized accessible name and active state. Projects is managed
-through Settings → Project archive; Pull requests is not rendered in the sidebar.
+through Settings → Project archive.
 
 Section-level create and sort controls stay visually quiet at rest and reveal
 when the owning Sessions or Projects toolbar is hovered or keyboard-focused.
@@ -841,13 +846,15 @@ only when the current mode has two or more visible items. A singleton uses its i
 disclosure directly, compact-hidden thinking never creates an empty wrapper, and
 the existing Task topology remains the container for delegated work.
 
-Detailed starts active and completed whole-process disclosures open. The ordinary
-group owning the active execution segment starts open, then closes on completion
-only if untouched; other completed groups start closed. Compact starts the process
-and ordinary groups closed. Its untouched active process remains open when any
-failed or denied tool has been recorded, through later successful recovery, and
-closes on completion if still untouched. Group headers summarize count, running
-state and issue count without treating a failed child as a failed turn.
+Detailed opens whole-process disclosures while a turn is active. When a turn
+settles, an untouched process defaults closed; an explicit user choice remains
+authoritative. The ordinary group owning the active execution segment starts
+open, then closes on completion only if untouched; other completed groups start
+closed. Compact starts the process and ordinary groups closed. Its untouched
+active process remains open when any failed or denied tool has been recorded,
+through later successful recovery, and closes on completion if still untouched.
+Group headers summarize count, running state and issue count without treating a
+failed child as a failed turn.
 
 In Detailed, only the literal final item of the last activity group receives the
 leaf auto-open default when it is an eligible tool-call or hosted-search row.

@@ -497,6 +497,18 @@ export async function createWindow({
   // null, so F12 is wired here; macOS additionally inherits Cmd+Alt+I from
   // the View menu role (see application-menu.ts).
   window.webContents.on("before-input-event", (event, input) => {
+    const isReloadChord =
+      input.type === "keyDown" &&
+      input.code === "KeyR" &&
+      input.control &&
+      !input.meta &&
+      !input.alt &&
+      !input.shift;
+    if (isReloadChord) {
+      // Keep an accidental browser reload from discarding transient app-shell state.
+      event.preventDefault();
+      return;
+    }
     const isPluginLauncherChord =
       process.platform === "win32" &&
       windowState.pluginLauncherBinding === "Alt+Space" &&
@@ -1623,17 +1635,11 @@ export async function createWindow({
             await setSettingsTab("projects");
             await new Promise((r) => setTimeout(r, 800));
             await shot("pi-dark-project-archive");
-            await setPage("pulls");
-            await new Promise((r) => setTimeout(r, 800));
-            await shot("pi-dark-pulls");
             await setPage("settings");
             await setSettingsTab("general");
             await new Promise((r) => setTimeout(r, 800));
             await shot("pi-dark-settings");
             await setTheme("light");
-            await setPage("pulls");
-            await new Promise((r) => setTimeout(r, 600));
-            await shot("pi-pulls-live");
             await setSettingsTab("projects");
             await new Promise((r) => setTimeout(r, 500));
             await shot("pi-project-archive-live");

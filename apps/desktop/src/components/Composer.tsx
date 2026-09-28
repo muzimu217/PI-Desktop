@@ -52,6 +52,7 @@ import {
 } from "../features/chat/composer/editor";
 import { useComposerAttachments } from "../features/chat/composer/hooks/useComposerAttachments";
 import { useComposerDraft } from "../features/chat/composer/hooks/useComposerDraft";
+import { useComposerInputHistory } from "../features/chat/composer/hooks/useComposerInputHistory";
 import { useComposerSubmit } from "../features/chat/composer/hooks/useComposerSubmit";
 import { ComposerImageAttachments } from "../features/chat/composer/ComposerImageAttachments";
 import { ComposerInput } from "../features/chat/composer/ComposerInput";
@@ -191,6 +192,11 @@ export function Composer({
     insertNewlineInEditor,
     handleInput,
   } = draft;
+  const inputHistory = useComposerInputHistory({
+    draftKey,
+    referenceSessionId,
+    draft,
+  });
 
   const approvalPending = planCheckpoint?.status === "pending";
   const largePasteThreshold = normalizeLargePasteThreshold(
@@ -423,6 +429,7 @@ export function Composer({
     sendPrompt,
     steerPrompt,
     showToast,
+    recordHistory: inputHistory.record,
     draft: {
       ref,
       draftSnapshot,
@@ -444,7 +451,14 @@ export function Composer({
     submit,
   } = submitController;
 
-  const voiceEnabled = !!settings?.voice?.enabled;
+  // Both submit entry points (the composer's Enter and the toolbar's Send)
+  // leave history browsing before the draft is cleared.
+  const submitFromComposer = (steering?: boolean) => {
+    inputHistory.exitBrowsing();
+    return submit(steering);
+  };
+
+  const voiceEnabled = import.meta.env.DEV && !!settings?.voice?.enabled;
   const voice = useVoiceInput({
     enabled: voiceEnabled,
     onTranscriptionComplete: (text) => {
@@ -458,7 +472,6 @@ export function Composer({
       }
     },
   });
-
   const composerAc = useComposerAutocomplete({
     value,
     cursor,
@@ -587,9 +600,13 @@ export function Composer({
             composerAc={composerAc}
             onPaste={pasteClipboardFiles}
             onAcceptCompletion={acceptCompletion}
-            onSubmit={(steering) => void submit(steering)}
+            onSubmit={(steering) => void submitFromComposer(steering)}
             onInsertNewline={insertNewlineInEditor}
-            onInput={handleInput}
+            onInput={(source, caret) => {
+              inputHistory.exitBrowsing();
+              handleInput(source, caret);
+            }}
+            onHistoryNavigate={inputHistory.navigate}
             onCompositionStart={() => setComposing(true)}
             onCompositionEnd={(event) => {
               setComposing(false);
@@ -601,7 +618,9 @@ export function Composer({
               persistDraft();
             }}
           />
-          <VoiceOverlay t={t} state={voice.state} onCancel={voice.cancel} />
+          {import.meta.env.DEV && (
+            <VoiceOverlay t={t} state={voice.state} onCancel={voice.cancel} />
+          )}
           <ComposerToolbar
             t={t}
             mode={mode}
@@ -632,7 +651,7 @@ export function Composer({
             runActive={runActive}
             hasDraftContent={hasDraftContent}
             abort={abort}
-            submit={submit}
+            submit={submitFromComposer}
             voicePhase={voice.state.phase}
             voiceEnabled={voiceEnabled}
             onVoiceToggle={voice.toggle}

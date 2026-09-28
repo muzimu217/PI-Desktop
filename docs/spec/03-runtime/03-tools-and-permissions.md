@@ -45,15 +45,16 @@ Let the agent get things done, but stay under control by default.
 
 ### 2.1 Deferred ancillary tools (D185, ADR 0048)
 
-Following pi's coding-agent default, the first Agent request activates only
-`Read`, `Bash`, `Edit`, and `Write`; `Glob` and `Grep` are loaded on demand.
-Plan and Goal keep their read/inspection core. `Skill` is deliberately not
-deferred: a `/skill-id` invocation instructs the model to call it, and a tool
-absent from the schema cannot be called at all, so it ships with the first
-request whenever the skill catalog is non-empty (D404, ADR 0230). The runtime
-also registers capabilities without sending their full schemas up front:
+The first Agent request includes `Read`, `Bash`, `Edit`, `Write`, `Glob`, and
+`Grep`. Keeping workspace listing and content search in the initial schema
+avoids a discovery round trip for routine project exploration (the amendment
+to ADR 0048 records this change). Plan and Goal keep their read/inspection core.
+`Skill` is deliberately not deferred: a `/skill-id` invocation instructs the
+model to call it, and a tool absent from the schema cannot be called at all, so
+it ships with the first request whenever the skill catalog is non-empty (D404,
+ADR 0230). The runtime still registers optional capabilities without sending
+their full schemas up front:
 
-- `Glob` and `Grep` in Agent mode
 - `BrowserPreview`
 - `PluginCheck`, `PluginScaffold`, and `PluginPack`
 - plugin-declared agent tools
@@ -86,7 +87,9 @@ Every non-interactive execution tool must have:
 
 `asktool` is the interactive exception: it has a typed request event, waits for
 the renderer response without an expiry, and returns a bounded structured tool
-result. Stopping the turn resolves outstanding questions as skipped.
+result. Options may be plain strings or `{ label, description? }` objects; the
+selected label remains the answer value. Stopping the turn resolves outstanding
+questions as skipped.
 
 ## 4. Path Rules
 
@@ -108,11 +111,10 @@ On POSIX, a literal backslash in a filename remains a backslash so the result
 can be passed back to `Read` or `Edit`; Windows path separators are normalized
 to `/`.
 
-Agent mode keeps `Glob`/`Grep` deferred under D185. Each new user prompt clears
-their live activation and restores only eligible successful markers still in
-context; when no such marker exists, directory discovery activates `Glob`
-through `ToolSearch` for that prompt instead of guessing a file name or calling
-`Read` on a directory.
+Agent mode keeps `Glob`/`Grep` available from the first request. Other deferred
+tools still follow the per-prompt activation and successful-context restoration
+rules above; directory discovery can call `Glob` directly without a
+`ToolSearch` round trip.
 
 The runtime accepts one alias per canonical argument name and folds it away
 before the host sees the call (D273):

@@ -91,6 +91,12 @@ pi-ai 去发出 `x-opencode-session`。每个提供商行（AI 服务或 OAuth �
 `X-Initiator`、`Openai-Intent` 与图像请求标头。本地行 id 仍然拥有认证绑定与
 对话记录身份；用户设置的提供商 headers 仍是最后的覆盖层。
 
+Copilot 的 Anthropic Messages（Claude）请求将每次请求解析的 OAuth 令牌作为
+`Authorization: Bearer` 标头认证发送，不携带 `X-Api-Key`，因为 pi-ai 仅在
+`model.provider` 为 `github-copilot` 时选择 Copilot Bearer 认证。
+OpenAI 风格的 Copilot 线路 API 仍将令牌作为请求密钥签名；所有线路均保留
+逐请求认证解析与账户专属的 `baseUrl`。
+
 智谱 / GLM 与 Z.AI 是命名的 OpenAI 兼容端点预设，收录在一份由 models.dev
 支撑的、简短的第一方厂商服务列表中（含小米）。添加提供商时的「服务」选择器
 会持久化匹配的 models.dev `vendorKey`，并使用已发布的端点，在命名服务这条

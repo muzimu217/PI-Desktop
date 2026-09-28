@@ -2,6 +2,14 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const frEntries: ChangelogEntry[] = [
   {
+    "version": "0.15.9",
+    "date": "2026-09-27",
+    "highlights": [
+      "Supprime les anciens fichiers d'aide au premier démarrage des paquets macOS DMG et ZIP.",
+    ],
+  },
+
+  {
     "version": "0.15.6",
     "date": "2026-09-23",
     "highlights": [

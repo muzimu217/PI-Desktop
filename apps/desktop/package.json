@@ -1,6 +1,6 @@
 {
   "name": "@pi-desktop/desktop",
-  "version": "0.15.7-beta.1",
+  "version": "0.15.9",
   "desktopName": "pi-desktop.desktop",
   "private": true,
   "description": "PI-Desktop Electron application",
@@ -173,10 +173,6 @@
           "from": "build/tray-icon-mac.png",
           "to": "tray-icon-mac.png"
         }
-      ],
-      "extraDistFiles": [
-        "PI-Desktop-macOS-open.command",
-        "PI-Desktop-macOS-opening-help.txt"
       ]
     },
     "dmg": {

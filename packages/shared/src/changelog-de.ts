@@ -2,6 +2,14 @@ import type { ChangelogEntry } from "./changelog.js";
 
 export const deEntries: ChangelogEntry[] = [
   {
+    "version": "0.15.9",
+    "date": "2026-09-27",
+    "highlights": [
+      "Entfernt veraltete Hilfsdateien für den ersten Start aus macOS-DMG- und ZIP-Paketen.",
+    ],
+  },
+
+  {
     "version": "0.15.6",
     "date": "2026-09-23",
     "highlights": [

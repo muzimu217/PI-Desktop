@@ -30,6 +30,14 @@ export type ChangelogEntry = {
 
 const enEntries: ChangelogEntry[] = [
   {
+    version: "0.15.9",
+    date: "2026-09-27",
+    highlights: [
+      "Remove obsolete first-launch helper files from macOS DMG and ZIP packages.",
+    ],
+  },
+
+  {
     version: "0.15.6",
     date: "2026-09-23",
     highlights: [
@@ -843,6 +851,14 @@ const enEntries: ChangelogEntry[] = [
 
 const zhCNEntries: ChangelogEntry[] = [
   {
+    version: "0.15.9",
+    date: "2026-09-27",
+    highlights: [
+      "移除 macOS DMG 和 ZIP 包中已过时的首次启动助手与说明文件。",
+    ],
+  },
+
+  {
     version: "0.15.6",
     date: "2026-09-23",
     highlights: [
@@ -1655,6 +1671,14 @@ const zhCNEntries: ChangelogEntry[] = [
 ];
 
 const zhTWEntries: ChangelogEntry[] = [
+  {
+    version: "0.15.9",
+    date: "2026-09-27",
+    highlights: [
+      "Remove obsolete first-launch helper files from macOS DMG and ZIP packages.",
+    ],
+  },
+
   {
     version: "0.15.6",
     date: "2026-09-23",

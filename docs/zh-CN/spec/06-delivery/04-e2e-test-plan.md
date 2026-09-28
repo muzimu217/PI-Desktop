@@ -394,12 +394,12 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 #### E2E-005J：GitHub Copilot OAuth 请求携带原生 IDE 标头
 
 - **前提条件**：已有一个登录的 GitHub Copilot OAuth 账户并选定模型；确定性的捕获代理会记录模型请求标头。
-- **步骤**：1）针对该账户发起 Agent 回合并记录请求标头。2）助手回复后发送后续回合并记录下一次请求。3）选定模型支持视觉时，用图像附件重复测试。4）设置一个与 Copilot 默认标头同名的已保存自定义 header，再发送一次回合。
-- **预期**：每次 Copilot 模型请求都包含固定 pin 的 pi-ai 传输身份标头 `Editor-Version`、`Editor-Plugin-Version` 与 `Copilot-Integration-Id`。用户发起的请求中 `X-Initiator` 为 `user`，延续请求中为 `agent`；`Openai-Intent` 为 `conversation-edits`，图像请求包含 `Copilot-Vision-Request: true`。OAuth 行继续使用本地 provider id 进行账户绑定，已保存的自定义 header 仍是最后的覆盖层。
+- **步骤**：1）针对该账户发起 Agent 回合并记录请求标头。2）助手回复后发送后续回合并记录下一次请求。3）选定模型支持视觉时，用图像附件重复测试。4）设置一个与 Copilot 默认标头同名的已保存自定义 header，再发送一次回合。5）在同一账户上选择 Claude 模型（Anthropic Messages）并发送回合，记录认证与身份标头。
+- **预期**：每次 Copilot 模型请求都包含固定 pin 的 pi-ai 传输身份标头 `Editor-Version`、`Editor-Plugin-Version` 与 `Copilot-Integration-Id`。用户发起的请求中 `X-Initiator` 为 `user`，延续请求中为 `agent`；`Openai-Intent` 为 `conversation-edits`，图像请求包含 `Copilot-Vision-Request: true`。OAuth 行继续使用本地 provider id 进行账户绑定，已保存的自定义 header 仍是最后的覆盖层。Claude 请求携带 `Authorization: Bearer <Copilot token>`，不携带 `X-Api-Key`，并保留相同的 IDE 身份与上下文标头。
 - **链接规格**：`03-runtime/11-provider-model-system.md`、`03-runtime/12-provider-config-schema.md`、ADR 0095
 - **验收**：B（模型配置）、F（运行时提供商请求）
 - **里程碑**：M2
-- **状态**：单元覆盖（行级模型标头与请求上下文标头）；真实 Copilot 账户旅程待验证
+- **状态**：单元覆盖（行级模型标头、请求上下文标头、Anthropic Messages Bearer 认证与令牌轮换）；真实 Copilot 账户旅程待验证
 
 #### E2E-006：密钥在重启后仍然存在
 
@@ -703,8 +703,8 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
   交谈区。 3) 确认其显示简洁的 session/task 标题和新任务/搜索/命令
   动作按钮；确认
 侧边栏切换**仅在侧边栏折叠时出现**（展开时，
-  侧边栏拥有该控件）。 4）切换到Pull requests，Scheduled，
-  插件或设置路由并检查同一顶部区域。
+  侧边栏拥有该控件）。 4）切换到 Scheduled、插件或设置路由，
+  并检查同一顶部区域。
 - **预期**：在聊天路径上，对话顶部栏仅显示标题和操作；
   它没有模型或 Agent|Plan|Goal 模式控制。左侧输入 Composer 芯片拥有
   活动会话的 Agent/Plan/Goal 开关，Composer 右侧组合芯片拥有模型和推理选择。的
@@ -729,7 +729,7 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **先决条件**：macOS 构建；至少安装一个插件。
 - **步骤**：1) 在默认窗口尺寸下打开插件路由。 2) 检查页面顶部：
   “插件”标题行、主操作按钮和溢出菜单按钮。 3) 将页面滚到顶部，
-  确认没有内容被 46px 带遮挡。 4) 在定时任务和合并请求路由上重复。
+  确认没有内容被 46px 带遮挡。 4) 在定时任务路由上重复。
   5) 打开某个插件的详情侧面板并检查其标头。
 - **预期**：页面标头在 macOS 上完整渲染在无框拖拽带下方，与
   Windows/Linux 一致：标题行不被裁切，已安装 / 插件市场分段控件和
@@ -742,24 +742,6 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **状态**：已覆盖源级回归测试
   （`apps/desktop/test/plugins-page-style.test.mjs`）；完整 UI 场景为草案
 
-#### E2E-087b：目的页加载与设置焦点保持明确
-
-- **先决条件**：隔离的 Electron 配置、两个本地工作区 fixture，以及可按需
-  暂停列表响应的 preload 测试替身；不访问在线 GitHub。
-- **步骤**：
-  1. 挂载生产设置页面，确认焦点移到搜索框。
-  2. 为第一个工作区挂载 Pull requests 并暂停列表响应，检查等待状态。
-  3. 切换到第二个工作区并返回列表结果。发起手动刷新、暂停响应，确认现有行仍显示。
-  4. 返回刷新响应，最后才完成第一个工作区的旧请求。
-- **预期**：设置搜索框在挂载时获得焦点。Pull requests 在首个列表加载期间显示本地化
-  状态而非空结果。手动刷新响应期间保留已有行。切换工作区后，旧请求完成不得替换
-  第二个工作区的行或过滤计数。Shell 仍会将隐藏聊天设为 inert，但不会对包含焦点的
-  后代应用 `aria-hidden`。
-- **链接规格**：`04-ux/01-ui-ia.md`（§3.3）、`04-ux/09-interaction-patterns.md`（§7.1）
-- **验收**：C（UI）、质量
-- **里程碑**：M6+
-- **状态**：生产组件 E2E 与源码契约检查已自动化，由
-  `pnpm test:e2e:settings-scroll` 和 `pnpm test:e2e:destination-loading` 覆盖；完整 Shell 导航场景仍为草稿
 
 #### E2E-088：Composer Agent/Plan/Goal 芯片更新会话
 
@@ -3764,23 +3746,15 @@ IPC 请求无法关闭。
 - **里程碑**：M6+
 - **状态**：可选调试通道；标签发布必须满足 E2E-196c。
 
-#### E2E-196b：未签名的 macOS 软件包展示首次启动指引
+#### E2E-196b：macOS 软件包不附带首次启动助手
 
-- **先决条件**：默认未签名的 macOS 发布已为至少一个本机架构生成 DMG 和 ZIP 工件；
-  测试 macOS 账户可以将应用复制到 `/Applications` 或 `~/Applications`。
-- **步骤**：1) 打开 DMG 并检查根目录和布局。2) 确认窗口里只有应用与 Applications
-  链接。3) 确认 DMG 不含 command 助手，也不含 `If app won't open, read this.txt`。
-  4) 不解压应用内容，检查 ZIP 根目录，并确认其中同时存在
-  `PI-Desktop-macOS-opening-help.txt` 和可执行的 `PI-Desktop-macOS-open.command`。
-  5) 阅读说明，将应用移动到 `/Applications`，然后双击 ZIP 中的助手。
-- **预期**：DMG 使用带品牌的 720×440 背景，只包含应用和 Applications 链接，不包含或
-  暴露 command 助手或打开说明。ZIP 根目录包含助手和同一份说明。说明包含
-  `xattr -r -d com.apple.quarantine /Applications/PI-Desktop.app`，并说明兜底方式仅适用
-  于 macOS 对可信未签名工件提示应用已损坏或应用打不开的场景；已签名/公证版本无需
-  执行。ZIP 助手只查找 `/Applications/PI-Desktop.app` 和 `~/Applications/PI-Desktop.app`，
-  在存在时只删除 `com.apple.quarantine` 属性，然后打开应用，不使用 `sudo`，也不接受
-  任意路径；助手会在修改属性前校验 `CFBundleIdentifier=net.aiuo.pi-desktop`。说明不会
-  声称未签名工件已通过 Gatekeeper 资质验证。
+- **先决条件**：未签名的 macOS 调试打包已为至少一个本机架构生成 DMG 和 ZIP 工件。
+- **步骤**：1) 检查 DMG，确认窗口里只有应用与 Applications 链接。2) 不解压应用内容，
+  检查 ZIP 根目录，确认既没有 `PI-Desktop-macOS-opening-help.txt`，也没有
+  `PI-Desktop-macOS-open.command`。3) 确认 ZIP 中的应用仍可正常安装。
+- **预期**：DMG 使用带品牌的 720×440 背景，只包含应用与 Applications 链接；ZIP 包含
+  应用，但两种首次启动指引文件都不存在。签名和未签名 macOS 工件均遵循此规则；签名、
+  公证和更新程序行为保持不变。
 - **关联规格**：`06-delivery/06-release-runbook.md`、`05-security/01-security.md`
 - **验收**：质量、安全
 - **里程碑**：M6+
@@ -5099,7 +5073,7 @@ eleven-tool-round desktop paths are verified by
 - **关联规范**：`03-runtime/01-ipc-protocol.md` §12a–§12d、
   `03-runtime/02-agent-runtime.md` §5f、
   `03-runtime/13-model-catalog-and-selection.md` §2（子智能体编辑器）、
-  `04-ux/01-ui-ia.md` §3.5–§3.6、
+  `04-ux/01-ui-ia.md` §3.4–§3.5、
   `04-ux/06-settings-ia.md` §2（智能体能力页面）、§4.21–§4.25、
   `07-plugins/01-plugin-system.md` §12.2–§12.3、
   `08-meta/decisions-log.md`（D193、D194、D202、D257）、ADR 0112、ADR 0126
@@ -5356,9 +5330,9 @@ eleven-tool-round desktop paths are verified by
   市场连接。
 - **步骤**：1) 选择会话，输入未发送草稿，从页脚进入插件页，再次点击同一
   按钮。2) 重开插件页，在已安装列表输入搜索文本，返回后再次打开。3) 在
-  导航测试中分别从 `pulls`、`scheduled` 和设置进入；再测试插件前同时存在
-  定时任务和设置的历史。4) 前进到插件页后再次点击插件按钮。5) 没有可后退
-  历史时打开插件页并点击按钮。
+  导航测试中分别从定时任务和设置进入，并测试插件前同时存在
+  定时任务与设置的历史项。4) 前进到插件页后再次点击插件按钮。
+  5) 没有可后退历史时打开插件页并点击按钮。
 - **预期**：第二次点击执行一次现有后退操作，不追加返回条目，也不跳过设置。
   聊天历史条目复用现有会话选择和加载行为，返回后会话及未发送草稿仍可用。
   无法后退时打开聊天页。按下状态反映插件页是否激活。插件浏览标签、搜索
@@ -5626,7 +5600,7 @@ eleven-tool-round desktop paths are verified by
 
 ### US-UI-03 侧边栏目的地
 - 预计扩展的主页侧边栏将显示会话和项目，而无需
-独立插件、拉取请求或计划行。
+独立插件或计划行。
 - 单击侧栏页脚右侧的插件图标
   设置，并期望它用专用页面取代主窗格。
 - 打开设置→项目存档并使用它来打开、切换和关闭本地
@@ -5640,7 +5614,7 @@ eleven-tool-round desktop paths are verified by
 
 ### US-UI-05 区域设置 chrome
 - 在 zh-CN 系统语言环境中，侧边栏标签以中文呈现（项目/临时会话），
-  没有拉取请求或已安排条目。页脚插件图标显示
+  不出现额外的独立目的地行；页脚插件图标显示
   本地化的可访问名称插件。
 - 空线英雄和辅助线均为汉化汉化副本；项目
   当工作区打开时，名称仍然是点下划线操作。
@@ -8019,7 +7993,7 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
   3. 在布局收起左栏后手动重开左栏。
   4. 关闭工作面板并确认左栏恢复；再在手动收起左栏后重复一次。
   5. 用 `ArrowLeft`、`ArrowRight`、`Home`、`End` 重复调整分隔线。
-  6. Navigate to the real Plugins, Pull requests, and Scheduled routes with the
+  6. Navigate to the real Plugins and Scheduled routes with the
      work panel closed, then collapse the sidebar. In light and dark themes,
      measure both titlebar actions and compare their rest/hover styling with the
      shared work-panel toggle. Reopen the sidebar, collapse it again, and use
@@ -8662,7 +8636,7 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **预期：** 项目、权限和精确 provider/model 只保存在该任务，重新打开仍显示相同值并实际传到 sidecar，其他任务不受影响；项目、权限和模型控件保持嵌在“指令”框的 Composer 风格底栏中，窄窗口也不产生横向溢出；缺少新增字段的旧记录保持原默认行为。配置持久化并显示下次时间；暂停后不触发；手动与自动入口均调用真实
   Agent sidecar；历史记录链接到持久化会话；自动执行不依赖渲染器发送提示词。
   宿主测试补充验证重复准入、错过时段、无效输入和重启恢复。
-- **规格：** 04-ux/01-ui-ia §3.4；03-runtime/04-data-storage §4.11；
+- **规格：** 04-ux/01-ui-ia §3.3；03-runtime/04-data-storage §4.11；
   ADR scheduled-desktop-automations；ADR 0305。
 - **验收：** 定时执行与可恢复的运行历史。
 - **里程碑：** MVP 后的桌面自动化。
@@ -8721,23 +8695,28 @@ the latest destination. These assertions measure work counts, not device FPS.
 
 - **先决条件：** 一个回合包含进度段落 A、多次搜索及思考、进度段落 B、多条命令及
   思考和最终回答；详细与紧凑显示模式。
-- **步骤：** 在详细模式静态审查嵌套披露路径，包括相互独立的组／条目切换、父级收起
-  与恢复、单项片段、字面最后一项选择、失败／被拒／恢复和保留窗格重新挂载。
-  随后在紧凑模式重复，并覆盖权限／提问／计划／目标操作卡、中止的部分回答、
-  助手错误和委派子任务。
+- **步骤：** 在详细模式确认活动过程默认展开，让同一回合在无人操作时完成，并确认过程
+  收起。另一个回合中，明确展开已完成过程，并确认后续更新仍保留该选择。检查嵌套路径，
+  包括相互独立的组／条目切换、父级收起与恢复、单项片段、字面最后一项选择、失败／被拒／
+  恢复、保留窗格重新挂载和旧版搜索定位。随后在紧凑模式重复，并覆盖权限／提问／计划／
+  目标操作卡、中止的部分回答、助手错误和委派子任务。
 - **预期：** 两种模式都使用一个整体过程披露，并把最终回答、助手错误、中止后的末尾
-  文字和待处理操作留在过程之外。详细模式的活动中／已完成过程默认展开；活动多项组
-  展开，未操作组在完成时收起。紧凑模式的过程、组和载荷默认收起，隐藏推理；记录过
-  失败／被拒工具的未操作活动过程会在恢复期间保持展开，并在完成后收起。单项没有组。
-  详细模式只自动展开最后一个活动组中符合条件的字面最后工具／搜索项；不会越过思考
-  向前查找，失败／被拒叶子保持关闭。父级、子级和同级状态相互独立；窗格拥有的用户
-  选择跨更新、模式切换和重新挂载保留，渲染器重启后重新应用默认值。已保存模式跨重启
-  保留，缺失或未知设置按详细模式处理。
+  文字和待处理操作留在过程之外。详细模式的活动过程默认展开；未操作的过程在回合完成时
+  收起，用户明确选择的状态继续保留。活动多项组默认展开，未操作组在完成时收起。紧凑模式
+  的过程、组和载荷默认收起，隐藏推理；记录过失败／被拒工具的未操作活动过程会在恢复期间
+  保持展开，并在完成后收起。单项没有组。详细模式只自动展开最后一个活动组中符合条件的
+  字面最后工具／搜索项；不会越过思考向前查找，失败／被拒叶子保持关闭。父级、子级和同级
+  状态相互独立；窗格拥有的用户选择跨更新、模式切换和重新挂载保留，渲染器重启后重新应用
+  默认值。搜索只展开拥有目标消息的过程和活动组，每个请求应用一次；条目级精确定位不在
+  本次范围内，紧凑模式推理仍需显式切换到详细模式。已保存模式跨重启保留，缺失或未知设置
+  按详细模式处理。
 - **2026-09-20 变更的验证范围：** 本次变更只包含多级折叠与活动组呈现；精确转录搜索
   定位不在本次范围内，保持原有搜索行为。
+- **自动化：** `pnpm test:e2e:transcript` 覆盖默认及运行中到完成时的过程披露行为；
+  `pnpm test:e2e:transcript-disclosure` 验证手动展开状态保留和视口锚定；
+  `apps/desktop/test/turn-process.test.mjs` 覆盖默认选择。
 - **规格：** 04-ux/06-settings-ia、04-ux/08-component-spec、
   04-ux/09-interaction-patterns；ADR turn-process-and-thinking-display。
-
 ### E2E-CONTEXT-estimate-calibration-stays-safe
 
 - **先决条件：** 可脚本化上报用量的确定性提供商夹具；占用接近硬边界的会话；不使用真实凭据。
@@ -8863,7 +8842,7 @@ the latest destination. These assertions measure work counts, not device FPS.
   one hour away. Prompt, paused state and saved configuration survive. Rename
   does not reset the interval. RPC tests also cover required Daily/Weekly times
   and retention of an existing custom schedule.
-- **Specs:** 04-ux/01-ui-ia §3.4.
+- **Specs:** 04-ux/01-ui-ia §3.3.
 - **Acceptance:** C / F — task configuration and persistence.
 - **Milestone:** Maintenance.
 - **Status:** `node scripts/e2e-scheduled-hourly-update.mjs` exercises the real
@@ -8879,7 +8858,7 @@ the latest destination. These assertions measure work counts, not device FPS.
 - **Expected:** Each result session and edited task retain the original binding,
   including no-project tasks. Legacy cadence-only tasks keep their previous
   fallback until explicitly configured (covered by host RPC tests).
-- **Specs:** 04-ux/01-ui-ia §3.4.
+- **Specs:** 04-ux/01-ui-ia §3.3.
 - **Acceptance:** Saved workspace binding across run, edit and restart.
 - **Milestone:** Maintenance.
 - **Status:** Automated by `node --experimental-strip-types

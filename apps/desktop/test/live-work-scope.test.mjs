@@ -55,6 +55,22 @@ test("work scope requires the still-active call binding and a supported local se
   assert.equal(lookups, 1, "an invalid call binding is rejected before Host access");
 });
 
+test("work scope rejects a bound session after its workspace identity changes", async (t) => {
+  const { requireSupportedWorkSession } = await loadScope(t);
+  const bindings = new Map([[
+    "call-a",
+    { workSessionId: "session-a", workspaceIdentity: JSON.stringify(["project-a", "/workspace/a"]) },
+  ]]);
+  const host = {
+    call: async () => ({ sessions: [{ id: "session-a", source: "desktop", projectId: "project-b", projectPath: "/workspace/b" }] }),
+  };
+
+  await assert.rejects(
+    requireSupportedWorkSession({ host, bindings, sessionId: "session-a", callId: "call-a" }),
+    { errorCode: "LIVE_WORK_SCOPE_CHANGED" },
+  );
+});
+
 test("a work session removed while Host metadata is being read cannot pass revalidation", async (t) => {
   const { requireSupportedWorkSession } = await loadScope(t);
   const bindings = new Map([["call-a", { workSessionId: "session-a" }]]);

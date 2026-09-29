@@ -2,23 +2,36 @@ import type { RacpItemSummary } from "@pi-desktop/shared";
 
 const MAX_SUMMARY_LENGTH = 480;
 
-/** Project only the final assistant message from the exact terminal Host turn. */
-export function projectTurnResultSummary(
+export type ProjectedTurnResult = { text: string; sourceMessageId: string } | undefined;
+
+/** Find user-facing root-agent output without including tools or subagents. */
+export function findTurnResult(
   items: RacpItemSummary[],
   turnId: string,
-  status: "completed" | "failed" | "interrupted" | "canceled",
-): string {
+): ProjectedTurnResult {
   const messages = items
     .filter((item) => item.turnId === turnId && item.itemType === "message" && item.status === "completed")
+    .filter((item) => !item.parentToolCallId && !item.agentName)
     .map((item) => ({ item, message: asMessage(item.content) }))
     .filter((entry): entry is { item: RacpItemSummary; message: { role: "assistant"; content: string } } =>
       entry.message?.role === "assistant" && typeof entry.message.content === "string",
     )
     .sort((left, right) => left.item.createdAt.localeCompare(right.item.createdAt) || (left.item.sequence ?? 0) - (right.item.sequence ?? 0));
 
-  const latest = messages.at(-1)?.message.content;
-  const projected = latest ? summarizeText(latest) : "";
-  if (projected) return projected;
+  const latest = messages.at(-1);
+  const text = latest ? summarizeText(latest.message.content) : "";
+  if (!latest || !text) return undefined;
+  return { text, sourceMessageId: latest.item.id };
+}
+
+/** Project only the final assistant message from the exact terminal Host turn. */
+export function projectTurnResultSummary(
+  items: RacpItemSummary[],
+  turnId: string,
+  status: "completed" | "failed" | "interrupted" | "canceled",
+): string {
+  const projected = findTurnResult(items, turnId);
+  if (projected) return projected.text;
   switch (status) {
     case "completed": return "Task completed. See the bound work session for details.";
     case "failed": return "The task failed. Error details are available in the bound work session.";

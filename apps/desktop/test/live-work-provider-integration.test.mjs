@@ -197,6 +197,12 @@ for (const profile of profiles) {
             observedAt: Date.parse("2026-09-29T00:00:00.000Z"),
           };
         },
+        observeTurnTarget(sessionId) {
+          return host.observeWorkTarget(sessionId).activeTurnId;
+        },
+        async lookupAdmission() {
+          return { kind: "not-found" };
+        },
         async submit(request) {
           const result = await host.startTurn(PRINCIPAL, {
             sessionId: request.sessionId,

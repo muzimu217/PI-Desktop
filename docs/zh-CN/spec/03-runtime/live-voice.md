@@ -14,7 +14,7 @@
 
 公开设置为 `liveVoice: { enabled, selectedBindingId?, bindings }`。它只包含 Provider ID、模型/音色选择和协议 profile，不保存凭证。现有 `voice` 和 `speech` 设置保持原义。持久化 JSON 由 Host Core 所有；它会将 Live 设置与其他设置合并。
 
-实时语音不会创建 Agent turn、调用 AgentHost 或 MCP、访问工作区文件、执行模型生成的函数、保存录音或持久化字幕。字幕只保存在本次通话的有界 Renderer 内存缓冲区中。Provider delegation/function-call 请求没有执行通路，会被拒绝或导致协议错误。
+没有工作绑定的纯语音 Live profile 不会创建 Agent turn、调用 AgentHost 或 MCP、访问工作区文件、执行模型生成的函数、保存录音或持久化字幕。字幕只保存在本次通话的有界 Renderer 内存缓冲区中。除非用户明确开启独立作用域的 Live Work 通话，否则 Provider delegation/function-call 请求会被拒绝或导致协议错误；Live Work 的执行与权限合同见[实时语音工作会话接入](live-work-session.md)。
 
 ## 所有权与安全
 

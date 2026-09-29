@@ -1,8 +1,10 @@
 # Live Work W2 Acceptance Coverage Audit
 
-Audit baseline: latest request candidate after merging `origin/main` at
-`8fcca3d25c98`. The attached v2 work-integration specification defines the
-behavior for W2-001—W2-096.
+Original audit baseline: phase-2 request candidate after merging `origin/main`
+at `8fcca3d25c98`. This v2.1 refresh adds evidence from the uncommitted
+working-tree candidate based on `f9543be51a2eea4f5010dd059fed6d68dddb8745`;
+it does not replace the historical base SHA or claim a committed candidate.
+The v2 work-integration specification defines W2-001—W2-096.
 
 Status means:
 
@@ -41,7 +43,7 @@ called out where relevant.
 | W2-022 | Gap | No test covers ambiguous “stop” while speech and work are both active |
 | W2-023 | Partial | `packages/host-runtime/src/live-work/coordinator.test.ts` — “fails closed on malformed classifier output and validates exact intent fields”; timeout and missing-model cases are not covered by this test |
 | W2-024 | Partial | `packages/host-runtime/src/live-work/coordinator.test.ts` — “asks for clarification when a busy new task has no explicit relationship”; untrusted history injection is not asserted here |
-| W2-025 | Partial | `apps/desktop/test/live-work-provider-integration.test.mjs` submits each parsed profile request through `AgentHost.startTurn` and observes the Runtime prompt; its LiveWorkPort is a fixture, so the production Main work-bridge mapping is not exercised |
+| W2-025 | Partial | `apps/desktop/test/live-work-production-composition.test.mjs` now exercises production `createLiveWorkBridge` → `createAgentHostBridge` → registered `agentPrompt` handler → real AgentHost with a fake Host RPC/sidecar; the four-profile parser fixture still uses its own WorkPort and concrete adapters are not instantiated |
 | W2-026 | Gap | No positive end-to-end test proves a valid steer stays on the captured active turn |
 | W2-027 | Direct | `packages/host-runtime/src/live-work/coordinator.test.ts` — “rejects a stale steer without falling back to prompt or queue” |
 | W2-028 | Direct | `packages/agent-runtime/src/turn-target.test.ts` — “rejects missing or replaced active turns when an exact target was supplied” |
@@ -49,8 +51,8 @@ called out where relevant.
 | W2-030 | Partial | `apps/desktop/test/live-work-provider-integration.test.mjs` asserts the user message and `voiceOrigin` reach the AgentHost Runtime prompt; `packages/agent-host/src/agent-host.test.ts` covers a queued voice-provenance turn, but persistence through the production registered handler is not asserted in the same flow |
 | W2-031 | Direct | `crates/host-core/src/turn_queue.rs` — `voice_origin_and_user_message_identity_roundtrip_through_queue`; old-row compatibility is covered by `v19_queue_upgrade_preserves_existing_entries` |
 | W2-032 | Partial | The pure-call regression test covers reject-only delegation; no assertion explicitly pairs final transcript/self-commitment input with zero turn creation |
-| W2-033 | Partial | `packages/host-runtime/src/live-work/coordinator.test.ts` — “uses the Host queue for an explicitly independent task while busy”; this verifies routing through the port, not the production durable Host queue mapping |
-| W2-034 | Partial | Same coordinator queue-routing case plus `packages/agent-host/src/agent-host.test.ts` — “queues behind an active turn, drains in order, and aliases runtime ids”; the voice-to-durable-queue mapping is not exercised in one integration test |
+| W2-033 | Partial | Coordinator routing case plus `live-work-production-composition.test.mjs` exercise explicit queue routing into real AgentHost; its queue store is backed by a Host RPC fixture, not Rust persistence |
+| W2-034 | Partial | `packages/agent-host/src/agent-host.test.ts` — “drains an idle explicit enqueue and preserves voice provenance” and “queues behind an active turn, drains in order, and aliases runtime ids”; production Live composition also admits an independent voice-origin entry, but does not use Rust durable storage |
 | W2-035 | Partial | `packages/agent-host/src/turn-queue.test.ts` — “keeps arrival order, positions, and the per-session bound”; Voice error recovery at queue capacity is not covered |
 | W2-036 | Partial | `packages/agent-host/src/agent-host.test.ts` — “cancels a queued collaboration message without dispatching it”; Voice operation-reference cancellation is not covered |
 | W2-037 | Gap | No Voice test races queue removal against delivery-pending or already-consumed state |
@@ -63,7 +65,7 @@ called out where relevant.
 | W2-044 | Gap | No test resolves concurrent classifiers in reverse order and asserts admission ordering |
 | W2-045 | Direct | `packages/host-runtime/src/live-work/coordinator.test.ts` — “keeps a terminal event that arrives before submit returns” |
 | W2-046 | Partial | `packages/agent-host/src/agent-host.test.ts` — “queues behind an active turn, drains in order, and aliases runtime ids”; Voice operation updates and single feedback are not part of that assertion |
-| W2-047 | Gap | No test covers unknown dispatch admission with bounded reconciliation and no retry |
+| W2-047 | Direct | `packages/host-runtime/src/live-work/coordinator.test.ts` — “bounds an unresolved dispatch and reconciles it without resubmitting”; `packages/agent-host/src/agent-host.test.ts` — “reconciles only the exact session, operation, and user-message identity” |
 | W2-048 | Partial | `packages/host-runtime/src/live-work/operation-ledger.test.ts` — “preserves all accepted identities up to the call limit”; process restart/replay behavior is not tested in the same case |
 | W2-049 | Direct | `packages/host-runtime/src/live-work/context.test.ts` — “never includes transcript or prior voice input while sharing is disabled” |
 | W2-050 | Direct | `packages/host-runtime/src/live-work/context.test.ts` — “shares only bounded plain user and assistant text when explicitly enabled” |
@@ -77,7 +79,7 @@ called out where relevant.
 | W2-058 | Partial | `packages/agent-host/src/agent-host.test.ts` maps message/tool events and turn terminals separately; no Voice feedback test asserts tool/message/subagent completion alone cannot settle a work operation |
 | W2-059 | Partial | AgentHost tests cover completed, interrupted, and failed turn events separately; a single Live work projection matrix for failed/interrupted/canceled is absent |
 | W2-060 | Direct | `packages/host-runtime/src/live-work/result-summary.test.ts` — “uses an honest status fallback when no final assistant message exists” |
-| W2-061 | Partial | `packages/host-runtime/src/live-work/result-summary.test.ts` — “uses only the latest assistant message from the exact terminal turn”; bounded re-read after terminal persistence lag is not exercised |
+| W2-061 | Direct | `packages/host-runtime/src/live-work/result-summary.test.ts` — “uses only the latest assistant message from the exact terminal turn”; `apps/desktop/test/live-work-production-composition.test.mjs` delays final-message visibility until a bounded production Bridge reread |
 | W2-062 | Direct | `apps/desktop/test/live-voice-service.test.mjs` — “a shared terminal turn produces one feedback item and updates every linked operation” |
 | W2-063 | Direct | `apps/desktop/test/live-voice-service.test.mjs` — “work feedback waits for a quiet window and reports local delivery separately from task execution” |
 | W2-064 | Direct | `packages/host-runtime/src/live-work/feedback-scheduler.test.ts` covers playback/user idle, silent mode, explicit queries, speech gap, and coalescing |
@@ -112,14 +114,15 @@ called out where relevant.
 | W2-093 | Gap | No test queues Gemini context-only updates until both model generation and PCM playback drain |
 | W2-094 | Partial | `packages/voice-runtime/src/live/protocol.test.ts` verifies work-profile declarations and GA/compat separation; adapter capability refusal and UI availability are not integrated |
 | W2-095 | Partial | Existing controller, shortcuts, microphone lease, and work-voice tests cover several legacy paths; text prompt/steer/queue and Dictation/Host Speech are not one regression matrix |
-| W2-096 | Partial | `apps/desktop/test/live-work-provider-integration.test.mjs` exercises Codex, Gemini, Realtime GA, and Realtime compat parsers/encoders → `LiveWorkCoordinator` → actual `AgentHost.startTurn` → authoritative `agent_end` → provider feedback encoders. Runtime prompt and provider transport are fixtures; concrete socket/WebRTC adapter instances and real accounts/devices remain untested |
+| W2-096 | Partial | `apps/desktop/test/live-work-provider-integration.test.mjs` covers four protocol parsers/encoders → coordinator → AgentHost events; `apps/desktop/test/live-work-production-composition.test.mjs` separately reaches production Live WorkBridge, registered `agentPrompt` handler, real AgentHost, and result projection. Runtime/Host-core IO and concrete socket/WebRTC adapter instances remain fixtures or untested |
 
 ## Audit summary
 
-The matrix now has an explicit row for every W2 acceptance ID. **Direct** and
+The matrix has an explicit row for every W2 acceptance ID. **Direct** and
 **Partial** are test mappings only; **Gap** items remain uncovered and should
-not be described as passing. The audit currently maps 18 Direct, 49 Partial,
-and 29 Gap cases. The new W2-096 fixture reaches the shared Host admission and
-terminal boundaries for all four wire profiles, while provider transport,
-voice models, credentials, and physical audio remain outside this deterministic
-integration test.
+not be described as passing. The v2.1 refresh maps 20 Direct, 47 Partial, and
+29 Gap cases. The production composition fixture improves the Main/handler
+evidence for W2-025 and W2-096 but still does not exercise concrete socket or
+WebRTC adapters, Rust persistence, real provider models, credentials, or
+physical audio. The full v2.1 case mapping is in
+[`live-work-v21-coverage.md`](live-work-v21-coverage.md).

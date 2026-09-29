@@ -93,6 +93,8 @@ export type QueueEntryView = {
 export type StartTurnParams = {
   sessionId: string;
   idempotencyKey?: string;
+  /** Main-private identity captured when authorizing a Live work scope. */
+  expectedWorkspaceIdentity?: string | null;
   admission?: RacpTurnAdmission;
   input: {
     text: string;
@@ -156,7 +158,13 @@ type SessionState = {
   remoteSubscribers: number;
 };
 
-type IdempotencyEntry = { turnId: string; inputHash: string };
+type IdempotencyEntry = {
+  turnId: string;
+  inputHash: string;
+  sessionId: string;
+  userMessageId?: string;
+  voiceOrigin?: { callId: string; operationId: string };
+};
 
 const MAX_IDEMPOTENCY_ENTRIES = 2000;
 const MAX_TURNS_PER_SESSION = 200;
@@ -458,7 +466,13 @@ export class AgentHost {
   /** Append to the shared Host queue even when no turn is currently running. */
   async enqueueTurn(principal: Principal, params: StartTurnParams): Promise<StartTurnResult> {
     this.requireRole(principal, "turn/start");
-    return this.withAdmission(params.sessionId, () => this.startTurnAdmitted(principal, params, true));
+    const result = await this.withAdmission(params.sessionId, () => this.startTurnAdmitted(principal, params, true));
+    await this.drain(params.sessionId);
+    return {
+      ...result,
+      turn: this.getTurn(result.turn.id),
+      cursor: this.hub.stream(params.sessionId).cursor(),
+    };
   }
 
   private async startTurnAdmitted(
@@ -467,6 +481,12 @@ export class AgentHost {
     forceQueue = false,
   ): Promise<StartTurnResult> {
     const summary = await this.requireSession(params.sessionId);
+    if (
+      params.expectedWorkspaceIdentity !== undefined &&
+      summary.workspaceIdentity !== params.expectedWorkspaceIdentity
+    ) {
+      throw racpError("WORKSPACE_CHANGED", "the session workspace changed after this work scope was authorized");
+    }
     const state = this.state(summary.id);
     state.permissionMode = summary.permissionMode;
     const inputHash = hashInput(params.input);
@@ -537,7 +557,7 @@ export class AgentHost {
         principal,
       });
       turn = this.ensureTurn(state, started.turnId);
-      if (!isActive(turn.status)) turn.status = "running";
+      if (!isTerminal(turn.status) && !isActive(turn.status)) turn.status = "running";
       turn.admission = admission;
       turn.effectivePermissionMode = effectivePermissionMode;
       turn.idempotencyKey = idempotencyKey;
@@ -545,13 +565,68 @@ export class AgentHost {
       state.activeTurnId = turn.id;
       state.status = "running";
     }
-    if (idempotencyKey) this.rememberIdempotency(`${principal.subject}|${idempotencyKey}`, { turnId: turn.id, inputHash });
+    if (idempotencyKey) this.rememberIdempotency(`${principal.subject}|${idempotencyKey}`, {
+      turnId: turn.id,
+      inputHash,
+      sessionId: state.id,
+      ...(params.input.userMessageId ? { userMessageId: params.input.userMessageId } : {}),
+      ...(params.input.voiceOrigin ? { voiceOrigin: params.input.voiceOrigin } : {}),
+    });
     return { accepted: true, turn: this.toRacpTurn(state, turn), cursor: this.hub.stream(state.id).cursor() };
   }
 
   getTurn(turnId: string): RacpTurn {
     const state = this.stateForTurn(turnId);
     return this.toRacpTurn(state, state.turns.get(turnId)!);
+  }
+
+  /** Read-only, session-scoped reconciliation for an already issued request key. */
+  lookupTurnByIdempotency(
+    principal: Principal,
+    request: {
+      sessionId: string;
+      idempotencyKey: string;
+      userMessageId: string;
+      voiceOrigin: { callId: string; operationId: string };
+    },
+  ): RacpTurn | undefined {
+    this.requireRole(principal, "turn/get");
+    const { sessionId, idempotencyKey, userMessageId, voiceOrigin } = request;
+    if (!sessionId.trim() || !idempotencyKey.trim() || !userMessageId.trim()) return undefined;
+    const remembered = this.idempotency.get(`${principal.subject}|${idempotencyKey}`);
+    const rememberedMatches = remembered?.sessionId === sessionId &&
+      remembered.userMessageId === userMessageId &&
+      remembered.voiceOrigin?.callId === voiceOrigin.callId &&
+      remembered.voiceOrigin.operationId === voiceOrigin.operationId;
+    const queued = this.queue.list(sessionId).find((record) =>
+      record.idempotencyKey === idempotencyKey &&
+      record.userMessageId === userMessageId &&
+      record.voiceOrigin?.callId === voiceOrigin.callId &&
+      record.voiceOrigin.operationId === voiceOrigin.operationId,
+    );
+    const turnId = rememberedMatches ? remembered.turnId : queued?.id;
+    if (!turnId) return undefined;
+    const state = this.states.get(sessionId);
+    const turn = state?.turns.get(turnId);
+    if (state && turn?.sessionId === sessionId) return this.toRacpTurn(state, turn);
+    if (queued?.id === turnId) {
+      return {
+        id: queued.id,
+        sessionId: queued.sessionId,
+        status: "queued",
+        admission: "queue",
+        effectivePermissionMode: queued.effectivePermissionMode,
+        ...(queued.idempotencyKey ? { idempotencyKey: queued.idempotencyKey } : {}),
+      };
+    }
+    return undefined;
+  }
+
+  /** Capture the current Host-owned turn identity synchronously at ingress. */
+  observeWorkTarget(sessionId: string): { activeTurnId: string | null } {
+    const state = this.states.get(sessionId);
+    const active = state?.activeTurnId ? state.turns.get(state.activeTurnId) : undefined;
+    return { activeTurnId: active && isActive(active.status) ? active.id : null };
   }
 
   /** Read live work state without loading transcript history or message text. */

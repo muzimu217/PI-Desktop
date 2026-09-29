@@ -16,8 +16,17 @@ export type WorkAdmission =
   | { status: "queued"; queueEntryId: string }
   | { status: "steered"; turnId: string };
 
+export type WorkAdmissionLookup =
+  | { kind: "not-found" }
+  | { kind: "queued"; queueEntryId: string }
+  | { kind: "running"; turnId: string }
+  | { kind: "terminal"; turnId: string; status: "completed" | "failed" | "interrupted" | "canceled" }
+  | { kind: "unavailable"; code: string };
+
 export interface LiveWorkPort {
   snapshot(sessionId: string): Promise<WorkSnapshot>;
+  observeTurnTarget(sessionId: string): string | null;
+  lookupAdmission(input: { callId: string; sessionId: string; operationId: string; idempotencyKey: string; userMessageId: string }): Promise<WorkAdmissionLookup>;
   submit(input: { sessionId: string; text: string; userMessageId: string; voiceOrigin: { callId: string; operationId: string }; idempotencyKey: string }): Promise<WorkAdmission>;
   steer(input: { sessionId: string; expectedTurnId: string; text: string; userMessageId: string; voiceOrigin: { callId: string; operationId: string } }): Promise<{ accepted: boolean }>;
   enqueue(input: { sessionId: string; text: string; userMessageId: string; voiceOrigin: { callId: string; operationId: string }; idempotencyKey: string }): Promise<{ queueEntryId: string }>;
@@ -34,7 +43,7 @@ export type LiveWorkCandidate = {
   workSessionId: string;
   providerRequestId: string;
   instruction: string;
-  observedTurnId?: string;
+  observedTurnId?: string | null;
 };
 
 export type ProviderReceipt =
@@ -56,6 +65,7 @@ export type LiveWorkCoordinatorOptions = {
     candidate: LiveWorkCandidate;
     snapshot: WorkSnapshot;
     recentOperations: Array<Pick<LiveWorkOperation, "operationId" | "instruction" | "admission" | "execution" | "selections">>;
+    signal: AbortSignal;
   }) => Promise<unknown>;
   workPort: LiveWorkPort;
   onOperation?: (update: LiveWorkOperationUpdate) => void;
@@ -69,8 +79,16 @@ type CallState = {
   workBindingRevision: number;
   ledger: LiveWorkOperationLedger;
   tail: Promise<void>;
+  controlTail: Promise<void>;
   closed: boolean;
   turnExecutions: Map<string, LiveWorkOperation["execution"]>;
+  candidatePhases: Map<string, { sequence: number; phase: "pending" | "classifying" | "dispatching" }>;
+  stopBarrierSequence: number;
+  classifiers: Map<string, AbortController>;
+  dispatchReaders: Set<AbortController>;
+  snapshotReaders: Set<AbortController>;
+  lookupReaders: Set<AbortController>;
+  reconciliationTimers: Set<ReturnType<typeof setTimeout>>;
 };
 
 /**
@@ -96,8 +114,16 @@ export class LiveWorkCoordinator {
       workBindingRevision: input.workBindingRevision,
       ledger: new LiveWorkOperationLedger(input),
       tail: Promise.resolve(),
+      controlTail: Promise.resolve(),
       closed: false,
       turnExecutions: new Map(),
+      candidatePhases: new Map(),
+      stopBarrierSequence: 0,
+      classifiers: new Map(),
+      dispatchReaders: new Set(),
+      snapshotReaders: new Set(),
+      lookupReaders: new Set(),
+      reconciliationTimers: new Set(),
     });
   }
 
@@ -128,6 +154,13 @@ export class LiveWorkCoordinator {
     }
 
     const operation = registered.operation;
+    call.candidatePhases.set(candidate.providerRequestId, { sequence: operation.sequence, phase: "pending" });
+    candidate = {
+      ...candidate,
+      observedTurnId: candidate.observedTurnId === undefined
+        ? this.options.workPort.observeTurnTarget(candidate.workSessionId)
+        : candidate.observedTurnId,
+    };
     call.ledger.update(candidate.providerRequestId, { admission: "reviewing" });
     this.publish(call, candidate.providerRequestId);
     let localReceipt: LocalReceiptDelivery;
@@ -143,24 +176,59 @@ export class LiveWorkCoordinator {
     }
     if (localReceipt.status !== "sent") {
       call.ledger.update(candidate.providerRequestId, {
-        admission: localReceipt.status === "unknown" ? "unknown" : "rejected",
+        admission: "rejected",
+        failureCode: "receipt-undelivered",
       });
       this.publish(call, candidate.providerRequestId, "The receipt could not be delivered; no work was dispatched.");
+      call.candidatePhases.delete(candidate.providerRequestId);
       return;
     }
 
-    const ordered = call.tail.then(() => this.classifyAndRoute(call, candidate));
-    call.tail = ordered.catch(() => undefined);
-    await ordered;
+    const controlLane = isControlSchedulingHint(candidate.instruction);
+    const lane = controlLane ? "controlTail" : "tail";
+    const ordered = call[lane].then(async () => {
+      try {
+        await this.classifyAndRoute(call, candidate, controlLane);
+      } catch {
+        if (call.closed) return;
+        const current = call.ledger.get(candidate.providerRequestId);
+        if (!current || current.admission === "accepted" || current.admission === "rejected" || current.admission === "withdrawn") return;
+        if (current.admission === "dispatching") {
+          this.markDispatchUnknown(call, candidate.providerRequestId, "The Host result is unknown. Check the bound work session before taking further action.");
+          if (current.intent && isWriteIntent(current.intent)) this.reconcileAdmission(call, candidate.providerRequestId);
+          return;
+        }
+        this.reject(call, candidate.providerRequestId, "The work session could not complete this request.", "host-rejected");
+      }
+    });
+    call[lane] = ordered.catch(() => undefined);
+    try {
+      await ordered;
+    } finally {
+      call.candidatePhases.delete(candidate.providerRequestId);
+    }
   }
 
   closeCall(callId: string): void {
     const call = this.calls.get(callId);
     if (!call) return;
     call.closed = true;
+    for (const controller of call.classifiers.values()) controller.abort(new Error("Live work call closed"));
+    call.classifiers.clear();
+    for (const controller of call.dispatchReaders) controller.abort(new Error("Live work call closed"));
+    call.dispatchReaders.clear();
+    for (const controller of call.snapshotReaders) controller.abort(new Error("Live work call closed"));
+    call.snapshotReaders.clear();
+    for (const controller of call.lookupReaders) controller.abort(new Error("Live work call closed"));
+    call.lookupReaders.clear();
+    for (const timer of call.reconciliationTimers) clearTimeout(timer);
+    call.reconciliationTimers.clear();
     for (const operation of call.ledger.values()) {
-      if (operation.admission === "received" || operation.admission === "reviewing" || operation.admission === "dispatching") {
-        call.ledger.update(operation.providerRequestId, { admission: "withdrawn" });
+      if (operation.admission === "dispatching") {
+        call.ledger.update(operation.providerRequestId, { admission: "unknown", execution: "unknown", failureCode: "dispatch-unknown" });
+        this.publish(call, operation.providerRequestId, "The call ended while Host admission was in progress. Check the bound work session; this operation was not resubmitted.");
+      } else if (operation.admission === "received" || operation.admission === "reviewing") {
+        call.ledger.update(operation.providerRequestId, { admission: "withdrawn", failureCode: "caller-withdrawn" });
         this.publish(call, operation.providerRequestId);
       }
     }
@@ -187,15 +255,29 @@ export class LiveWorkCoordinator {
     return undefined;
   }
 
-  reportTurnResult(input: { callId: string; operationId: string; summary: string }): void {
+  reportTurnResult(input: {
+    callId: string;
+    operationId: string;
+    summary: string;
+    resultState?: "available" | "unavailable";
+    sourceMessageId?: string;
+  }): void {
     const call = this.calls.get(input.callId);
     const operation = call?.ledger.getByOperationId(input.operationId);
     if (!call || !operation || operation.workSessionId !== call.workSessionId) return;
-    call.ledger.update(operation.providerRequestId, {
-      summary: input.summary.slice(0, 480),
-      resultSummary: input.summary.slice(0, 480),
-    });
-    this.publish(call, operation.providerRequestId, input.summary.slice(0, 480));
+    const summary = input.summary.slice(0, 480);
+    if (!isWriteIntent(operation.intent)) return;
+    const related = operation.turnId
+      ? call.ledger.values().filter((item) => item.turnId === operation.turnId && isWriteIntent(item.intent))
+      : [operation];
+    for (const item of related) {
+      call.ledger.update(item.providerRequestId, {
+        resultSummary: summary,
+        resultState: input.resultState ?? "available",
+        ...(input.sourceMessageId ? { resultSourceMessageId: input.sourceMessageId } : {}),
+      });
+      this.publish(call, item.providerRequestId);
+    }
   }
 
   reportTurnTerminal(input: {
@@ -223,9 +305,14 @@ export class LiveWorkCoordinator {
           operation.workSessionId !== input.sessionId ||
           (!matchesTurn(operation, input.runtimeTurnId, input.idempotencyKey) &&
             !matchesTurn(operation, input.turnId, input.idempotencyKey)) ||
-          !isInFlight(operation.execution)
+          (!isInFlight(operation.execution) && operation.admission !== "dispatching" && operation.admission !== "unknown")
         ) continue;
-        call.ledger.update(operation.providerRequestId, { execution });
+        call.ledger.update(operation.providerRequestId, {
+          admission: "accepted",
+          execution,
+          turnId: input.turnId,
+          ...(isWriteIntent(operation.intent) ? { resultState: "pending" as const } : {}),
+        });
         this.publish(call, operation.providerRequestId);
       }
     }
@@ -245,13 +332,13 @@ export class LiveWorkCoordinator {
     this.updateMatchingTurn(input.sessionId, input.turnId, input.state, input.idempotencyKey);
   }
 
-  private async classifyAndRoute(call: CallState, candidate: LiveWorkCandidate): Promise<void> {
+  private async classifyAndRoute(call: CallState, candidate: LiveWorkCandidate, controlLane: boolean): Promise<void> {
     const operation = call.ledger.get(candidate.providerRequestId);
     if (!operation || call.closed) return;
-    let initial: WorkSnapshot;
-    try {
-      initial = await this.options.workPort.snapshot(candidate.workSessionId);
-    } catch {
+    call.candidatePhases.set(candidate.providerRequestId, { sequence: operation.sequence, phase: "classifying" });
+    const initial = await this.safeSnapshot(call, candidate.workSessionId);
+    if (call.closed) return;
+    if (!initial) {
       this.reject(call, candidate.providerRequestId, "The bound work session is unavailable.");
       return;
     }
@@ -259,28 +346,42 @@ export class LiveWorkCoordinator {
       this.reject(call, candidate.providerRequestId, "The bound work session is unavailable.");
       return;
     }
-    candidate = {
-      ...candidate,
-      ...(!candidate.observedTurnId && initial.activeTurnId ? { observedTurnId: initial.activeTurnId } : {}),
-    };
     const recentOperations = call.ledger.values()
       .filter((item) => item.providerRequestId !== candidate.providerRequestId)
       .slice(-8)
       .map(({ operationId, instruction, admission, execution, selections }) => ({ operationId, instruction, admission, execution, ...(selections ? { selections } : {}) }));
+    const controller = new AbortController();
+    call.classifiers.set(candidate.providerRequestId, controller);
+    let classifierTimedOut = false;
     const rawIntent = await this.withTimeout(
-      this.options.resolveIntent({ candidate, snapshot: initial, recentOperations }),
+      this.options.resolveIntent({ candidate, snapshot: initial, recentOperations, signal: controller.signal }),
       this.classifyTimeoutMs,
-    ).catch(() => null);
+      controller,
+    ).catch((error: unknown) => {
+      classifierTimedOut = errorCode(error) === "LIVE_WORK_CLASSIFIER_TIMEOUT";
+      return null;
+    }).finally(() => call.classifiers.delete(candidate.providerRequestId));
+    if (call.closed) return;
     const intent = parseLiveWorkIntent(rawIntent);
     if (!intent) {
       call.ledger.update(candidate.providerRequestId, {
         intent: { kind: "clarify", question: "I could not confirm what you want me to do. Please clarify." },
       });
-      this.reject(call, candidate.providerRequestId, "I could not confirm what you want me to do. Please clarify.");
+      this.reject(
+        call,
+        candidate.providerRequestId,
+        classifierTimedOut ? "Work classification timed out. Please try again." : "I could not confirm what you want me to do. Please clarify.",
+        classifierTimedOut ? "classifier-timeout" : "classifier-invalid",
+      );
       return;
     }
     if (call.closed) return;
     call.ledger.update(candidate.providerRequestId, { intent });
+    if (controlLane && !isControlIntent(intent) && intent.kind !== "conversation" && intent.kind !== "clarify") {
+      this.reject(call, candidate.providerRequestId, "I could not confirm a control request. Please clarify what you want me to stop or check.");
+      return;
+    }
+    if (this.withdrawIfBehindStopBarrier(call, candidate, operation.sequence, intent)) return;
     if (intent.kind === "conversation") {
       this.acceptWithoutExecution(call, candidate.providerRequestId, "This is a Live conversation; no work was started.");
       return;
@@ -295,7 +396,8 @@ export class LiveWorkCoordinator {
       return;
     }
     if (intent.kind === "query-status" || intent.kind === "query-result" || intent.kind === "query-queue") {
-      const fresh = await this.safeSnapshot(candidate.workSessionId);
+      const fresh = await this.safeSnapshot(call, candidate.workSessionId);
+      if (call.closed) return;
       if (!fresh) {
         this.reject(call, candidate.providerRequestId, "The bound work session status is unavailable.");
         return;
@@ -303,12 +405,17 @@ export class LiveWorkCoordinator {
       if (intent.kind === "query-result") {
         const target = intent.operationRef
           ? call.ledger.getByOperationId(intent.operationRef)
-          : [...call.ledger.values()].reverse().find((item) => isTerminalExecution(item.execution));
+          : [...call.ledger.values()].reverse().find((item) => isWriteIntent(item.intent) && isTerminalExecution(item.execution));
         if (intent.operationRef && !target) {
           this.reject(call, candidate.providerRequestId, "That work result is not available in this call.");
           return;
         }
-        this.acceptWithoutExecution(call, candidate.providerRequestId, formatResult(target));
+        const resultTarget = target && isWriteIntent(target.intent)
+          ? target
+          : target?.targetTurnId
+            ? [...call.ledger.values()].reverse().find((item) => item.turnId === target.targetTurnId && isWriteIntent(item.intent))
+            : undefined;
+        this.acceptWithoutExecution(call, candidate.providerRequestId, formatResult(resultTarget));
         return;
       }
       if (intent.kind === "query-status" && intent.operationRef) {
@@ -324,15 +431,25 @@ export class LiveWorkCoordinator {
       return;
     }
     if (intent.kind === "stop-current") {
-      const fresh = await this.safeSnapshot(candidate.workSessionId);
+      const fresh = await this.safeSnapshot(call, candidate.workSessionId);
+      if (call.closed) return;
       const expectedTurnId = candidate.observedTurnId;
       if (!fresh || !expectedTurnId || fresh.activeTurnId !== expectedTurnId || !isBusy(fresh.state)) {
         this.reject(call, candidate.providerRequestId, "The observed task has ended; nothing else was stopped.");
         return;
       }
-      const result = await this.options.workPort.stop({ callId: candidate.callId, sessionId: candidate.workSessionId, expectedTurnId, urgency: intent.urgency }).catch(() => null);
-      if (result?.status === "requested") this.accepted(call, candidate.providerRequestId, "Task stop requested.", expectedTurnId);
-      else this.reject(call, candidate.providerRequestId, result?.status === "already-terminal" ? "The observed task has already ended." : "The stop request was not accepted.");
+      this.advanceStopBarrier(call, operation.sequence);
+      call.candidatePhases.set(candidate.providerRequestId, { sequence: operation.sequence, phase: "dispatching" });
+      const result = await this.withDispatchTimeout(call, this.options.workPort.stop({
+        callId: candidate.callId,
+        sessionId: candidate.workSessionId,
+        expectedTurnId,
+        urgency: intent.urgency,
+      })).catch(() => null);
+      if (call.closed) return;
+      if (result?.status === "requested") this.acceptControl(call, candidate.providerRequestId, "Task stop requested.", expectedTurnId);
+      else if (!result) this.markDispatchUnknown(call, candidate.providerRequestId, "The stop result is unknown. Check the task before taking further action.");
+      else this.reject(call, candidate.providerRequestId, result.status === "already-terminal" ? "The observed task has already ended." : "The stop request was not accepted.", "host-rejected");
       return;
     }
     if (intent.kind === "cancel-queued") {
@@ -341,11 +458,17 @@ export class LiveWorkCoordinator {
         this.reject(call, candidate.providerRequestId, "That queued operation is not available to cancel.");
         return;
       }
-      const result = await this.options.workPort.cancelQueued({ callId: candidate.callId, sessionId: candidate.workSessionId, queueEntryId: target.queueEntryId }).catch(() => null);
+      const result = await this.withDispatchTimeout(call, this.options.workPort.cancelQueued({
+        callId: candidate.callId,
+        sessionId: candidate.workSessionId,
+        queueEntryId: target.queueEntryId,
+      })).catch(() => null);
+      if (call.closed) return;
       if (result?.status === "canceled") {
         call.ledger.update(target.providerRequestId, { execution: "canceled", admission: "withdrawn" });
         this.acceptWithoutExecution(call, candidate.providerRequestId, "Queued work was canceled.");
-      } else this.reject(call, candidate.providerRequestId, "That queued operation has already been delivered or is unavailable.");
+      } else if (!result) this.markDispatchUnknown(call, candidate.providerRequestId, "The queue cancellation result is unknown. Check queue status before taking further action.");
+      else this.reject(call, candidate.providerRequestId, "That queued operation has already been delivered or is unavailable.", "host-rejected");
       return;
     }
     if (intent.kind === "list-projects" || intent.kind === "list-sessions") {
@@ -361,6 +484,7 @@ export class LiveWorkCoordinator {
             workBindingRevision: candidate.workBindingRevision,
             ...(intent.query ? { query: intent.query } : {}),
           });
+      if (call.closed) return;
       call.ledger.update(candidate.providerRequestId, { selections });
       this.acceptWithoutExecution(call, candidate.providerRequestId, selections.length
         ? "I found matching projects or sessions. Choose an item in the Live panel to open or use it."
@@ -383,6 +507,7 @@ export class LiveWorkCoordinator {
         workBindingRevision: candidate.workBindingRevision,
         selectionRef: intent.selectionRef,
       });
+      if (call.closed) return;
       if (result.status === "opened") this.acceptWithoutExecution(call, candidate.providerRequestId, "Opened the selected session. The work call remains bound to its original session.");
       else if (result.status === "ambiguous") this.reject(call, candidate.providerRequestId, "Several sessions have the same label. Choose the intended session in the Live panel.");
       else this.reject(call, candidate.providerRequestId, "That session choice expired or is no longer available. Ask to list sessions again.");
@@ -401,6 +526,7 @@ export class LiveWorkCoordinator {
             workBindingRevision: candidate.workBindingRevision,
             action: "create",
           });
+      if (call.closed) return;
       call.ledger.update(candidate.providerRequestId, { selections });
       this.acceptWithoutExecution(call, candidate.providerRequestId, selections.length
         ? "Choose a registered project in the Live panel to create a session. This will not change the current work-call binding."
@@ -408,13 +534,16 @@ export class LiveWorkCoordinator {
       return;
     }
 
-    const fresh = await this.safeSnapshot(candidate.workSessionId);
+    const fresh = await this.safeSnapshot(call, candidate.workSessionId);
+    if (call.closed) return;
     if (!fresh || fresh.mode !== "agent" || fresh.state === "finalizing" || fresh.state === "unavailable") {
       this.reject(call, candidate.providerRequestId, "The selected work session cannot accept this request now.");
       return;
     }
     if (call.closed) return;
+    if (this.withdrawIfBehindStopBarrier(call, candidate, operation.sequence, intent)) return;
     call.ledger.update(candidate.providerRequestId, { admission: "dispatching" });
+    call.candidatePhases.set(candidate.providerRequestId, { sequence: operation.sequence, phase: "dispatching" });
     this.publish(call, candidate.providerRequestId);
     try {
       if (intent.kind === "steer-current") {
@@ -423,13 +552,14 @@ export class LiveWorkCoordinator {
           this.reject(call, candidate.providerRequestId, "The observed task has ended; the addition was not sent.");
           return;
         }
-        const result = await this.options.workPort.steer({
+        const result = await this.withDispatchTimeout(call, this.options.workPort.steer({
           sessionId: candidate.workSessionId,
           expectedTurnId,
           text: candidate.instruction,
           userMessageId: operation.userMessageId!,
           voiceOrigin: { callId: candidate.callId, operationId: operation.operationId },
-        });
+        }));
+        if (call.closed) return;
         if (!result.accepted) {
           this.reject(call, candidate.providerRequestId, "The observed task did not accept the addition.");
           return;
@@ -448,24 +578,26 @@ export class LiveWorkCoordinator {
         return;
       }
       if (shouldQueue) {
-        const result = await this.options.workPort.enqueue({
+        const result = await this.withDispatchTimeout(call, this.options.workPort.enqueue({
           sessionId: candidate.workSessionId,
           text: candidate.instruction,
           userMessageId: operation.userMessageId!,
           voiceOrigin: { callId: candidate.callId, operationId: operation.operationId },
           idempotencyKey: `voice:${candidate.callId}:${operation.operationId}`,
-        });
+        }));
+        if (call.closed) return;
         call.ledger.update(candidate.providerRequestId, { admission: "accepted", execution: "queued", queueEntryId: result.queueEntryId });
         this.publish(call, candidate.providerRequestId, "Work accepted by the Host queue.");
         return;
       }
-      const result = await this.options.workPort.submit({
+      const result = await this.withDispatchTimeout(call, this.options.workPort.submit({
         sessionId: candidate.workSessionId,
         text: candidate.instruction,
         userMessageId: operation.userMessageId!,
         voiceOrigin: { callId: candidate.callId, operationId: operation.operationId },
         idempotencyKey: `voice:${candidate.callId}:${operation.operationId}`,
-      });
+      }));
+      if (call.closed) return;
       call.ledger.update(candidate.providerRequestId, {
         admission: "accepted",
         execution: result.status === "queued"
@@ -474,19 +606,148 @@ export class LiveWorkCoordinator {
         ...(result.status === "queued" ? { queueEntryId: result.queueEntryId } : { turnId: result.turnId }),
       });
       this.publish(call, candidate.providerRequestId, result.status === "queued" ? "Work accepted by the Host queue." : "Work started in the bound session.");
-    } catch {
-      call.ledger.update(candidate.providerRequestId, { admission: "unknown", execution: "not-started" });
-      this.publish(call, candidate.providerRequestId, "The admission result is unknown. Do not submit this operation again.");
+    } catch (error) {
+      if (call.closed) return;
+      const code = errorCode(error);
+      if (code && isKnownAdmissionRejection(code)) {
+        this.reject(call, candidate.providerRequestId, rejectionMessage(code), code === "WORKSPACE_CHANGED" || code === "LIVE_WORK_SCOPE_CHANGED" ? "scope-changed" : "host-rejected");
+        return;
+      }
+      this.markDispatchUnknown(call, candidate.providerRequestId, "The admission result is unknown. Do not submit this operation again.");
+      this.reconcileAdmission(call, candidate.providerRequestId);
     }
   }
 
-  private async safeSnapshot(sessionId: string): Promise<WorkSnapshot | null> {
+  private async safeSnapshot(call: CallState, sessionId: string): Promise<WorkSnapshot | null> {
+    const controller = new AbortController();
+    call.snapshotReaders.add(controller);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let onAbort: (() => void) | undefined;
     try {
-      const snapshot = await this.options.workPort.snapshot(sessionId);
-      return snapshot.sessionId === sessionId && snapshot.state !== "unavailable" ? snapshot : null;
+      const snapshot = await Promise.race([
+        this.options.workPort.snapshot(sessionId),
+        new Promise<null>((resolve) => {
+          timer = setTimeout(() => {
+            if (timer) call.reconciliationTimers.delete(timer);
+            resolve(null);
+          }, 2_000);
+          call.reconciliationTimers.add(timer);
+        }),
+        new Promise<null>((resolve) => {
+          onAbort = () => resolve(null);
+          controller.signal.addEventListener("abort", onAbort, { once: true });
+        }),
+      ]);
+      return snapshot && snapshot.sessionId === sessionId && snapshot.state !== "unavailable" ? snapshot : null;
     } catch {
       return null;
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+        call.reconciliationTimers.delete(timer);
+      }
+      if (onAbort) controller.signal.removeEventListener("abort", onAbort);
+      call.snapshotReaders.delete(controller);
     }
+  }
+
+  private advanceStopBarrier(call: CallState, sequence: number): void {
+    call.stopBarrierSequence = Math.max(call.stopBarrierSequence, sequence);
+    for (const [providerRequestId, phase] of call.candidatePhases) {
+      if (phase.sequence >= call.stopBarrierSequence) continue;
+      const operation = call.ledger.get(providerRequestId);
+      if (!operation?.intent || !isWriteIntent(operation.intent)) continue;
+      if (phase.phase === "dispatching") {
+        if (operation.admission !== "dispatching") continue;
+        call.ledger.update(providerRequestId, { admission: "unknown", execution: "unknown" });
+        this.publish(call, providerRequestId, "Admission was still resolving when stop was requested; checking the Host result without resubmitting.");
+        this.reconcileAdmission(call, providerRequestId);
+        continue;
+      }
+      if (operation.admission === "accepted" || operation.admission === "rejected" || operation.admission === "withdrawn") continue;
+      call.ledger.update(providerRequestId, { admission: "withdrawn", execution: "not-started", failureCode: "caller-withdrawn" });
+      this.publish(call, providerRequestId, "Voice work received before the stop request was withdrawn before Host admission.");
+    }
+  }
+
+  private withdrawIfBehindStopBarrier(
+    call: CallState,
+    candidate: LiveWorkCandidate,
+    sequence: number,
+    intent: LiveWorkIntent,
+  ): boolean {
+    if (!isWriteIntent(intent) || sequence >= call.stopBarrierSequence) return false;
+    const phase = call.candidatePhases.get(candidate.providerRequestId)?.phase;
+    if (phase === "dispatching") return false;
+    const current = call.ledger.get(candidate.providerRequestId);
+    if (!current || current.admission === "withdrawn") return true;
+    call.ledger.update(candidate.providerRequestId, { admission: "withdrawn", execution: "not-started", failureCode: "caller-withdrawn" });
+    this.publish(call, candidate.providerRequestId, "Voice work received before the stop request was withdrawn before Host admission.");
+    return true;
+  }
+
+  private reconcileAdmission(call: CallState, providerRequestId: string): void {
+    const delays = [500, 1_500, 5_000, 10_000];
+    const schedule = (attempt: number) => {
+      if (call.closed || attempt >= delays.length) return;
+      const timer = setTimeout(() => {
+        call.reconciliationTimers.delete(timer);
+        const operation = call.ledger.get(providerRequestId);
+        if (call.closed || !operation || operation.admission !== "unknown") return;
+        const controller = new AbortController();
+        call.lookupReaders.add(controller);
+        let lookupTimer: ReturnType<typeof setTimeout> | undefined;
+        const lookupPromise = Promise.resolve().then(() => this.options.workPort.lookupAdmission({
+          callId: operation.callId,
+          sessionId: operation.workSessionId,
+          operationId: operation.operationId,
+          idempotencyKey: voiceIdempotencyKey(operation.callId, operation.operationId),
+          userMessageId: operation.userMessageId!,
+        }));
+        const timedOut = new Promise<null>((resolve) => {
+          const scheduledTimer = setTimeout(() => {
+            call.reconciliationTimers.delete(scheduledTimer);
+            resolve(null);
+          }, 2_000);
+          lookupTimer = scheduledTimer;
+          call.reconciliationTimers.add(scheduledTimer);
+        });
+        let onAbort: (() => void) | undefined;
+        const aborted = new Promise<null>((resolve) => {
+          onAbort = () => resolve(null);
+          controller.signal.addEventListener("abort", onAbort, { once: true });
+        });
+        void Promise.race([lookupPromise, timedOut, aborted]).then((lookup) => {
+          if (call.closed || controller.signal.aborted || lookup === null) return;
+          if (lookup.kind === "queued") {
+            call.ledger.update(providerRequestId, { admission: "accepted", execution: "queued", queueEntryId: lookup.queueEntryId });
+            this.publish(call, providerRequestId, "Work was found in the Host queue.");
+            return;
+          }
+          if (lookup.kind === "running") {
+            call.ledger.update(providerRequestId, { admission: "accepted", execution: "running", turnId: lookup.turnId });
+            this.publish(call, providerRequestId, "The Host confirmed this work is running.");
+            return;
+          }
+          if (lookup.kind === "terminal") {
+            const execution = lookup.status;
+            call.ledger.update(providerRequestId, { admission: "accepted", execution, turnId: lookup.turnId, resultState: "pending" });
+            this.publish(call, providerRequestId, "The Host confirmed this work has ended; its result is being synchronized.");
+            return;
+          }
+          schedule(attempt + 1);
+        }).catch(() => schedule(attempt + 1)).finally(() => {
+          if (lookupTimer) {
+            clearTimeout(lookupTimer);
+            call.reconciliationTimers.delete(lookupTimer);
+          }
+          if (onAbort) controller.signal.removeEventListener("abort", onAbort);
+          call.lookupReaders.delete(controller);
+        });
+      }, delays[attempt]);
+      call.reconciliationTimers.add(timer);
+    };
+    schedule(0);
   }
 
   private acceptWithoutExecution(call: CallState, providerRequestId: string, message: string): void {
@@ -498,13 +759,27 @@ export class LiveWorkCoordinator {
     this.publish(call, providerRequestId, message);
   }
 
-  private accepted(call: CallState, providerRequestId: string, message: string, turnId?: string): void {
-    call.ledger.update(providerRequestId, { admission: "accepted", execution: "running", ...(turnId ? { turnId } : {}) });
+  private acceptControl(call: CallState, providerRequestId: string, message: string, targetTurnId: string): void {
+    call.ledger.update(providerRequestId, { admission: "accepted", execution: "not-started", targetTurnId });
     this.publish(call, providerRequestId, message);
   }
 
-  private reject(call: CallState, providerRequestId: string, message: string): void {
-    call.ledger.update(providerRequestId, { admission: "rejected", execution: "not-started" });
+  private reject(
+    call: CallState,
+    providerRequestId: string,
+    message: string,
+    failureCode?: LiveWorkOperation["failureCode"],
+  ): void {
+    call.ledger.update(providerRequestId, {
+      admission: "rejected",
+      execution: "not-started",
+      ...(failureCode ? { failureCode } : {}),
+    });
+    this.publish(call, providerRequestId, message);
+  }
+
+  private markDispatchUnknown(call: CallState, providerRequestId: string, message: string): void {
+    call.ledger.update(providerRequestId, { admission: "unknown", execution: "unknown", failureCode: "dispatch-unknown" });
     this.publish(call, providerRequestId, message);
   }
 
@@ -527,22 +802,71 @@ export class LiveWorkCoordinator {
       for (const operation of call.ledger.values()) {
         if (
           !matchesTurn(operation, turnId, idempotencyKey) ||
-          !isInFlight(operation.execution)
+          (!isInFlight(operation.execution) && operation.admission !== "dispatching" && operation.admission !== "unknown")
         ) continue;
-        call.ledger.update(operation.providerRequestId, { execution, turnId });
+        call.ledger.update(operation.providerRequestId, {
+          ...(operation.admission === "dispatching" || operation.admission === "unknown" ? { admission: "accepted" as const } : {}),
+          execution,
+          turnId,
+        });
         this.publish(call, operation.providerRequestId);
       }
     }
   }
 
-  private withTimeout<T>(promise: Promise<T>, milliseconds: number): Promise<T> {
+  private withTimeout<T>(promise: Promise<T>, milliseconds: number, controller: AbortController): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("Live work intent timed out")), milliseconds);
+      if (controller.signal.aborted) {
+        reject(controller.signal.reason ?? new Error("Live work intent canceled"));
+        return;
+      }
+      let timer: ReturnType<typeof setTimeout>;
+      const cleanup = () => {
+        clearTimeout(timer);
+        controller.signal.removeEventListener("abort", onAbort);
+      };
+      const onAbort = () => {
+        cleanup();
+        reject(controller.signal.reason ?? new Error("Live work intent canceled"));
+      };
+      timer = setTimeout(() => {
+        const error = Object.assign(new Error("Live work intent timed out"), { code: "LIVE_WORK_CLASSIFIER_TIMEOUT" });
+        controller.abort(error);
+        reject(error);
+      }, milliseconds);
+      controller.signal.addEventListener("abort", onAbort, { once: true });
       promise.then(
-        (value) => { clearTimeout(timer); resolve(value); },
-        (error: unknown) => { clearTimeout(timer); reject(error); },
+        (value) => { cleanup(); resolve(value); },
+        (error: unknown) => { cleanup(); reject(error); },
       );
     });
+  }
+
+  private async withDispatchTimeout<T>(call: CallState, promise: Promise<T>): Promise<T> {
+    const controller = new AbortController();
+    call.dispatchReaders.add(controller);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let onAbort: (() => void) | undefined;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => reject(Object.assign(new Error("Live work dispatch timed out"), { code: "LIVE_WORK_DISPATCH_TIMEOUT" })), 2_000);
+          call.reconciliationTimers.add(timer);
+        }),
+        new Promise<never>((_resolve, reject) => {
+          onAbort = () => reject(controller.signal.reason ?? new Error("Live work call closed"));
+          controller.signal.addEventListener("abort", onAbort, { once: true });
+        }),
+      ]);
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+        call.reconciliationTimers.delete(timer);
+      }
+      if (onAbort) controller.signal.removeEventListener("abort", onAbort);
+      call.dispatchReaders.delete(controller);
+    }
   }
 }
 
@@ -550,8 +874,26 @@ function isBusy(state: WorkSnapshot["state"]): boolean {
   return state === "running" || state === "waiting-permission" || state === "waiting-input";
 }
 
+function isControlSchedulingHint(instruction: string): boolean {
+  const text = instruction.trim().toLocaleLowerCase();
+  return /^(?:please\s+)?(?:stop|cancel|abort)\s+(?:(?:the|my)\s+)?(?:current|active|running)\s+(?:task|work|turn)\b/u.test(text) ||
+    /^(?:what(?:'s| is)\s+the\s+status|status\s+of\s+(?:the\s+)?(?:current|active|last|previous)\s+(?:task|work)|what\s+(?:happened|did\s+the\s+(?:task|work)\s+do)|show\s+(?:the\s+)?(?:task\s+)?result)\b/u.test(text) ||
+    /^(?:请)?(?:停止|停掉|中止)(?:当前|正在运行的)?(?:任务|工作|会话)/u.test(text) ||
+    /^(?:请)?(?:取消|撤销)(?:当前|正在运行的)?(?:任务|工作|排队任务)/u.test(text) ||
+    /^(?:查询|查看|告诉我)(?:当前|最近|刚才的)?(?:任务|工作)?(?:状态|结果|进展)/u.test(text);
+}
+
+function isControlIntent(intent: LiveWorkIntent): boolean {
+  return intent.kind === "stop-current" || intent.kind === "cancel-queued" || intent.kind === "speech-only" ||
+    intent.kind === "query-status" || intent.kind === "query-result" || intent.kind === "query-queue";
+}
+
+function isWriteIntent(intent: LiveWorkIntent | undefined): boolean {
+  return intent?.kind === "new-task" || intent?.kind === "queue-task" || intent?.kind === "steer-current";
+}
+
 function isInFlight(execution: LiveWorkOperation["execution"]): boolean {
-  return execution === "queued" || execution === "running" || execution === "waiting-permission" || execution === "waiting-input";
+  return execution === "queued" || execution === "running" || execution === "waiting-permission" || execution === "waiting-input" || execution === "unknown";
 }
 
 function matchesTurn(operation: LiveWorkOperation, turnId: string, idempotencyKey?: string): boolean {
@@ -561,6 +903,37 @@ function matchesTurn(operation: LiveWorkOperation, turnId: string, idempotencyKe
 
 function voiceIdempotencyKey(callId: string, operationId: string): string {
   return `voice:${callId}:${operationId}`;
+}
+
+function errorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object" || Array.isArray(error)) return undefined;
+  const record = error as { code?: unknown; errorCode?: unknown };
+  if (typeof record.errorCode === "string") return record.errorCode;
+  return typeof record.code === "string" ? record.code : undefined;
+}
+
+function isKnownAdmissionRejection(code: string | undefined): boolean {
+  return code !== undefined && new Set([
+    "AGENT_BUSY",
+    "FORBIDDEN",
+    "INVALID_PARAMS",
+    "CONFLICT",
+    "NOT_FOUND",
+    "LIVE_WORK_NOT_READY",
+    "LIVE_WORK_SESSION_UNAVAILABLE",
+    "LIVE_WORK_BACKEND_UNSUPPORTED",
+    "LIVE_WORK_SCOPE_CHANGED",
+    "WORKSPACE_CHANGED",
+    "LIVE_WORK_SELECTION_EXPIRED",
+  ]).has(code);
+}
+
+function rejectionMessage(code: string): string {
+  if (code === "AGENT_BUSY") return "The work session became busy before acceptance. Ask whether to add this to the active task or queue it separately.";
+  if (code === "LIVE_WORK_SCOPE_CHANGED") return "The bound workspace changed. Start a new work call to authorize the current workspace.";
+  if (code === "WORKSPACE_CHANGED") return "The bound workspace changed before Host admission. Start a new work call to authorize the current workspace.";
+  if (code === "FORBIDDEN") return "The Host permission policy did not accept this work request.";
+  return "The Host explicitly rejected this work request. Nothing was queued or started.";
 }
 
 function rememberExecution(
@@ -616,8 +989,11 @@ function formatOperationStatus(operation: LiveWorkOperation): string {
 
 function formatResult(operation: LiveWorkOperation | undefined): string {
   if (!operation) return "No completed work result is recorded for this call.";
+  if (!isWriteIntent(operation.intent)) return "That operation records a control request; its acknowledgement is separate from the task result.";
   if (!isTerminalExecution(operation.execution)) return "That work operation has not finished yet.";
-  if (operation.summary) return operation.summary;
+  if (operation.resultSummary) return operation.resultSummary;
+  if (operation.resultState === "unavailable") return `The task ended with status ${operation.execution}; its final result is unavailable.`;
+  if (operation.resultState === "pending") return `The task ended with status ${operation.execution}; its result is still being synchronized.`;
   if (operation.execution === "completed") return "The task ended. Detailed results are available in the bound work session.";
   if (operation.execution === "failed") return "The task failed. The work session contains the error details.";
   if (operation.execution === "interrupted") return "The task was interrupted. Review any completed changes in the work session.";

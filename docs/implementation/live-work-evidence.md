@@ -1,9 +1,111 @@
 # Live Voice Work Integration Evidence
 
-Status: **P0—P6 implementation is present; the full v2 Definition of Done is
-not met**. P7 behavior mapping and cross-boundary integration coverage remain
-partial, and the real-provider/device matrix has not run. The attached v2
-specification remains the behavioral source.
+Implementation status: **COMPLETE** for Live Work v2.1. The task candidate is
+based on `origin/main` at
+`b360e04eb11edb8256b85ad314a8fdda7dc54e30`. No real provider account, paid
+endpoint, user project, or running Electron instance was used. The v2.1 case
+map is [`live-work-v21-coverage.md`](live-work-v21-coverage.md), and its manual
+device matrix is [`live-work-v21-device-matrix.md`](live-work-v21-device-matrix.md).
+
+## Current v2.1 candidate
+
+- Branch/worktree: `codex/live-voice-v21-reliability` at
+  `/Users/lan/.codex/worktrees/live-voice-v21-refresh/PI-Desktop`.
+- Candidate commit: `61aaa6eb64441c0534c0e3118f941a2ba33fc301`.
+- Base: `b360e04eb11edb8256b85ad314a8fdda7dc54e30`; `pnpm check:pr-base`
+  confirms the base is an ancestor of the candidate.
+- R01: fixed by synchronously capturing the Host active-turn target at
+  candidate ingress; explicit null is preserved. Evidence:
+  `packages/host-runtime/src/live-work/coordinator.test.ts` — “keeps an
+  ingress-time empty turn target instead of stopping a later turn”.
+- R02: fixed by removing implicit queue from ordinary submit and retaining
+  explicit queue admission only. Production composition and Host queue tests
+  cover the mapping; lock-race integration remains partial.
+- R03: fixed for in-process operations with exact read-only Host lookup,
+  bounded reconciliation, no resubmission, and monotonic terminal evidence.
+  Evidence: coordinator unknown-dispatch/terminal cases and AgentHost exact
+  lookup cases in the v2.1 coverage table. Restart-time Live recovery remains
+  intentionally unsupported.
+- R04: fixed at the local scheduler boundary with a reserved validated control
+  classifier lane, cancellation signal, classifier deadline, write stop
+  barrier, and bounded Host dispatch. A provider SDK honoring physical stream
+  cancellation is not claimed.
+- R05: fixed by separating admission and result fields, limiting results to
+  exact-turn root assistant content, bounded re-reads, and keeping stop
+  acknowledgements separate from task results.
+- R06: fixed with a private workspace fingerprint checked again by AgentHost
+  before turn or queue admission. Changed workspace rejection is covered at
+  the Host boundary; a full classification-race composition remains partial.
+- R07: fixed by draining explicit idle enqueue through AgentHost while leaving
+  restored held queues held; both paths have AgentHost tests.
+- R08: improved but **partial**. The deterministic production composition now
+  instantiates `createLiveWorkBridge`, `createAgentHostBridge`, the registered
+  `agentPrompt` handler, and real `AgentHost`. Host-core RPC, sidecar/model
+  completion, and provider wire IO are fixtures. Concrete Gemini/Realtime
+  adapters, Codex DataChannel controller, Rust persistence, MCP/plugin
+  permissions, and real-device journeys remain unverified.
+- R09: current live-work behavior docs, E2E plan, v2.1 case mapping, W2 audit,
+  ADR, and NOT RUN device matrix are committed in this candidate.
+
+The baseline deterministic reproductions were recorded before the fixes on
+base `f9543be51a2eea4f5010dd059fed6d68dddb8745`: an explicit null turn target
+could resolve to a later task; terminal evidence could be lost behind a
+missing submit ACK; result queries could return admission wording; and idle
+enqueue had no tested self-drain guarantee. Current regression evidence and
+its exact limits are in the v2.1 case map.
+
+## Current task-candidate validation
+
+The refreshed task candidate is commit
+`61aaa6eb64441c0534c0e3118f941a2ba33fc301` on `origin/main` at
+`b360e04eb11edb8256b85ad314a8fdda7dc54e30`. Task-candidate validation below
+was run after that base was incorporated.
+
+| Check | Result |
+|---|---|
+| `pnpm build:js` | Passed. VitePress reported its existing missing `gitignore` highlighter and large-chunk warnings. |
+| `pnpm -r --if-present test` | Passed all workspace suites; desktop 3,179, shared 1,124, agent-runtime 1,113, and plugin SDK 374 tests passed, as did the remaining suites. |
+| `pnpm --filter @pi-desktop/desktop typecheck` | Passed. |
+| `pnpm lint` | Passed, including Biome and desktop style-token validation. |
+| `pnpm docs:check` | Passed: 83 English/Chinese specification pairs and 534 documentation pages; existing ADR format notes remain advisory. |
+| `pnpm check:agent-policy` | Passed. |
+| `node scripts/check-architecture.mjs` | Passed. |
+| `cargo fmt --check` | Passed. |
+| Host Core build for E2E | Passed with one existing dead-code warning in `permissions.rs`. |
+| `pnpm test:e2e` | Passed: 23/23 local Host E2E cases; two optional live-model cases skipped because the API key was explicitly unset. |
+| `git diff --check` | Passed for the task candidate. |
+
+## PR integration candidate validation
+
+- PR: [#1220](https://github.com/vastsa/PI-Desktop/pull/1220).
+- Candidate: GitHub merge ref `6c06747940579574a812e0495d1449fba6d50b8c`,
+  with base `b360e04eb11edb8256b85ad314a8fdda7dc54e30` and head
+  `7c0e79e3aaed1826be7da0bb360b79d453ad5c46`.
+- Host Core was built from that candidate using the shared Cargo target.
+- `pnpm test:e2e`: 23/23 local Host E2E cases passed; two optional live-model
+  cases skipped because provider credentials were explicitly unset.
+- All GitHub checks passed on PR head
+  `75efaa0bbbe7294168a8f4e8908cef47266c4e37`: JS build/typecheck/lint/
+  architecture/unit tests, docs, Rust format/lint/tests, and latest-base.
+  GitHub reported the PR clean and mergeable.
+- The later PR head `7c0e79e3aaed1826be7da0bb360b79d453ad5c46` changes only
+  this evidence document. Its CI checks were still running when this
+  evidence-only follow-up was prepared; the updated head is gated by its own
+  checks before merge.
+
+The isolated composition tests exercise the Live Work bridge, registered
+prompt handler, and AgentHost; Host-core RPC, sidecar/model completion, and
+provider wire IO are fixtures. `cargo test` and `cargo clippy` were not run
+because the task changes no Rust source; `cargo fmt --check` and the locally
+built Host Core E2E were run. The real-provider/device matrix and full Electron
+acceptance journey remain `NOT RUN`. No real account, paid endpoint, user
+project, or running Desktop instance was used.
+
+## Historical v2 phase-2 candidate and CI evidence
+
+The following records describe the earlier v2 candidate only. They are not
+v2.1 test results and must not be used as the current candidate SHA or PR
+state.
 
 ## Candidate and base
 

@@ -45,6 +45,43 @@ queue. A result query reads the latest terminal operation recorded for the
 current call, or the explicitly referenced operation, and shows its bounded
 summary without starting another turn.
 
+### Reliability and admission identity
+
+Main captures the active turn synchronously when it registers a provider
+candidate. An explicit `null` remains “no observed turn”; stop and steer never
+retarget a later turn. Duplicate provider request IDs reuse their original
+operation and observation. A validated stop runs on the reserved control
+classifier lane and advances a barrier: earlier writes that have not crossed
+Host admission are withdrawn, while a write already dispatching remains
+unknown until read-only Host evidence resolves it.
+
+Ordinary new work uses reject-if-busy admission. Only an explicit queue intent
+or a classifier-confirmed independent task enters the Host queue. AgentHost
+rechecks Main's private workspace identity against fresh session metadata at
+the final turn/queue admission boundary. A mismatch returns `WORKSPACE_CHANGED`
+before a prompt or queue entry is created. An idle explicit enqueue asks
+AgentHost to drain its existing queue; restored held entries remain held.
+
+Classifier calls have an 8-second deadline and receive cancellation; snapshot
+reads and individual Host dispatch waits are bounded. If a Host write has
+already been issued and its result is not known, the operation becomes
+`unknown`, is checked only through an exact read-only identity lookup, and is
+never resubmitted. Closing the call withdraws pre-dispatch candidates but keeps
+an in-flight admission `unknown`; accepted work remains Host-owned. The UI
+distinguishes classifier-invalid, classifier-timeout, caller-withdrawn,
+receipt-undelivered, scope-changed, Host-rejected, and dispatch-unknown states.
+
+Admission summaries and terminal results are separate. A matching terminal
+event can settle unknown admission and cannot be downgraded by a late ACK.
+Task results are associated only with write operations on the exact turn; a
+stop operation retains its control acknowledgement and stores the stopped
+turn as a separate `targetTurnId`; the stop row does not become a task
+execution/result row. An explicit result query through that control operation
+resolves to the linked write operation when it exists. The Main result reader
+retries bounded history reads for the exact terminal turn and ignores
+child/tool messages. It marks the result unavailable when no eligible root
+assistant result can be read.
+
 Project and session lookup uses Host metadata and returns at most 20 labeled
 choices with opaque, call- and binding-revision-scoped `selectionRef` values.
 References expire after 60 seconds and do not expose project paths or session

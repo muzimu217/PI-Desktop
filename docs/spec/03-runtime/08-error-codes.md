@@ -137,7 +137,7 @@ does not turn temporary thread pressure into a host process exit.
 | `SHELL_NOT_FOUND` | no | no effective platform shell is available after catalog fallback; message carries guidance |
 | `COMMAND_SHELL_CHANGED` | no | pinned shell ID or dialect changed before execution |
 | `COMMAND_SHELL_INVALID` | no | settings supplied an unknown, unavailable, or wrong-platform shell ID |
-| `PERMISSION_TIMEOUT` | no | permission prompt timed out (mapped to deny) |
+| `PERMISSION_TIMEOUT` | no | legacy compatibility code for an older permission prompt timeout; current local prompts remain pending instead |
 | `PERMISSION_REQUIRED` | no | waiting for user decision |
 | `WRITE_DISABLED_IN_PLAN` | no | contract-mode hard-deny for Write |
 | `EDIT_DISABLED_IN_PLAN` | no | contract-mode hard-deny for Edit |
@@ -427,7 +427,9 @@ the pool it started on. The route in effect is reproduced, never downgraded to a
 direct connection.
 
 ### Permission timeout
-UI/host timeout emits `PERMISSION_TIMEOUT` internally, tool result presented as denied (`TOOL_DENIED`) to agent.
+`PERMISSION_TIMEOUT` is a legacy compatibility code and is no longer emitted
+for local desktop permission requests. An unresolved local permission remains
+pending; explicit denial or cancellation is reported as `TOOL_DENIED`.
 
 ### Shell and Plan/Goal checkpoint failures
 

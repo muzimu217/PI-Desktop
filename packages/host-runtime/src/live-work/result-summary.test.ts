@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { projectTurnResultSummary } from "./result-summary.js";
+import { findTurnResult, projectTurnResultSummary } from "./result-summary.js";
 
 const item = (input: {
   id: string;
@@ -36,6 +36,23 @@ describe("projectTurnResultSummary", () => {
     expect(projectTurnResultSummary([], "turn-1", "failed")).toContain("failed");
     expect(projectTurnResultSummary([], "turn-1", "interrupted")).toContain("interrupted");
     expect(projectTurnResultSummary([], "turn-1", "canceled")).toContain("canceled");
+  });
+
+  it("excludes child-agent and tool-associated assistant messages", () => {
+    const child = {
+      ...item({ id: "child", turnId: "turn-1", role: "assistant", content: "Child output", createdAt: "2026-01-01T00:00:04Z" }),
+      agentName: "researcher",
+    };
+    const toolAssociated = {
+      ...item({ id: "tool-child", turnId: "turn-1", role: "assistant", content: "Tool-linked output", createdAt: "2026-01-01T00:00:05Z" }),
+      parentToolCallId: "tool-call-1",
+    };
+    const root = item({ id: "root", turnId: "turn-1", role: "assistant", content: "Root result", createdAt: "2026-01-01T00:00:03Z" });
+
+    expect(findTurnResult([child, toolAssociated, root], "turn-1")).toEqual({
+      text: "Root result",
+      sourceMessageId: "root",
+    });
   });
 
   it("bounds projected result text", () => {

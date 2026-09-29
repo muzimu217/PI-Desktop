@@ -17,6 +17,15 @@
 - **覆盖：** `apps/desktop/test/live-voice-service.test.mjs` 覆盖纯通话拒绝、显式工作作用域和 Provider／用户／本地播放的反馈门控及独立投递状态；`packages/host-runtime/src/live-work/coordinator.test.ts` 覆盖回执顺序、路由、过期 steer、去重、关闭通话、早到终态和选择流程；`packages/host-runtime/src/live-work/feedback-scheduler.test.ts` 覆盖防抖、播报间隔、silent、过期降级、去重与溢出；`packages/host-runtime/src/live-work/context.test.ts` 覆盖上下文投影与 opaque 引用；`packages/host-runtime/src/live-work/result-summary.test.ts` 覆盖精确回合摘要和诚实回退；`packages/agent-host/src/agent-host.test.ts` 覆盖无历史快照、队列和语音来源；`packages/voice-runtime/src/live/protocol.test.ts` 覆盖 Provider 工具及反馈编码；`apps/desktop/test/live-work-scope.test.mjs` 覆盖引用作用域／过期，`live-work-operations.test.mjs` 覆盖面板动作，`voice-runtime/src/live/playback-monitor.test.ts` 覆盖本地音频信号检测。该自动化覆盖仍不等于 W2-001—W2-096 全矩阵，也不代表真实 Provider／设备验收。
 - **状态：** 部分完成；其余场景和实机矩阵见 `docs/implementation/live-work-evidence.md`。
 
+### E2E-LIVE-WORK-v2.1-reliability
+
+- **前提：** 隔离的本地 Host 会话、fixture 分类器和 fake runtime/provider I/O。不使用真实账号、用户项目或正在运行的 Desktop 实例。
+- **步骤：** 在 Provider 候选入口捕获 null/活动回合目标并延迟分类；让通过校验的 stop 与普通分类竞争；让 Host 派发保持未决，随后返回精确的只读准入证据；先到达终态事件再返回写操作 ACK；在派发期间关闭 Live；在 AgentHost 准入前更改已授权的工作区；提交独立工作队列项；延迟最终助手消息持久化；在 stop 控制操作后查询任务结果。
+- **预期：** 过期/null 目标不会变成之后的回合。stop 屏障会撤回尚未跨过准入边界的较早写操作。忙碌时的普通提交不会悄悄进入队列。Host 状态不确定时显示 unknown，并且只核对、不再次写入。终态证据不会被迟到 ACK 复活或覆盖。工作区不匹配不会创建回合或队列项。空闲时的显式队列项由 AgentHost 排空，恢复后挂起的条目保持挂起。结果查询只返回准确的任务结果，不返回准入或 stop 确认。
+- **覆盖：** `packages/host-runtime/src/live-work/coordinator.test.ts`、`packages/host-runtime/src/live-work/operation-ledger.test.ts`、`packages/agent-host/src/agent-host.test.ts`、`apps/desktop/test/live-work-production-composition.test.mjs` 和 `apps/desktop/test/agent-host-bridge-work-ack.test.mjs`。生产组合 fixture 实例化 Live Work bridge、AgentHost bridge、已注册的 `agentPrompt` handler 和真实 AgentHost；Host Core 持久化、具体 Provider adapter/transport 和真实设备旅程不在该测试边界内。
+- **状态：** 自动化覆盖为部分完成，逐项记录于 `docs/implementation/live-work-v21-coverage.md`。实机验收未运行。
+- **规格：** [live-work-session](../03-runtime/live-work-session.md)、[live-voice](../03-runtime/live-voice.md)。
+
 ### E2E-POWER-keep-awake-setting
 
 - **前提：** 设置值缺失的隔离桌面配置；无需真实模型服务。
@@ -942,14 +951,14 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **里程碑**：M3
 - **状态**：自动化（协议烟雾：示例项目中的 Read + Glob）
 
-### 权限允许/拒绝/超时
+### 权限允许/拒绝/取消
 
 #### E2E-014：Write/Edit/Bash 触发权限卡
 
 - **先决条件**：Agent 模式；项目开放。
 - **步骤**： 1) 要求代理写入文件。 2）遵守许可卡。
 - **预期**：许可卡内联显示在原始成绩单中
-  包含工具名称、工作区、参数预览、倒计时和 allow/deny
+  包含工具名称、工作区、参数预览和 allow/deny
   选项。它不创建背景或模式，也不覆盖其他会话。
 - **链接规格**：`04-ux/03-permission-ux.md`、`03-runtime/03-tools-and-permissions.md`
 - **接受**：E（Write/Edit/Bash 触发确认）
@@ -976,13 +985,13 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **里程碑**：M3
 - **状态**：草案
 
-#### E2E-017：权限超时默认为拒绝
+#### E2E-017：本地权限确认没有自动截止时间
 
 - **前提条件**：显示许可卡；没有用户操作。
-- **步骤**： 1) 等待 120 秒而不响应权限卡。 2）观察结果。
-- **预期**：超时后自动拒绝权限；工具未执行。
+- **步骤**：1) 不响应权限卡。2) 确认卡片仍可见且工具仍在等待。3) 点击拒绝并观察结果。
+- **预期**：没有倒计时或自动拒绝；请求会一直等到明确拒绝，工具不会执行。
 - **链接规格**：`03-runtime/03-tools-and-permissions.md`
-- **接受**：E（超时→拒绝）
+- **接受**：E（无倒计时，明确决定→结果）
 - **里程碑**：M3
 - **状态**：草案
 
@@ -3272,7 +3281,7 @@ IPC 请求无法关闭。
 - **预期**：B的后台事件仅更新B的行和保留状态；
   他们不会更改 A 的活动 session/project/page、记录、草稿、卷轴、
   或键盘焦点，并且不会出现全局模式。打开 B 仅显示 B
-  内联卡及其原始倒计时。两个请求保持独立
+  内联卡且没有倒计时。两个请求保持独立
   可操作，并且解决B并没有清除A。最终的快速选择保持不变
 即使 A 的较旧负载稍后完成，也会在 B 上执行。仅明确通知或
   会话激活可以导航。 A 的批准后审阅卡仅保留在
@@ -3285,7 +3294,7 @@ IPC 请求无法关闭。
 - **验收**：C（会话隔离）、E（权限隔离）、质量
 - **里程碑**：M5
 - **状态**：单位覆盖（`permission-inline.test.mjs` 表示作用域状态，
-  内嵌渲染契约、绝对倒计时、最新选择守护；
+  内嵌渲染契约、无倒计时行为、最新选择守护；
   用于会话范围的 `work-panel.test.mjs` 和 `browser-preview-tool.test.mjs`
   工件保留和路由）；完整的 UI 场景草稿
 
@@ -6276,8 +6285,7 @@ eleven-tool-round desktop paths are verified by
 - 没有背景、模态、page/session 开关、工作面板隐藏、转录
   A 中的替换或输入框焦点更改。B 保留其挂起状态。
 - 明确打开 B 并期望在 B 最新的之后有一张内联权限卡
-  活动，具有可读的风险、参数、工作区、倒计时和包装操作
-  控制。切换回来可以保留绝对期限。
+  活动，具有可读的风险、参数、工作区和包装操作控制。切换回来仍保留待处理请求，但没有截止时间。
 - 将A和B一起挂起，各自独立解决，并且都不确认
 操作删除或更改另一张卡。
 - 解析A的Write/Edit权限，完成前切换到B。预计不会

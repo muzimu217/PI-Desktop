@@ -319,6 +319,17 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
 
   return {
     agentHost,
+    observeWorkTarget(sessionId: string): string | null {
+      return agentHost.observeWorkTarget(sessionId).activeTurnId;
+    },
+    lookupWorkAdmission(request: {
+      sessionId: string;
+      idempotencyKey: string;
+      userMessageId: string;
+      voiceOrigin: import("@pi-desktop/shared").VoiceOrigin;
+    }) {
+      return agentHost.lookupTurnByIdempotency(DESKTOP_PRINCIPAL, request);
+    },
     queue,
     async steerWorkSession(input: { sessionId: string; expectedTurnId: string; content: string; userMessageId: string; voiceOrigin: import("@pi-desktop/shared").VoiceOrigin }): Promise<boolean> {
       const result = await options.invoke(options.channels.agentSteer, [{
@@ -328,12 +339,12 @@ export function createAgentHostBridge(options: AgentHostBridgeOptions) {
         messageId: input.userMessageId,
         voiceOrigin: input.voiceOrigin,
       }]) as { accepted?: boolean } | undefined;
-      return result?.accepted !== false;
+      return result?.accepted === true;
     },
     async stopWorkSession(input: { sessionId: string; expectedTurnId: string; urgency: "graceful" | "immediate" }): Promise<{ status: "requested" | "stale-target" | "already-terminal" }> {
       const channel = input.urgency === "graceful" ? options.channels.agentStop : options.channels.agentAbort;
       const result = await options.invoke(channel, [{ sessionId: input.sessionId, turnId: input.expectedTurnId }]) as { requested?: boolean; aborted?: boolean; ok?: boolean } | undefined;
-      const accepted = input.urgency === "graceful" ? result?.requested !== false : result?.aborted !== false && result?.ok !== false;
+      const accepted = input.urgency === "graceful" ? result?.requested === true : result?.aborted === true || result?.ok === true;
       return accepted ? { status: "requested" } : { status: "stale-target" };
     },
     /** A ledger stores the actual durable turn, which can differ from a queue ID. */

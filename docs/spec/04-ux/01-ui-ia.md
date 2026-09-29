@@ -421,7 +421,7 @@ shared capability contract:
   tabs over the currently selected project. Messages, tool events, permission
   requests, and panel resources remain scoped to that session. Explicitly
   opening the conversation restores its retained panel context and reveals any
-  pending permission card with its original deadline.
+  pending permission card, which remains actionable without a deadline.
 - Completed/failed turn not already visible → host-core appends one durable
   inbox row. A result shown in the visible, focused current chat and every
   `aborted` turn append none. Background sessions and any turn finishing while

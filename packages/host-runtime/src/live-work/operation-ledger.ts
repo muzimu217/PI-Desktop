@@ -17,10 +17,20 @@ export type LiveWorkExecution =
   | "running"
   | "waiting-permission"
   | "waiting-input"
+  | "unknown"
   | "completed"
   | "failed"
   | "interrupted"
   | "canceled";
+
+export type LiveWorkFailureCode =
+  | "classifier-invalid"
+  | "classifier-timeout"
+  | "caller-withdrawn"
+  | "receipt-undelivered"
+  | "scope-changed"
+  | "host-rejected"
+  | "dispatch-unknown";
 
 export type LiveWorkOperation = {
   operationId: string;
@@ -33,11 +43,15 @@ export type LiveWorkOperation = {
   admission: LiveWorkAdmission;
   execution: LiveWorkExecution;
   summary?: string;
+  failureCode?: LiveWorkFailureCode;
   resultSummary?: string;
+  resultSourceMessageId?: string;
+  resultState?: "pending" | "available" | "unavailable";
   intent?: LiveWorkIntent;
   userMessageId?: string;
   queueEntryId?: string;
   turnId?: string;
+  targetTurnId?: string;
   selections?: LiveWorkSelectionOption[];
 };
 
@@ -49,9 +63,57 @@ export type RegisterCandidateResult =
   | { status: "invalid" };
 
 const MAX_OPERATION_IDS = 256;
-const MAX_PENDING_ADMISSION = 8;
+const MAX_PENDING_ADMISSION = 16;
 const MAX_REQUEST_ID_BYTES = 256;
 const MAX_INSTRUCTION_BYTES = 8 * 1024;
+
+const terminalExecutions = new Set<LiveWorkExecution>(["completed", "failed", "interrupted", "canceled"]);
+
+/** Merge delayed Host evidence without letting an acknowledgement revive work. */
+export function reduceOperationEvidence(
+  previous: LiveWorkOperation,
+  evidence: Partial<Omit<LiveWorkOperation,
+    "callId" | "workBindingRevision" | "workSessionId" | "providerRequestId" | "sequence" | "instruction" | "operationId"
+  >>,
+): LiveWorkOperation {
+  const admission = mergeAdmission(previous.admission, evidence.admission, evidence.execution);
+  const execution = mergeExecution(previous.execution, evidence.execution, previous.admission);
+  const reduced = { ...previous, ...evidence, admission, execution };
+  if (evidence.admission === "accepted" && previous.failureCode === "dispatch-unknown" && evidence.failureCode === undefined) {
+    delete reduced.failureCode;
+  }
+  return reduced;
+}
+
+function mergeAdmission(
+  current: LiveWorkAdmission,
+  incoming: LiveWorkAdmission | undefined,
+  execution: LiveWorkExecution | undefined,
+): LiveWorkAdmission {
+  if (incoming === undefined) return current;
+  if (current === "accepted") return "accepted";
+  if (current === "rejected" || current === "withdrawn") return current;
+  if (incoming === "unknown" && (current === "dispatching" || current === "unknown")) return "unknown";
+  if (execution && execution !== "not-started" && execution !== "unknown") return "accepted";
+  return incoming;
+}
+
+function mergeExecution(
+  current: LiveWorkExecution,
+  incoming: LiveWorkExecution | undefined,
+  admission: LiveWorkAdmission,
+): LiveWorkExecution {
+  if (incoming === undefined) return current;
+  if (admission === "rejected" || admission === "withdrawn") return current;
+  if (terminalExecutions.has(current)) return current;
+  if (incoming === "not-started" && current !== "not-started") return current;
+  if (incoming === "unknown" && current !== "not-started") return current;
+  if (current === "running" || current === "waiting-permission" || current === "waiting-input") {
+    if (incoming === "queued" || incoming === "not-started") return current;
+  }
+  if (current === "queued" && (incoming === "not-started" || incoming === "unknown")) return current;
+  return incoming;
+}
 
 /** Per-call identity ledger. It tracks Host admission; it never replays work. */
 export class LiveWorkOperationLedger {
@@ -104,7 +166,9 @@ export class LiveWorkOperationLedger {
   >>): LiveWorkOperation | undefined {
     const operation = this.operations.get(providerRequestId);
     if (!operation) return undefined;
-    Object.assign(operation, update);
+    const reduced = reduceOperationEvidence(operation, update);
+    if (reduced.failureCode === undefined) delete operation.failureCode;
+    Object.assign(operation, reduced);
     return { ...operation };
   }
 

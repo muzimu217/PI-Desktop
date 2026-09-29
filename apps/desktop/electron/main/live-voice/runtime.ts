@@ -15,6 +15,7 @@ import type { MicrophoneLeaseRegistry } from "./microphone-lease";
 import type { LiveOwner } from "./call-service";
 import { createLiveWorkBridge } from "./work-bridge";
 import type { ThinkingLevel } from "@pi-desktop/shared";
+import { sessionWorkspaceIdentity } from "@pi-desktop/host-runtime";
 
 type BackgroundLease = { webContents: WebContents; previous: boolean; count: number };
 
@@ -35,6 +36,7 @@ export function createLiveCallService(input: {
   }>;
 }): LiveCallService {
   const backgroundLeases = new Map<number, BackgroundLease>();
+  const authorizedWorkspaces = new WeakMap<object, string | null>();
   const authResolver = new LiveAuthResolver({
     callHost: <T,>(method: string, params?: unknown): Promise<T> => {
       const host = input.getHost();
@@ -60,9 +62,13 @@ export function createLiveCallService(input: {
         operationId: operation.operationId,
         admission: operation.admission,
         execution: operation.execution,
+        ...(operation.failureCode ? { failureCode: operation.failureCode } : {}),
         ...(operation.turnId ? { turnId: operation.turnId } : {}),
+        ...(operation.targetTurnId ? { targetTurnId: operation.targetTurnId } : {}),
         ...(operation.queueEntryId ? { queueEntryId: operation.queueEntryId } : {}),
         ...(operation.summary ? { summary: operation.summary } : {}),
+        ...(operation.resultSummary ? { resultSummary: operation.resultSummary } : {}),
+        ...(operation.resultState ? { resultState: operation.resultState } : {}),
         ...(operation.selections ? { selections: operation.selections } : {}),
       }, operation.providerRequestId, operation.resultSummary, update.intent);
     },
@@ -84,7 +90,7 @@ export function createLiveCallService(input: {
       }
       const host = input.getHost();
       if (!host) throw Object.assign(new Error("Local Host is unavailable"), { errorCode: "LIVE_WORK_NOT_READY" });
-      const result = await host.call<{ sessions?: Array<{ id?: unknown; title?: unknown; source?: unknown; projectPath?: unknown }> }>("session.list");
+      const result = await host.call<{ sessions?: Array<{ id?: unknown; title?: unknown; source?: unknown; projectId?: unknown; projectPath?: unknown }> }>("session.list");
       const session = result.sessions?.find((item) => item.id === target.workSessionId);
       if (!session) {
         throw Object.assign(new Error("The selected local work session is unavailable"), { errorCode: "LIVE_WORK_SESSION_UNAVAILABLE" });
@@ -92,14 +98,19 @@ export function createLiveCallService(input: {
       if (session.source !== undefined && session.source !== "desktop") {
         throw Object.assign(new Error("Live work integration supports only local Desktop sessions"), { errorCode: "LIVE_WORK_BACKEND_UNSUPPORTED" });
       }
-      return {
+      const binding = {
         workSessionId: target.workSessionId,
         workBindingRevision: 1,
         label: formatWorkSessionLabel(session.projectPath, session.title),
         contextEnabled: target.contextEnabled,
       };
+      authorizedWorkspaces.set(binding, sessionWorkspaceIdentity(session));
+      return binding;
     },
-    openWorkScope: (callId, binding) => workBridge.openCall({ ...binding, callId }),
+    openWorkScope: (callId, binding) => workBridge.openCall(
+      { ...binding, callId },
+      authorizedWorkspaces.get(binding) ?? null,
+    ),
     closeWorkScope: workBridge.closeCall,
     resolveWorkSelection: workBridge.resolveSelection,
     receiveWorkCandidate: workBridge.receiveCandidate,

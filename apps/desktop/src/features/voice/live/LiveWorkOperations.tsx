@@ -34,6 +34,11 @@ export function LiveWorkOperations({
             <div className="live-voice-work-operation-content">
               <span>{status}</span>
               {operation.summary ? <span className="live-voice-work-summary">{operation.summary}</span> : null}
+              {operation.failureCode ? <span className="live-voice-work-result-state">{t(`liveVoice.workFailure.${operation.failureCode}`)}</span> : null}
+              {operation.resultSummary ? <span className="live-voice-work-summary">{operation.resultSummary}</span> : null}
+              {operation.resultState === "pending" || operation.resultState === "unavailable" ? (
+                <span className="live-voice-work-result-state">{t(`liveVoice.resultStatus.${operation.resultState}`)}</span>
+              ) : null}
               {operation.feedbackStatus ? (
                 <span className="live-voice-work-feedback-status">{t(`liveVoice.feedbackStatus.${operation.feedbackStatus}`)}</span>
               ) : null}

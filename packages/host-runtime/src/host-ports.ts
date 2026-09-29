@@ -1,4 +1,5 @@
 import { basename } from "node:path";
+import { createHash } from "node:crypto";
 
 import type {
   PendingToolRequest,
@@ -28,6 +29,14 @@ export type HostSessionRecord = {
   messages?: UiMessage[];
 };
 
+/** Opaque Main/Host authorization fingerprint; never send the source identity to the renderer or model. */
+export function sessionWorkspaceIdentity(input: { projectId?: unknown; projectPath?: unknown }): string | null {
+  const projectId = typeof input.projectId === "string" ? input.projectId.trim() : "";
+  const projectPath = typeof input.projectPath === "string" ? input.projectPath.trim() : "";
+  if (!projectId && !projectPath) return null;
+  return createHash("sha256").update(JSON.stringify([projectId, projectPath])).digest("hex");
+}
+
 export function requireHostRpc(getHost: () => HostRpc | null): HostRpc {
   const host = getHost();
   if (!host) throw new RacpError("AGENT_UNAVAILABLE", "host is not running", { retriable: true });
@@ -46,6 +55,7 @@ export function toSessionSummary(record: HostSessionRecord): SessionSummary {
     id: record.id,
     title: record.title ?? "",
     ...(record.projectId ? { projectId: record.projectId } : {}),
+    workspaceIdentity: sessionWorkspaceIdentity(record),
     ...(record.projectPath ? { workspaceLabel: basename(record.projectPath) } : {}),
     mode,
     permissionMode,

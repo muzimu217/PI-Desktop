@@ -330,6 +330,8 @@ export const de = {
     "errorModel": "Modell",
     "previewFile": "Vorschau im Seitenbereich",
     "fileRefMissing": "Keine Datei entspricht {{name}}",
+    "fileRefRestricted": "{{name}} liegt außerhalb der für die App zugänglichen Orte",
+    "fileRefLookupFailed": "Dieser Dateiverweis konnte nicht geprüft werden.",
     "revealFileInFolder": "Im Ordner anzeigen",
     "fileRevealFailed": "Die Datei konnte nicht im Ordner angezeigt werden.",
     "copyFullPath": "Vollständigen Pfad kopieren",
@@ -1737,7 +1739,6 @@ sklm: {
     },
     "workspace": "Projekt: {{workspace}}",
     "temporarySession": "Temporärer Chat",
-    "countdown": "Automatische Ablehnung in {{seconds}}s, wenn Sie nicht antworten",
     "fromSubagent": "Gefragt vom {{agent}}-Subagenten",
     "queued_one": "{{count}} weitere Anfragen warten",
     "queued_other": "{{count}} weitere Anfragen warten"

@@ -139,7 +139,7 @@ stdio 与 Tokio 的动态阻塞池隔离，因此后一种情况
 | `SHELL_NOT_FOUND` | 不 | 目录回退后没有有效的平台 shell 可用；消息承载指引 |
 | `COMMAND_SHELL_CHANGED` | 不 | 固定的 shell ID 或方言在执行前已更改 |
 | `COMMAND_SHELL_INVALID` | 不 | 设置提供了未知、不可用或错误的平台 shell ID |
-| `PERMISSION_TIMEOUT` | 不 | 权限提示超时（映射为拒绝） |
+| `PERMISSION_TIMEOUT` | 不 | 旧版权限提示超时的兼容错误码；当前本地提示会一直保持待处理 |
 | `PERMISSION_REQUIRED` | 不 | 等待用户决定 |
 | `WRITE_DISABLED_IN_PLAN` | 不 | Write 的契约模式硬拒绝 |
 | `EDIT_DISABLED_IN_PLAN` | 不 | 编辑的契约模式硬拒绝 |
@@ -408,7 +408,7 @@ errno 猜测。
 链路会被原样复现，绝不会悄悄降级为直连。
 
 ### 权限超时
-UI/host 超时在内部发出 `PERMISSION_TIMEOUT`，工具结果向代理显示为拒绝 (`TOOL_DENIED`)。
+`PERMISSION_TIMEOUT` 是旧版兼容错误码，当前本地桌面权限请求不会再发出；未解决的本地权限会保持待处理，明确拒绝或取消时向代理显示为 `TOOL_DENIED`。
 
 ### Shell 和 Plan/Goal 检查点失败
 

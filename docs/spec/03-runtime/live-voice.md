@@ -18,11 +18,13 @@ profile only; it never stores credentials. Existing `voice` and `speech`
 settings retain their prior meaning. Host Core owns the persisted settings
 JSON and merges the Live value with unrelated settings.
 
-Live Voice does not create an Agent turn, call AgentHost or MCP, access
-workspace files, execute model-generated functions, store recordings, or
-persist transcripts. Transcripts stay in a bounded renderer memory buffer for
-the current call. Provider delegation/function-call requests have no execution
-bridge and are rejected or cause a protocol error.
+The voice-only Live profile does not create an Agent turn, call AgentHost or
+MCP, access workspace files, execute model-generated functions, store
+recordings, or persist transcripts. Transcripts stay in a bounded renderer
+memory buffer for the current call. Provider delegation/function-call requests
+are rejected or cause a protocol error unless the user explicitly starts a
+separately scoped Live Work call; its execution and permission contract is
+defined in [Live Voice Work Session Integration](live-work-session.md).
 
 ## Ownership and security
 

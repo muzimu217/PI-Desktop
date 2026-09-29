@@ -1,11 +1,15 @@
-import { describe, expect, it } from "vitest";
-import { LiveWorkCoordinator, type LiveWorkCandidate, type LiveWorkPort, type WorkSnapshot } from "./coordinator.js";
+import { describe, expect, it, vi } from "vitest";
+import { LiveWorkCoordinator, type LiveWorkCandidate, type LiveWorkCoordinatorOptions, type LiveWorkPort, type WorkSnapshot } from "./coordinator.js";
 import { parseLiveWorkIntent } from "./intent.js";
 
 function build(input: {
   intent: unknown;
   snapshot?: Partial<WorkSnapshot>;
+  hangSnapshot?: boolean;
   onSubmit?: (request: Parameters<LiveWorkPort["submit"]>[0]) => ReturnType<LiveWorkPort["submit"]>;
+  lookupAdmission?: LiveWorkPort["lookupAdmission"];
+  resolveIntent?: LiveWorkCoordinatorOptions["resolveIntent"];
+  classifyTimeoutMs?: number;
 }): { coordinator: LiveWorkCoordinator; calls: string[]; snapshot: WorkSnapshot } {
   const calls: string[] = [];
   const snapshot: WorkSnapshot = {
@@ -17,7 +21,11 @@ function build(input: {
     ...input.snapshot,
   };
   const workPort: LiveWorkPort = {
-    snapshot: async (sessionId) => ({ ...snapshot, sessionId }),
+    snapshot: async (sessionId) => input.hangSnapshot
+      ? new Promise<WorkSnapshot>(() => {})
+      : ({ ...snapshot, sessionId }),
+    observeTurnTarget: () => snapshot.activeTurnId ?? null,
+    lookupAdmission: input.lookupAdmission ?? (async () => ({ kind: "not-found" })),
     submit: async (request) => {
       calls.push(`submit:${request.text}:${request.userMessageId}`);
       if (input.onSubmit) return input.onSubmit(request);
@@ -45,10 +53,13 @@ function build(input: {
   };
   let next = 0;
   const coordinator = new LiveWorkCoordinator({
-    resolveIntent: async ({ candidate }) => typeof input.intent === "function"
-      ? (input.intent as (candidate: LiveWorkCandidate) => unknown)(candidate)
-      : input.intent,
+    resolveIntent: async (request) => input.resolveIntent
+      ? input.resolveIntent(request)
+      : typeof input.intent === "function"
+        ? (input.intent as (candidate: LiveWorkCandidate) => unknown)(request.candidate)
+        : input.intent,
     workPort,
+    ...(input.classifyTimeoutMs ? { classifyTimeoutMs: input.classifyTimeoutMs } : {}),
     now: () => ++next,
     onOperation: ({ operation }) => calls.push(`state:${operation.admission}:${operation.execution}`),
   });
@@ -122,7 +133,11 @@ describe("LiveWorkCoordinator", () => {
       operationId: operation.operationId,
     });
     subject.coordinator.reportTurnResult({ callId: "call-1", operationId: operation.operationId, summary: "Updated the login validation." });
-    expect(subject.coordinator.getOperation("call-1", operation.operationId)?.summary).toBe("Updated the login validation.");
+    expect(subject.coordinator.getOperation("call-1", operation.operationId)).toMatchObject({
+      summary: "Work started in the bound session.",
+      resultSummary: "Updated the login validation.",
+      resultState: "available",
+    });
   });
 
   it("answers a result query from the recorded operation without starting another turn", async () => {
@@ -152,6 +167,119 @@ describe("LiveWorkCoordinator", () => {
     expect(subject.calls.filter((call) => call.startsWith("submit:"))).toHaveLength(1);
   });
 
+  it("shares one terminal result with every operation attached to the same turn", async () => {
+    const subject = build({
+      intent: (request: typeof candidate) => request.providerRequestId === "provider-steer"
+        ? { kind: "steer-current" }
+        : { kind: "new-task", relationToActive: "unspecified", explicitRepeat: false },
+    });
+    await subject.coordinator.receiveCandidate(candidate, async () => ({ status: "sent", deliveryId: "receipt-submit" }));
+    subject.snapshot.state = "running";
+    subject.snapshot.activeTurnId = "turn-1";
+    await subject.coordinator.receiveCandidate({
+      ...candidate,
+      providerRequestId: "provider-steer",
+      instruction: "Also check the error path.",
+      observedTurnId: "turn-1",
+    }, async () => ({ status: "sent", deliveryId: "receipt-steer" }));
+    const [submit, steer] = subject.coordinator.listOperations("call-1");
+
+    subject.coordinator.reportTurnTerminal({
+      sessionId: "session-a",
+      runtimeTurnId: "turn-1",
+      turnId: "turn-1",
+      status: "completed",
+    });
+    subject.coordinator.reportTurnResult({
+      callId: "call-1",
+      operationId: submit!.operationId,
+      summary: "The exact turn result.",
+      resultState: "available",
+      sourceMessageId: "message-final",
+    });
+
+    expect(subject.coordinator.getOperation("call-1", submit!.operationId)).toMatchObject({
+      resultSummary: "The exact turn result.",
+      resultSourceMessageId: "message-final",
+    });
+    expect(subject.coordinator.getOperation("call-1", steer!.operationId)).toMatchObject({
+      execution: "completed",
+      resultSummary: "The exact turn result.",
+      resultState: "available",
+      resultSourceMessageId: "message-final",
+    });
+  });
+
+  it("keeps a stop acknowledgement out of the latest engineering result", async () => {
+    let stopOperationId = "";
+    const subject = build({
+      intent: ({ providerRequestId }: LiveWorkCandidate) => {
+        if (providerRequestId === "provider-stop") return { kind: "stop-current", urgency: "graceful" };
+        if (providerRequestId === "provider-result-explicit") return { kind: "query-result", operationRef: stopOperationId };
+        if (providerRequestId.startsWith("provider-result")) return { kind: "query-result" };
+        return { kind: "new-task", relationToActive: "unspecified", explicitRepeat: false };
+      },
+    });
+    await subject.coordinator.receiveCandidate(candidate, async () => ({ status: "sent", deliveryId: "task-receipt" }));
+    const task = subject.coordinator.listOperations("call-1")[0]!;
+    subject.snapshot.state = "running";
+    subject.snapshot.activeTurnId = "turn-1";
+    await subject.coordinator.receiveCandidate({
+      ...candidate,
+      providerRequestId: "provider-stop",
+      instruction: "Stop the current task.",
+      observedTurnId: "turn-1",
+    }, async () => ({ status: "sent", deliveryId: "stop-receipt" }));
+    const stop = subject.coordinator.listOperations("call-1")[1]!;
+    stopOperationId = stop.operationId;
+    subject.coordinator.reportTurnTerminal({
+      sessionId: "session-a",
+      runtimeTurnId: "turn-1",
+      turnId: "turn-1",
+      status: "completed",
+    });
+    subject.coordinator.reportTurnResult({ callId: "call-1", operationId: task.operationId, summary: "The requested change is verified." });
+    await subject.coordinator.receiveCandidate({
+      ...candidate,
+      providerRequestId: "provider-result-latest",
+      instruction: "What did the task do?",
+    }, async () => ({ status: "sent", deliveryId: "result-receipt-latest" }));
+    await subject.coordinator.receiveCandidate({
+      ...candidate,
+      providerRequestId: "provider-result-explicit",
+      instruction: "What was the result of the task I stopped?",
+    }, async () => ({ status: "sent", deliveryId: "result-receipt-explicit" }));
+
+    const [taskAfter, stopAfter, latestResultQuery, explicitResultQuery] = subject.coordinator.listOperations("call-1");
+    expect(taskAfter?.resultSummary).toBe("The requested change is verified.");
+    expect(stopAfter?.summary).toBe("Task stop requested.");
+    expect(stopAfter?.resultSummary).toBeUndefined();
+    expect(stopAfter).toMatchObject({ execution: "not-started", targetTurnId: "turn-1" });
+    expect(latestResultQuery?.summary).toBe("The requested change is verified.");
+    expect(explicitResultQuery?.summary).toBe("The requested change is verified.");
+  });
+
+  it("does not answer a pending terminal result with the admission message", async () => {
+    const subject = build({
+      intent: (request: typeof candidate) => request.providerRequestId === "provider-query"
+        ? { kind: "query-result" }
+        : { kind: "new-task", relationToActive: "unspecified", explicitRepeat: false },
+    });
+    await subject.coordinator.receiveCandidate(candidate, async () => ({ status: "sent", deliveryId: "delivery-1" }));
+    const original = subject.coordinator.listOperations("call-1")[0]!;
+    subject.coordinator.reportTurnTerminal({
+      sessionId: "session-a",
+      runtimeTurnId: original.turnId!,
+      turnId: original.turnId!,
+      status: "completed",
+    });
+
+    await subject.coordinator.receiveCandidate({ ...candidate, providerRequestId: "provider-query", instruction: "What happened?" }, async () => ({ status: "sent", deliveryId: "delivery-2" }));
+
+    expect(subject.coordinator.listOperations("call-1")[1]?.summary).toContain("result is still being synchronized");
+    expect(subject.coordinator.listOperations("call-1")[1]?.summary).not.toContain("Work started");
+  });
+
   it("asks for clarification when a busy new task has no explicit relationship", async () => {
     const subject = build({
       intent: { kind: "new-task", relationToActive: "unspecified", explicitRepeat: false },
@@ -162,11 +290,209 @@ describe("LiveWorkCoordinator", () => {
     expect(subject.coordinator.listOperations("call-1")[0]?.admission).toBe("rejected");
   });
 
+  it("reports an authoritative final workspace rejection instead of admission unknown", async () => {
+    const subject = build({
+      intent: { kind: "new-task", relationToActive: "unspecified", explicitRepeat: false },
+      onSubmit: async () => {
+        throw Object.assign(new Error("workspace moved"), { code: "WORKSPACE_CHANGED" });
+      },
+    });
+    await subject.coordinator.receiveCandidate(candidate, async () => ({ status: "sent", deliveryId: "workspace-receipt" }));
+
+    expect(subject.coordinator.listOperations("call-1")[0]).toMatchObject({
+      admission: "rejected",
+      execution: "not-started",
+      summary: "The bound workspace changed before Host admission. Start a new work call to authorize the current workspace.",
+    });
+  });
+
   it("rejects a stale steer without falling back to prompt or queue", async () => {
     const subject = build({ intent: { kind: "steer-current" }, snapshot: { state: "running", activeTurnId: "turn-new" } });
     await subject.coordinator.receiveCandidate({ ...candidate, observedTurnId: "turn-old" }, async () => ({ status: "sent", deliveryId: "delivery-1" }));
     expect(subject.calls.some((call) => call.startsWith("submit:") || call.startsWith("queue:") || call.startsWith("steer:"))).toBe(false);
     expect(subject.coordinator.listOperations("call-1")[0]?.admission).toBe("rejected");
+  });
+
+  it("keeps an ingress-time empty turn target instead of stopping a later turn", async () => {
+    const subject = build({
+      intent: { kind: "stop-current", urgency: "graceful" },
+      snapshot: { state: "running", activeTurnId: "turn-2" },
+    });
+    await subject.coordinator.receiveCandidate({ ...candidate, observedTurnId: null }, async () => ({ status: "sent", deliveryId: "delivery-1" }));
+
+    expect(subject.calls.some((call) => call.startsWith("stop:"))).toBe(false);
+    expect(subject.coordinator.listOperations("call-1")[0]?.admission).toBe("rejected");
+  });
+
+  it("aborts the classifier when its deadline expires and never routes its late result", async () => {
+    vi.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    let resolverStarted!: () => void;
+    const started = new Promise<void>((resolve) => { resolverStarted = resolve; });
+    const subject = build({
+      intent: null,
+      classifyTimeoutMs: 250,
+      resolveIntent: (request) => {
+        signal = request.signal;
+        resolverStarted();
+        return new Promise(() => {});
+      },
+    });
+
+    try {
+      const pending = subject.coordinator.receiveCandidate(candidate, async () => ({ status: "sent", deliveryId: "delivery-1" }));
+      await started;
+      await vi.advanceTimersByTimeAsync(250);
+      await pending;
+
+      expect(signal?.aborted).toBe(true);
+      expect(subject.calls.some((call) => call.startsWith("submit:") || call.startsWith("queue:"))).toBe(false);
+      expect(subject.coordinator.listOperations("call-1")[0]).toMatchObject({ admission: "rejected", failureCode: "classifier-timeout" });
+    } finally {
+      vi.useRealTimers();
+      subject.coordinator.closeCall("call-1");
+    }
+  });
+
+  it("lets a validated stop use its reserved classifier while an ordinary classifier is pending", async () => {
+    let releaseNormal!: (value: unknown) => void;
+    let normalStarted!: () => void;
+    const started = new Promise<void>((resolve) => { normalStarted = resolve; });
+    const subject = build({
+      intent: null,
+      snapshot: { state: "running", activeTurnId: "turn-current" },
+      resolveIntent: ({ candidate: current }) => {
+        if (current.providerRequestId === "provider-1") {
+          normalStarted();
+          return new Promise((resolve) => { releaseNormal = resolve; });
+        }
+        return { kind: "stop-current", urgency: "graceful" };
+      },
+    });
+    const normal = subject.coordinator.receiveCandidate(candidate, async () => ({ status: "sent", deliveryId: "normal-receipt" }));
+    await started;
+
+    await subject.coordinator.receiveCandidate({
+      ...candidate,
+      providerRequestId: "provider-stop",
+      instruction: "Stop the current task now.",
+    }, async () => ({ status: "sent", deliveryId: "stop-receipt" }));
+
+    expect(subject.calls.some((call) => call === "stop:turn-current:graceful")).toBe(true);
+    releaseNormal({ kind: "new-task", relationToActive: "unspecified", explicitRepeat: false });
+    await normal;
+
+    expect(subject.coordinator.listOperations("call-1")[0]).toMatchObject({ admission: "withdrawn", execution: "not-started" });
+    expect(subject.calls.some((call) => call.startsWith("submit:") || call.startsWith("queue:"))).toBe(false);
+  });
+
+  it("does not let a control scheduling hint directly execute a write intent", async () => {
+    const subject = build({ intent: { kind: "new-task", relationToActive: "unspecified", explicitRepeat: false } });
+    await subject.coordinator.receiveCandidate({
+      ...candidate,
+      instruction: "Stop the current task now.",
+    }, async () => ({ status: "sent", deliveryId: "delivery-stop-hint" }));
+
+    expect(subject.calls.some((call) => call.startsWith("submit:") || call.startsWith("queue:") || call.startsWith("stop:"))).toBe(false);
+    expect(subject.coordinator.listOperations("call-1")[0]?.admission).toBe("rejected");
+  });
+
+  it("bounds a Host snapshot that never resolves", async () => {
+    vi.useFakeTimers();
+    const subject = build({ intent: { kind: "conversation" }, hangSnapshot: true });
+    try {
+      const pending = subject.coordinator.receiveCandidate(candidate, async () => ({ status: "sent", deliveryId: "snapshot-receipt" }));
+      await vi.advanceTimersByTimeAsync(2_000);
+      await pending;
+      expect(subject.coordinator.listOperations("call-1")[0]?.admission).toBe("rejected");
+      expect(subject.calls.some((call) => call.startsWith("submit:"))).toBe(false);
+    } finally {
+      vi.useRealTimers();
+      subject.coordinator.closeCall("call-1");
+    }
+  });
+
+  it("bounds an unresolved dispatch and reconciles it without resubmitting", async () => {
+    vi.useFakeTimers();
+    let submitCalls = 0;
+    let lookupCalls = 0;
+    const subject = build({
+      intent: { kind: "new-task", relationToActive: "unspecified", explicitRepeat: false },
+      onSubmit: async () => {
+        submitCalls += 1;
+        return new Promise(() => {});
+      },
+      lookupAdmission: async () => {
+        lookupCalls += 1;
+        return { kind: "running", turnId: "turn-reconciled" };
+      },
+    });
+    try {
+      const pending = subject.coordinator.receiveCandidate(candidate, async () => ({ status: "sent", deliveryId: "dispatch-receipt" }));
+      await vi.advanceTimersByTimeAsync(2_000);
+      await pending;
+      expect(subject.coordinator.listOperations("call-1")[0]).toMatchObject({
+        admission: "unknown",
+        execution: "unknown",
+        failureCode: "dispatch-unknown",
+      });
+      await vi.advanceTimersByTimeAsync(500);
+      expect(subject.coordinator.listOperations("call-1")[0]).toMatchObject({
+        admission: "accepted",
+        execution: "running",
+        turnId: "turn-reconciled",
+      });
+      expect(subject.coordinator.listOperations("call-1")[0]?.failureCode).toBeUndefined();
+      expect(submitCalls).toBe(1);
+      expect(lookupCalls).toBe(1);
+    } finally {
+      vi.useRealTimers();
+      subject.coordinator.closeCall("call-1");
+    }
+  });
+
+  it("preserves unknown admission when the call closes during Host dispatch", async () => {
+    let releaseStarted!: () => void;
+    const started = new Promise<void>((resolve) => { releaseStarted = resolve; });
+    const subject = build({
+      intent: { kind: "new-task", relationToActive: "unspecified", explicitRepeat: false },
+      onSubmit: async () => {
+        releaseStarted();
+        return new Promise(() => {});
+      },
+    });
+    const pending = subject.coordinator.receiveCandidate(candidate, async () => ({ status: "sent", deliveryId: "close-dispatch-receipt" }));
+    await started;
+    subject.coordinator.closeCall("call-1");
+    await pending;
+
+    expect(subject.calls.at(-1)).toBe("state:unknown:unknown");
+    expect(subject.calls.some((call) => call === "state:withdrawn:not-started")).toBe(false);
+  });
+
+  it("keeps terminal Host evidence when the submit acknowledgement is lost", async () => {
+    let subject: ReturnType<typeof build>;
+    subject = build({
+      intent: { kind: "new-task", relationToActive: "unspecified", explicitRepeat: false },
+      onSubmit: async (request) => {
+        subject.coordinator.reportTurnTerminal({
+          sessionId: "session-a",
+          runtimeTurnId: "runtime-turn-early",
+          turnId: "turn-early",
+          idempotencyKey: request.idempotencyKey,
+          status: "completed",
+        });
+        throw new Error("lost acknowledgement after Host completion");
+      },
+    });
+    await subject.coordinator.receiveCandidate(candidate, async () => ({ status: "sent", deliveryId: "delivery-1" }));
+
+    expect(subject.coordinator.listOperations("call-1")[0]).toMatchObject({
+      admission: "accepted",
+      execution: "completed",
+      turnId: "turn-early",
+    });
+    subject.coordinator.closeCall("call-1");
   });
 
   it("deduplicates the same provider request and rejects parameter conflicts", async () => {
@@ -187,7 +513,10 @@ describe("LiveWorkCoordinator", () => {
     const subject = build({ intent: { kind: "new-task", relationToActive: "independent", explicitRepeat: false, sessionId: "elsewhere" } });
     await subject.coordinator.receiveCandidate(candidate, async () => ({ status: "sent", deliveryId: "delivery-1" }));
     expect(subject.calls.some((call) => call.startsWith("submit:") || call.startsWith("queue:"))).toBe(false);
-    expect(subject.coordinator.listOperations("call-1")[0]?.summary).toBe("I could not confirm what you want me to do. Please clarify.");
+    expect(subject.coordinator.listOperations("call-1")[0]).toMatchObject({
+      summary: "I could not confirm what you want me to do. Please clarify.",
+      failureCode: "classifier-invalid",
+    });
     expect(parseLiveWorkIntent({ kind: "stop-current", urgency: "immediate", turnId: "turn-1" })).toBeNull();
     expect(parseLiveWorkIntent({ kind: "stop-current", urgency: "immediate" })).toEqual({ kind: "stop-current", urgency: "immediate" });
   });
@@ -198,9 +527,14 @@ describe("LiveWorkCoordinator", () => {
     let submitted = false;
     const started = new Promise<void>((resolve) => { resolverStarted = resolve; });
     const delayed = new LiveWorkCoordinator({
-      resolveIntent: () => new Promise((resolve) => { release = resolve; resolverStarted?.(); }),
+      resolveIntent: ({ signal }) => {
+        signal.addEventListener("abort", () => { resolverStarted?.(); }, { once: true });
+        return new Promise((resolve) => { release = resolve; resolverStarted?.(); });
+      },
       workPort: {
         snapshot: async (sessionId) => ({ sessionId, mode: "agent", state: "idle", queue: [], observedAt: 1 }),
+        observeTurnTarget: () => null,
+        lookupAdmission: async () => ({ kind: "not-found" }),
         submit: async () => { submitted = true; throw new Error("must not dispatch"); },
         steer: async () => ({ accepted: false }),
         enqueue: async () => ({ queueEntryId: "queue" }),

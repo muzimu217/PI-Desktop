@@ -601,9 +601,11 @@ function Anchor({
         action on the file's folder. `./` and `../` resolve against the markdown
         file on screen, which is the base this row already holds.
       */
-      const rel = toWorkspaceRel(safeDecodeUri(href), root, baseDir);
-      if (!rel || !openFileMenu) return;
-      openFileMenu(event, { path: rel, baseDir });
+      const decoded = safeDecodeUri(href);
+      const target = resolvePreviewTarget(decoded, root, baseDir);
+      const ref = target?.kind === "file" ? target.path : toWorkspaceRel(decoded, root, baseDir);
+      if (!ref || !openFileMenu) return;
+      openFileMenu(event, { path: ref, baseDir });
       return;
     }
     const target = href;
@@ -649,10 +651,12 @@ function Anchor({
       openHttpUrl(href);
       return;
     }
-    const rel = toWorkspaceRel(safeDecodeUri(href), root, baseDir);
-    if (rel) {
+    const decoded = safeDecodeUri(href);
+    const target = resolvePreviewTarget(decoded, root, baseDir);
+    const ref = target?.kind === "file" ? target.path : toWorkspaceRel(decoded, root, baseDir);
+    if (ref) {
       e.preventDefault();
-      openFileRef(rel, baseDir);
+      openFileRef(ref, baseDir);
     }
   };
   return (

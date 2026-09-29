@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LiveWorkOperationLedger } from "./operation-ledger.js";
+import { LiveWorkOperationLedger, reduceOperationEvidence } from "./operation-ledger.js";
 
 function ledger() {
   let operationId = 0;
@@ -28,12 +28,12 @@ describe("LiveWorkOperationLedger", () => {
 
   it("caps unresolved admission without counting accepted running work", () => {
     const subject = ledger();
-    for (let index = 0; index < 8; index += 1) {
+    for (let index = 0; index < 16; index += 1) {
       expect(subject.registerCandidate(`provider-${index}`, `task ${index}`).status).toBe("created");
     }
     expect(subject.registerCandidate("provider-over-cap", "one more")).toEqual({ status: "capacity" });
 
-    for (let index = 0; index < 8; index += 1) {
+    for (let index = 0; index < 16; index += 1) {
       subject.update(`provider-${index}`, { admission: "accepted", execution: "running" });
     }
     expect(subject.registerCandidate("provider-after-admission", "another task").status).toBe("created");
@@ -47,5 +47,39 @@ describe("LiveWorkOperationLedger", () => {
     }
     expect(subject.registerCandidate("provider-0", "task 0").status).toBe("replayed");
     expect(subject.registerCandidate("provider-256", "task 256")).toEqual({ status: "capacity" });
+  });
+
+  it("merges delayed acknowledgements monotonically around terminal evidence", () => {
+    const subject = ledger();
+    const created = subject.registerCandidate("provider-1", "Run the task");
+    if (created.status !== "created") throw new Error("expected operation creation");
+
+    const terminal = reduceOperationEvidence(created.operation, {
+      admission: "accepted",
+      execution: "completed",
+      turnId: "turn-1",
+      resultState: "pending",
+    });
+    const delayedAck = reduceOperationEvidence(terminal, {
+      admission: "accepted",
+      execution: "running",
+    });
+    const unknownLookup = reduceOperationEvidence(delayedAck, {
+      admission: "unknown",
+      execution: "unknown",
+    });
+
+    expect(delayedAck.execution).toBe("completed");
+    expect(unknownLookup).toMatchObject({ admission: "accepted", execution: "completed", turnId: "turn-1" });
+  });
+
+  it("does not turn a known Host rejection into acceptance from unrelated activity", () => {
+    const subject = ledger();
+    const created = subject.registerCandidate("provider-1", "Run the task");
+    if (created.status !== "created") throw new Error("expected operation creation");
+    const rejected = reduceOperationEvidence(created.operation, { admission: "rejected", execution: "not-started" });
+
+    expect(reduceOperationEvidence(rejected, { admission: "accepted", execution: "running", turnId: "other-turn" }))
+      .toMatchObject({ admission: "rejected", execution: "not-started" });
   });
 });

@@ -179,9 +179,13 @@ export type LiveCallView = {
 export type LiveWorkOperationView = {
   operationId: string;
   admission: "received" | "reviewing" | "dispatching" | "accepted" | "rejected" | "unknown" | "withdrawn";
-  execution: "not-started" | "queued" | "running" | "waiting-permission" | "waiting-input" | "completed" | "failed" | "interrupted" | "canceled";
+  execution: "not-started" | "queued" | "running" | "waiting-permission" | "waiting-input" | "unknown" | "completed" | "failed" | "interrupted" | "canceled";
+  failureCode?: "classifier-invalid" | "classifier-timeout" | "caller-withdrawn" | "receipt-undelivered" | "scope-changed" | "host-rejected" | "dispatch-unknown";
   summary?: string;
+  resultSummary?: string;
+  resultState?: "pending" | "available" | "unavailable";
   turnId?: string;
+  targetTurnId?: string;
   queueEntryId?: string;
   selections?: LiveWorkSelectionOption[];
   feedbackStatus?: "pending" | "sent" | "context-only" | "undelivered";

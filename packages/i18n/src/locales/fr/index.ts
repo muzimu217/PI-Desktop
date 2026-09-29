@@ -330,6 +330,8 @@ export const fr = {
     "errorModel": "Modèle",
     "previewFile": "Aperçu dans le panneau latéral",
     "fileRefMissing": "Aucun fichier ne correspond à {{name}}",
+    "fileRefRestricted": "{{name}} se trouve hors des emplacements accessibles à l'application",
+    "fileRefLookupFailed": "Impossible de vérifier cette référence de fichier.",
     "revealFileInFolder": "Afficher dans le dossier",
     "fileRevealFailed": "Impossible d'afficher le fichier dans son dossier.",
     "copyFullPath": "Copier le chemin complet",
@@ -1737,7 +1739,6 @@ sklm: {
     },
     "workspace": "Projet : {{workspace}}",
     "temporarySession": "Chat temporaire",
-    "countdown": "Refus automatique dans {{seconds}}s si vous ne répondez pas",
     "fromSubagent": "Demandé par le sous-agent {{agent}}",
     "queued_one": "{{count}} demande supplémentaire en attente",
     "queued_other": "{{count}} demande supplémentaire en attente"

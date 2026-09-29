@@ -148,7 +148,8 @@ destination, chat as the home surface, tools and permissions inline.
   rectangle continues to position the native Browser view. Native window edges
   resize the app window only; they do not change the panel target. The outer
   window remains natively resizable from all OS edges and corners, with a
-  minimum supported size of 1040×700. Replaces
+  minimum supported size of 800×560, capped to the current display's work
+  area (D635). Replaces
   the former context-panel overlay; workspace/model/status info lives in the
   composer chips and Settings instead.
 - **Composer**: workspace-agnostic floating pill anchored to the conversation

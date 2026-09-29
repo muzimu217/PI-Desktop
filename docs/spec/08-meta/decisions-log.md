@@ -29,6 +29,7 @@ This log freezes previously open questions into concrete decisions.
 | D459 | Restore resizable sidebar width with collapse-below-threshold | **Amend D408 / ADR 0238 and restore ADR 0141 (ADR 0290): the expanded sidebar is again a renderer-owned `240px..520px` column (default `275px`) with a right-edge handle that previews on pointer-down, persists on release, and supports ArrowLeft/ArrowRight (16px), Home, and End. A pointer width below `160px` collapses as a user action without overwriting the preferred expanded width; keyboard resize never collapses. Live maximum is the three-column remainder after MainChat's 450px floor. Renderer only; existing `pi.desktop.sidebarWidth` preference. See E2E-168.** | Long labels need reclaimable width; ADR 0238's fixed 275px pin blocked that while the live three-column budget could already cap a user-chosen width. This decision was mistakenly recorded as D451 (already used by Review-opens-only-on-explicit-user-action); renumbered per issue #620. |
 | D457 | Signed macOS DMG is a two-icon install | *(amended by D634)* **Amend D406 / ADR 0232 / ADR 0204: official and local DMGs contain only PI-Desktop.app and the Applications link on a branded 720×440 plate. The ZIP contains PI-Desktop.app only. Neither macOS format includes the opening note or command helper, including unsigned debug artifacts. See ADR 0296 / ADR 0309 and E2E-196b.** | Tagged DMGs are signed and notarized (D450); unsigned first-launch guidance is no longer needed in package artifacts. |
 | D634 | Remove bundled macOS first-launch guidance | **Amend D457 / ADR 0296 and the macOS distribution provisions of ADR 0232 / ADR 0204: neither macOS DMG nor ZIP ships `PI-Desktop-macOS-open.command`, `PI-Desktop-macOS-opening-help.txt`, or another bundled quarantine-clearing helper or opening note. The ZIP contains `PI-Desktop.app` at its root; the DMG remains a two-icon install. This applies to signed releases and local or opt-in unsigned debug builds. See ADR 0309 and E2E-196b.** | The signed release lane has eliminated the user need for an unsigned first-launch workaround; shipping it beside debug builds risks suggesting a Gatekeeper bypass. |
+| D635 | Work-area-capped 800×560 window minimum | **Supersede the 1040×700 window minimum in D156 / D447 (and the matching clauses of ADR 0029 / ADR 0238) and the `1040..10000` `window/setWorkPanelChatWidth` range (ADR 0146): Electron enforces an 800×560 minimum, capped per dimension to the current display work area by `clampMinimumSizeToWorkArea`. The chat-width IPC and renderer accept `800..10000`. On narrow windows the existing `workPanelLayout` budget caps the docked panel so MainChat keeps its 450px floor, collapsing the sidebar first. See US-UI-19 and E2E-167.** | At 150% Windows scaling the work area is about 1280×672 DIP, so a fixed minimum could exceed the screen and leave the window unfittable. |
 | D450 | Signed macOS GitHub Releases | **Amend D078 / ADR 0022: GitHub tag releases Developer ID-sign, notarize (`notarytool` via electron-builder 26), staple, and Gatekeeper-verify macOS DMG/ZIP before upload, using identity `Developer ID Application: XingYu Liu (DUV63RKYTW)` / team `DUV63RKYTW` from Actions secrets (`CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`). Missing secrets fail the job. Local unsigned packaging without a certificate remains. `workflow_dispatch` may set `sign_macos: false` only for unsigned debug artifacts. Packaged macOS uses in-app `electron-updater` (ZIP + merged `latest-mac.yml`); Linux deb/rpm and Windows portable ZIP stay notify-and-link. No afterPack/afterSign adhoc codesign (ADR 0278).** | Production DMGs must open without a Gatekeeper warning, and signed macOS installs can download and restart into a new tag. See ADR 0289, E2E-196c, E2E-067A. |
 
 ## B. Secondary implementation defaults
@@ -7299,3 +7300,23 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   covers native DMG and ZIP archive inspection.
 - D634 amends D457 / ADR 0296 and supersedes the macOS distribution provisions
   of ADR 0232 / ADR 0204. See ADR 0309.
+
+## 2026-09-29 — Work-area-capped 800×560 window minimum (D635)
+
+- The app-wide window minimum is 800×560 DIP. `clampMinimumSizeToWorkArea`
+  caps each dimension to the current display's work area (floored, at least 1)
+  wherever Main sets the minimum: window creation, display reconciliation,
+  Stage Manager recovery, and the work-panel resize paths. At 150% scaling on
+  Windows the work area is about 1280×672 DIP, so a fixed minimum could be
+  larger than the screen.
+- `window/setWorkPanelChatWidth` and the renderer's chat-width clamp accept
+  `800..10000px`; the two floors share one constant so a renderer-valid width
+  is never rejected by Main.
+- On a narrow window the existing three-column budget (`workPanelLayout`)
+  still applies: the docked panel is capped so MainChat keeps its 450px floor,
+  and the expanded sidebar auto-collapses first. Saved panel widths are not
+  rewritten.
+- D635 supersedes the 1040×700 minimum in D156 / D447 (and the matching
+  clauses of ADR 0029 / ADR 0238) and the `1040..10000` chat-width range in
+  ADR 0146. `work-panel-window.test.mjs` and `work-panel-resize.test.mjs`
+  cover the clamp and chat-width range; see US-UI-19 and E2E-167.

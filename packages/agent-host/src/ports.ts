@@ -1,6 +1,7 @@
 import type {
   AgentPromptAttachment,
   AskToolResolution,
+  VoiceOrigin,
   RacpItemSummary,
   RacpPermissionMode,
   RacpPlanningState,
@@ -37,6 +38,7 @@ export type TurnStartRequest = {
   sessionMessageId?: string;
   /** Client-chosen id for the durable user row (D288); the runtime mints one otherwise. */
   userMessageId?: string;
+  voiceOrigin?: VoiceOrigin;
   attachments?: AgentPromptAttachment[];
   effectivePermissionMode: RacpPermissionMode;
   idempotencyKey?: string;
@@ -53,6 +55,8 @@ export type TurnSteerRequest = {
   turnId: string;
   content: string;
   sessionMessageId?: string;
+  userMessageId?: string;
+  voiceOrigin?: VoiceOrigin;
   attachments?: AgentPromptAttachment[];
   principal: Principal;
 };
@@ -80,6 +84,7 @@ export type QueuedTurnRecord = {
   sessionMessageId?: string;
   /** Client-chosen id for the durable user row (D288). */
   userMessageId?: string;
+  voiceOrigin?: VoiceOrigin;
   attachments?: AgentPromptAttachment[];
   effectivePermissionMode: RacpPermissionMode;
   idempotencyKey?: string;

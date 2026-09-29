@@ -32,6 +32,7 @@
 | D459 | 恢复可拖拽侧边栏宽度，过窄时收起 | **修订 D408 / ADR 0238 并恢复 ADR 0141（ADR 0290）：展开侧边栏重新成为渲染层拥有的 `240px..520px` 列（默认 `275px`），右缘手柄在指针按下时预览、释放时持久，并支持左右方向键（16px）、Home 与 End。指针宽度低于 `160px` 时以用户操作收起，不覆盖首选展开宽度；键盘调整永不收起。实时上限为扣除 MainChat 450px 下限后的三栏余量。仅渲染进程；沿用 `pi.desktop.sidebarWidth` 偏好。见 E2E-168。** | 长标签需要可回收宽度；ADR 0238 固定 275px 会挡住这一点，而三栏实时预算本就可以限制用户选定的宽度。该决策曾被误记为 D451（已由「审阅面板只在用户主动操作时打开」占用）；按 issue #620 改号。 |
 | D457 | 已签名 macOS DMG 改为双图标安装 | *（由 D634 修订）* **修订 D406 / ADR 0232 / ADR 0204：正式与本地 DMG 只包含 PI-Desktop.app 和 Applications 链接，使用 720×440 品牌背景。ZIP 只包含 PI-Desktop.app。任何 macOS 格式（包括未签名调试工件）都不再附带打开说明或 command 助手。见 ADR 0296 / ADR 0309 与 E2E-196b。** | 标签 DMG 已签名公证（D450）；打包工件不再需要未签名首次启动指引。 |
 | D634 | 移除 macOS 首次启动辅助文件 | **修订 D457 / ADR 0296 及 ADR 0232 / ADR 0204 中的 macOS 分发约定：macOS DMG 与 ZIP 均不再附带 `PI-Desktop-macOS-open.command`、`PI-Desktop-macOS-opening-help.txt`，或其他捆绑的 quarantine 清理助手/打开说明。ZIP 根目录只包含 `PI-Desktop.app`；DMG 仍为双图标安装。该规定适用于签名发布和本地或可选的未签名调试构建。见 ADR 0309 与 E2E-196b。** | 已签名发布通道不再需要未签名首次启动兜底；随调试包附带此类文件可能误导用户绕过 Gatekeeper。 |
+| D635 | 按工作区上限裁剪的 800×560 窗口最小尺寸 | **取代 D156 / D447 中的 1040×700 窗口最小尺寸（及 ADR 0029 / ADR 0238 的对应条款）和 `window/setWorkPanelChatWidth` 的 `1040..10000` 范围（ADR 0146）：Electron 强制 800×560 最小尺寸，并由 `clampMinimumSizeToWorkArea` 按维度裁剪到当前显示器工作区。聊天宽度 IPC 与渲染层接受 `800..10000`。窄窗口下沿用现有 `workPanelLayout` 预算：限制停靠面板宽度以保证 MainChat 的 450px 下限，并优先收起侧边栏。见 US-UI-19 与 E2E-167。** | Windows 150% 缩放下工作区约为 1280×672 DIP，固定最小尺寸可能超过屏幕，导致窗口无法适配。 |
 | D450 | 签名的 macOS GitHub Release | **修订 D078 / ADR 0022：GitHub tag 发布使用身份 `Developer ID Application: XingYu Liu (DUV63RKYTW)` / 团队 `DUV63RKYTW`，通过 Actions 密钥（`CSC_LINK`、`CSC_KEY_PASSWORD`、`APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID`）对 macOS DMG/ZIP 做 Developer ID 签名、`notarytool` 公证、装订和 Gatekeeper 校验；缺少密钥则失败。无证书的本地未签名打包仍可用。`workflow_dispatch` 仅可把 `sign_macos: false` 用于未签名调试产物。打包的 macOS 走应用内 `electron-updater`（ZIP + 合并后的 `latest-mac.yml`）；Linux deb/rpm 与 Windows 便携版 ZIP 仍为通知并打开发布页。禁止 afterPack/afterSign adhoc 签名（ADR 0278）。** | 正式 DMG 应无需 Gatekeeper 警告即可打开，已签名 macOS 安装可下载并重启到新 tag。见 ADR 0289、E2E-196c、E2E-067A。 |
 
 ## B. 辅助实现默认值
@@ -5129,3 +5130,17 @@ Markdown 源码，不是 `text/html` 负载；对禁用行内 HTML 的外部编�
 - 签名、公证、装订和更新程序通道保持不变。未签名调试工件不代表通过 Gatekeeper 验证。
 - `packaging-footprint.test.mjs` 检查打包配置；E2E-196b 覆盖本机 DMG 与 ZIP 归档检查。
 - D634 修订 D457 / ADR 0296，并取代 ADR 0232 / ADR 0204 中的 macOS 分发约定。见 ADR 0309。
+
+## 2026-09-29 —— 按工作区上限裁剪的 800×560 窗口最小尺寸（D635）
+
+- 应用级窗口最小尺寸为 800×560 DIP。Main 在所有设置最小尺寸的位置（窗口创建、
+  显示器协调、Stage Manager 恢复和工作面板调整路径）都用
+  `clampMinimumSizeToWorkArea` 按维度裁剪到当前显示器工作区（向下取整，至少为 1）。
+  Windows 150% 缩放下工作区约为 1280×672 DIP，固定最小尺寸可能大于屏幕。
+- `window/setWorkPanelChatWidth` 与渲染层聊天宽度裁剪接受 `800..10000px`；两处下限
+  共用同一常量，渲染层认为合法的宽度不会被 Main 拒绝。
+- 窄窗口下仍沿用现有三栏预算（`workPanelLayout`）：限制停靠面板宽度以保证 MainChat
+  的 450px 下限，并优先自动收起展开的侧边栏。已保存的面板宽度不会被改写。
+- D635 取代 D156 / D447 中的 1040×700 最小尺寸（及 ADR 0029 / ADR 0238 的对应条款）
+  和 ADR 0146 中 `1040..10000` 的聊天宽度范围。`work-panel-window.test.mjs` 与
+  `work-panel-resize.test.mjs` 覆盖裁剪与聊天宽度范围；见 US-UI-19 与 E2E-167。

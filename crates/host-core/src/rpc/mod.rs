@@ -3184,6 +3184,23 @@ async fn handle_request(
             .map_err(session_collaboration_rpc_err)?;
             Ok(json!({ "turnId": turn_id }))
         }
+        "session.recordUsage" => {
+            let session_id = params
+                .get("sessionId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "sessionId required", "INVALID_PARAMS"))?;
+            let turn_id = params
+                .get("turnId")
+                .and_then(Value::as_str)
+                .ok_or_else(|| rpc_err(1002, "turnId required", "INVALID_PARAMS"))?;
+            let usage = params
+                .get("usage")
+                .ok_or_else(|| rpc_err(1002, "usage required", "INVALID_PARAMS"))?;
+            let st = state.lock().await;
+            let recorded = sessions::record_usage(&st.db, session_id, turn_id, usage)
+                .map_err(|e| rpc_err(1002, e.to_string(), "INVALID_PARAMS"))?;
+            Ok(json!({ "ok": recorded }))
+        }
         "session.endTurn" => {
             let turn_id = params
                 .get("turnId")

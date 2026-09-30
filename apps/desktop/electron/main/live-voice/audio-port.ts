@@ -123,7 +123,7 @@ export function createLivePcmBridge(options: LivePcmBridgeOptions): LivePcmBridg
         expectedInputSequence += 1;
         const accepted = !muted && epoch === captureEpoch;
         if (accepted) options.onInput(new Uint8Array(data), captureEpoch);
-        post({ kind: "credit", direction: "uplink", consumedSequence: sequence, accepted });
+        post({ kind: "credit", callId: options.callId, direction: "uplink", consumedSequence: sequence, accepted });
         return;
       }
       case "gate-applied": {

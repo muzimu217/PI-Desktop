@@ -52,7 +52,7 @@ export function isTrustedRendererUrl(value: string): boolean {
     const url = new URL(value);
     if (url.protocol === "file:") {
       if (url.search || url.hash) return false;
-      return resolve(fileURLToPath(url)) === resolve(__dirname, "../../renderer/index.html");
+      return resolve(fileURLToPath(url)) === resolve(__dirname, "../renderer/index.html");
     }
     if (url.protocol !== "http:") return false;
     const configured = process.env.ELECTRON_RENDERER_URL;

@@ -87,7 +87,7 @@ pi 消费排队输入时保留渲染器提供的消息 id；即使补充输入�
 1. 加载持久会话，会话缺失则拒绝
 2. 解析该会话的 mode/provider/model 与项目绑定（app/当前工作区默认值仅作为
    旧版回退）
-3. 针对该确切的 provider/API URL 与 model 解析完整的 models.dev 元数据记录，
+3. 针对该确切的 provider/API URL 与 model 解析完整的 Pi catalog 元数据记录，
    并把持久会话的思考级别钳制到它最接近的受支持值；快照中不存在的 id 使用
    显式的通用回退
 4. 验证 model/secret 可用性
@@ -540,16 +540,16 @@ Goal 批准所承诺的内容与 Plan 批准所承诺的内容完全相同：`mo
   和 `max`。会话（及子智能体）选择器还接受 `omit`，它不是目录/绑定能力：
   运行时把智能体记账保持为 `off`，走低层 provider 流，不合成思考覆盖
   （ADR 0194 / ADR 0295）。
-- 随包的 models.dev 发布快照对于已发布的推理支持具有权威性，
+- 随包的 Pi catalog 发布快照对于已发布的推理支持具有权威性，
   思维层面的映射、限制、输入模式、定价、标题和适配器
   每个已解决的已知模型的兼容性。
 - 提供商配置不能覆盖已知模型语义。未知
   自由格式的 id 仍然可以通过通用的纯文本、非推理的方式运行
   模型，因此仅公开 `off`。
-- 不支持的请求级别采用所选 models.dev 模型的最近受支持级别规则：先向上扫描
+- 不支持的请求级别采用所选 Pi catalog 模型的最近受支持级别规则：先向上扫描
   先向上，然后向下。非推理提供商总是决心
   `off`。
-- 视觉支持由同一条 models.dev 记录解析：只有 `input.includes("image")` 才启用
+- 视觉支持由同一条 Pi catalog 记录解析：只有 `input.includes("image")` 才启用
   图片传输。未知/自定义模型 id 保持为保守的 text/path 模型，即使发现到的元数据
   声称支持 `vision`。
 - 有效级别会传给 pi `Agent`；特定于提供商的请求
@@ -749,7 +749,7 @@ transcript 把一条链渲染成它最新 `Task` 卡片下的一段连续多轮�
 “已恢复”标记。
 
 **模型引脚。** Frontmatter 中的 `model: <provider>/<model>` 在每次启动时于
-Electron main 里解析一次——凭据与 models.dev 快照都在那里——匹配提供商 id、
+Electron main 里解析一次——凭据与 Pi catalog 快照都在那里——匹配提供商 id、
 厂商键或显示名称，且最多 `MAX_SUBAGENT_PROVIDERS`（8）个不同的提供商。无法
 解析的引脚会被有意地排除在绑定映射之外；运行时把这个缺失的条目转成一个点名
 该引脚的工具错误，绝不回退到会话模型。定义中的 `thinkingLevel` 会按第 5c 节
@@ -1162,3 +1162,18 @@ System/Direct/Custom 代理路由保持不变。
 终态。结构化原因会穿过 adapter 的错误扁平化，保留在最终错误行中，也不会触发
 provider transport 重建。`EPROTO` 等协议错误继续使用原有重试行为。详见
 [证书信任 ADR](../../../adr/provider-system-certificates.md)。
+
+## Pi 0.99.1 execution boundary
+
+Published model metadata and account entitlement come from one account-scoped
+Pi Models collection. Effective binding projection is shared by launch, delegates
+and compaction. Dispatch thinking normalization uses the resolved physical Pi
+model; native null/unsupported mappings remain unavailable without mutating
+saved preferences. Agent bookkeeping and omitted request reasoning are distinct.
+
+Every physical stream attempt has an operation identity before dispatch. Usage
+survives stream/result projection and events through Host/remote/renderer paths;
+retries and images retain physical account/model attribution. Nested immediate
+parent and owning Task remain distinct. The migration does not add coding-agent
+AgentSession, Codemode or virtual routing. See the coding-agent design review for
+future adoption conditions.

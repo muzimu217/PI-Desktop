@@ -9,6 +9,14 @@
 
 ---
 
+### E2E-LIVE-VOICE-public-settings-and-reconnect
+
+- **前提：** 生产 Renderer 构建、真实 Electron/Main/Host、隔离数据和测试项目、关闭开发者模式、本地 TLS Realtime fixture 及合成麦克风。仅在测试子进程中信任 fixture CA，不关闭 TLS、sender、沙盒或麦克风权限校验。
+- **步骤：** 在功能关闭时从 Composer 打开 Live，点击“打开设置”。通过设置搜索找到 Voice，绑定测试账号并启用；连接、取消静音、接收音频和字幕、静音并挂断。取消延迟启动，断开服务后显式重连；使用同一隔离配置重启，检查持久化设置并关闭功能。
+- **预期：** 普通用户可以到达入口；启用设置不会开始采集。真实构建中的 Renderer 通过精确主 frame 所有者校验。只使用所选账号，静音停止输入，每次结束释放媒体/socket，失败不会自动发起新通话。重启保留设置但不重连；旧 Dictation 设置不变，纯通话不创建 Agent 会话。
+- **覆盖：** `pnpm test:e2e:live-voice` 驱动真实构建及具体 Realtime GA adapter，连接本地 WSS；`live-voice-owner.test.mjs` 打包生产 owner 模块并验证其他文件/frame 被拒绝。合成音频不代表物理设备或真实 Provider 验收；命令和结果见 `docs/implementation/live-voice-public-readiness.md`。
+- **规格：** [实时语音](../03-runtime/live-voice.md)。
+
 ### E2E-LIVE-WORK-session-admission
 
 - **前提：** 使用隔离的 Live Provider fixture、本地 AgentHost 会话和确定性意图分类器；候选请求须从现有 Live adapter 回调进入，不使用真实账号或付费端点。

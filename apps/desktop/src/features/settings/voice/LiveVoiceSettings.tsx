@@ -3,10 +3,11 @@ import { useSyncExternalStore } from "react";
 import type { TFunction } from "i18next";
 import type { AppSettings, LiveBinding, LiveVoiceSettings, ProviderPublic } from "@pi-desktop/shared";
 import { OAUTH_AUTH_KIND } from "@pi-desktop/shared";
-import { Badge, Input, SettingsToggle } from "../../../components/ui";
+import { Badge, Button, Input, SettingsToggle } from "../../../components/ui";
 import { SettingsMenuSelect } from "../../../components/settings/SettingsMenuSelect";
 import { SettingsCard, SettingsRow } from "../primitives";
 import { api } from "../../../lib/api";
+import { useAppStore } from "../../../stores/app-store";
 import { getLiveCallController } from "../../voice/live/live-call-controller";
 
 type Adapter = LiveBinding["adapterId"];
@@ -24,6 +25,10 @@ export function LiveVoiceSettings({
   const controller = getLiveCallController();
   const liveSnapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const [providers, setProviders] = useState<ProviderPublic[]>([]);
+  const [providersLoading, setProvidersLoading] = useState(true);
+  const [providersLoadFailed, setProvidersLoadFailed] = useState(false);
+  const [providersRequest, setProvidersRequest] = useState(0);
+  const setSettingsTab = useAppStore((state) => state.setSettingsTab);
   const [saving, setSaving] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, { modelId?: string; voice?: string }>>({});
@@ -35,13 +40,17 @@ export function LiveVoiceSettings({
 
   useEffect(() => {
     let cancelled = false;
+    setProvidersLoading(true);
+    setProvidersLoadFailed(false);
     void api.listProviders().then((result) => {
       if (!cancelled) setProviders(result.providers);
     }).catch(() => {
-      if (!cancelled) setProviders([]);
+      if (!cancelled) setProvidersLoadFailed(true);
+    }).finally(() => {
+      if (!cancelled) setProvidersLoading(false);
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [providersRequest]);
 
   const providerChoices = (adapter: Adapter) => providers.filter((provider) => {
     if (adapter === "codex-live") return provider.vendorKey === "openai-codex" && provider.authKind === OAUTH_AUTH_KIND;
@@ -118,7 +127,7 @@ export function LiveVoiceSettings({
           <SettingsMenuSelect
             value={current?.providerId ?? ""}
             label={t("liveVoice.provider")}
-            disabled={saving || locked}
+            disabled={saving || locked || providersLoading || providersLoadFailed}
             options={[
               { id: "", label: t("liveVoice.chooseProvider") },
               ...choices.map((provider) => ({ id: provider.id, label: providerLabel(provider) })),
@@ -129,6 +138,9 @@ export function LiveVoiceSettings({
             onChange={(providerId) => providerId ? void updateBinding(adapter, { providerId }) : removeBinding(adapter)}
           />
         </SettingsRow>
+        {!providersLoading && !providersLoadFailed && choices.length === 0 ? (
+          <div className="live-voice-hint">{t("liveVoice.noCompatibleProviders")}</div>
+        ) : null}
         {current ? (
           <SettingsRow title={t("liveVoice.useForNextCall")}>
             <SettingsToggle
@@ -146,7 +158,11 @@ export function LiveVoiceSettings({
               value={current ? drafts[current.id]?.modelId ?? ("modelId" in current ? current.modelId : "") : ""}
               disabled={!current || saving || locked}
               maxLength={160}
-              onChange={(event) => current && setDrafts((all) => ({ ...all, [current.id]: { ...all[current.id], modelId: event.currentTarget.value } }))}
+              onChange={(event) => {
+                if (!current) return;
+                const modelId = event.currentTarget.value;
+                setDrafts((all) => ({ ...all, [current.id]: { ...all[current.id], modelId } }));
+              }}
               onBlur={(event) => {
                 if (!current) return;
                 const modelId = event.currentTarget.value.trim();
@@ -162,7 +178,11 @@ export function LiveVoiceSettings({
             value={current ? drafts[current.id]?.voice ?? current.voice : ""}
             disabled={!current || saving || locked}
             maxLength={64}
-            onChange={(event) => current && setDrafts((all) => ({ ...all, [current.id]: { ...all[current.id], voice: event.currentTarget.value } }))}
+            onChange={(event) => {
+              if (!current) return;
+              const voice = event.currentTarget.value;
+              setDrafts((all) => ({ ...all, [current.id]: { ...all[current.id], voice } }));
+            }}
             onBlur={(event) => {
               if (!current) return;
               const voice = event.currentTarget.value.trim();
@@ -201,6 +221,20 @@ export function LiveVoiceSettings({
             onChange={() => void save({ ...live, enabled: !live.enabled })}
           />
         </SettingsRow>
+        {providersLoading ? <div className="live-voice-hint" role="status">{t("common.loading")}</div> : null}
+        {providersLoadFailed ? (
+          <div className="live-voice-error" role="alert">
+            {t("liveVoice.providersLoadFailed")}
+            <Button size="sm" variant="secondary" onClick={() => setProvidersRequest((value) => value + 1)}>
+              {t("errors.action.retry")}
+            </Button>
+          </div>
+        ) : null}
+        <div className="live-voice-actions">
+          <Button size="sm" variant="secondary" onClick={() => setSettingsTab("agent")}>
+            {t("settings.nav.models")}
+          </Button>
+        </div>
         {saveFailed ? <div className="live-voice-error" role="alert">{t("liveVoice.saveFailed")}</div> : null}
       </SettingsCard>
       {renderAdapter("codex-live")}

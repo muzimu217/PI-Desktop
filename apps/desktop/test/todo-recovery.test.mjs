@@ -92,13 +92,14 @@ const snapshot = (sessionId, revision, content = "Recovered work") => ({
 
 test("TodoDock recovers a failed first read when the host returns without a session switch", async (t) => {
   const diagnostics = t.mock.method(console, "error", () => undefined);
+  const recoveryErrors = () => diagnostics.mock.calls.filter(call => call.arguments[0] === "Session checklist recovery failed");
   const h = await harness();
   try {
     assert.equal(h.render("session-a"), "");
     await h.settle();
     assert.deepEqual(h.reads, ["session-a"]);
-    assert.equal(diagnostics.mock.callCount(), 1);
-    assert.match(diagnostics.mock.calls[0].arguments[1].message, /host unavailable/);
+    assert.equal(recoveryErrors().length, 1);
+    assert.match(recoveryErrors()[0].arguments[1].message, /host unavailable/);
     h.setRead(async (id) => snapshot(id, 1));
     h.emit(IPC.event.hostStatus, { ok: true, component: "host" });
     await h.settle();
@@ -179,6 +180,7 @@ test("TodoDock never reads the local host for remote or native sessions", async 
 
 test("TodoDock rejects a mismatched snapshot and ignores pending work after unmount", async (t) => {
   const diagnostics = t.mock.method(console, "error", () => undefined);
+  const recoveryErrors = () => diagnostics.mock.calls.filter(call => call.arguments[0] === "Session checklist recovery failed");
   const h = await harness();
   const pending = [];
   h.setRead(() => new Promise((resolve, reject) => pending.push({ resolve, reject })));
@@ -187,12 +189,12 @@ test("TodoDock rejects a mismatched snapshot and ignores pending work after unmo
     pending[0].resolve(snapshot("different-session", 1));
     await h.settle();
     assert.equal(h.store.getState().sessionTodos["different-session"], undefined);
-    assert.equal(diagnostics.mock.callCount(), 1);
+    assert.equal(recoveryErrors().length, 1);
     h.emit(IPC.event.hostStatus, { ok: true, component: "host", restarted: true });
     h.unmount();
     pending[1].reject(new Error("Disposed read"));
     await h.settle();
-    assert.equal(diagnostics.mock.callCount(), 1);
+    assert.equal(recoveryErrors().length, 1);
     assert.equal(h.listenerCount(IPC.event.hostStatus), 0);
   } finally { await h.close(); }
 });

@@ -126,6 +126,20 @@ stops all local tracks, playback and ports before releasing the lease.
 
 ## Settings and compatibility
 
+Voice is available in both development and packaged builds without developer
+mode. Its Experimental badge remains an availability caveat, not an access
+restriction. Live Voice remains off by default, and enabling the setting does
+not start microphone capture. Composer offers an Open settings action when
+setup or account recovery is needed. Cloud sync and Remote Hosts retain their
+separate development-only gates.
+
+Account-list loading, failure with explicit retry, and an empty compatible
+account list are distinct states. A loading failure never clears saved bindings.
+The settings page links to the existing Model configuration destination for
+account login and management. Call errors distinguish missing authentication,
+account access denial, unsupported protocol, network/rate limits and microphone
+failures without displaying provider response content or credentials.
+
 The Voice settings destination exposes only Live Voice: users can bind an
 existing compatible Provider, choose the next-call binding, and set model, voice
 and Realtime profile. A currently active binding cannot be rewritten while its

@@ -46,12 +46,17 @@ export function createCodexAdapter(context: LiveAdapterContext, deps: {
       }
       if (closed || context.signal.aborted) throw Object.assign(new Error("Live call was cancelled"), { errorCode: "LIVE_STALE_CALL" });
       const url = `${CODEX_LIVE_BASE}/realtime/calls?intent=quicksilver&architecture=avas`;
-      await deps.assertEndpoint(url);
-      requestController = new AbortController();
-      const onAbort = () => requestController?.abort(context.signal.reason);
+      const controller = new AbortController();
+      requestController = controller;
+      const onAbort = () => controller.abort(context.signal.reason);
       context.signal.addEventListener("abort", onAbort, { once: true });
-      const timeout = setTimeout(() => requestController?.abort(new Error("timeout")), 15_000);
+      let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
+        await deps.assertEndpoint(url);
+        if (closed || context.signal.aborted) {
+          throw Object.assign(new Error("Live call was cancelled"), { errorCode: "LIVE_STALE_CALL" });
+        }
+        timeout = setTimeout(() => controller.abort(new Error("timeout")), 15_000);
         const headers = {
           Authorization: `Bearer ${auth.accessToken}`,
           "chatgpt-account-id": auth.accountId,
@@ -65,7 +70,7 @@ export function createCodexAdapter(context: LiveAdapterContext, deps: {
           method: "POST",
           headers,
           body: JSON.stringify(buildCodexCallBody({ sdp: offerSdp, voice: binding.voice, ...(context.workProfile ? { workProfile: context.workProfile } : {}) })),
-          signal: requestController.signal,
+          signal: controller.signal,
           redirect: "manual",
         });
         if (response.status !== 201) {
@@ -85,10 +90,13 @@ export function createCodexAdapter(context: LiveAdapterContext, deps: {
         if (closed || context.signal.aborted) throw Object.assign(new Error("Live call was cancelled"), { errorCode: "LIVE_STALE_CALL" });
         return { answerSdp };
       } catch (error) {
+        if (closed || context.signal.aborted) {
+          throw Object.assign(new Error("Live call was cancelled"), { errorCode: "LIVE_STALE_CALL" });
+        }
         if (error && typeof error === "object" && "errorCode" in error) throw error;
-        if (requestController.signal.aborted) {
+        if (controller.signal.aborted) {
           throw Object.assign(new Error("Codex Live call creation timed out or was cancelled"), {
-            errorCode: context.signal.aborted ? "LIVE_STALE_CALL" : "LIVE_TIMEOUT",
+            errorCode: "LIVE_TIMEOUT",
           });
         }
         throw Object.assign(new Error("Codex Live connection failed"), {
@@ -96,9 +104,9 @@ export function createCodexAdapter(context: LiveAdapterContext, deps: {
           cause: error,
         });
       } finally {
-        clearTimeout(timeout);
+        if (timeout) clearTimeout(timeout);
         context.signal.removeEventListener("abort", onAbort);
-        requestController = null;
+        if (requestController === controller) requestController = null;
       }
     },
     async close() {

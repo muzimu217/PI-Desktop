@@ -4,7 +4,7 @@ import { geminiAudioEndMessage, geminiAudioMessage, geminiSetupMessage, geminiTo
 import type { LiveAdapter, LiveAdapterContext, LiveReceiptDelivery } from "./types";
 import type { LiveWorkFeedback } from "@pi-desktop/shared";
 import { openLiveWebSocket } from "./websocket-transport";
-import { sendJsonBounded, waitForReady, waitForSocketReady, websocketJson } from "./websocket-wire";
+import { sendJsonBounded, sendJsonConfirmed, waitForReady, waitForSocketReady, websocketJson } from "./websocket-wire";
 import { WebSocket } from "ws";
 
 const GEMINI_LIVE_ENDPOINT = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
@@ -19,6 +19,7 @@ export function createGeminiAdapter(context: LiveAdapterContext): LiveAdapter {
   let socket: Awaited<ReturnType<typeof openLiveWebSocket>> | null = null;
   let closed = false;
   let muted = context.signal.aborted;
+  let setupSent = false;
   let readyResolve: (() => void) | null = null;
   let readyReject: ((error: Error) => void) | null = null;
   const completedFunctionCalls = new Set<string>();
@@ -60,7 +61,8 @@ export function createGeminiAdapter(context: LiveAdapterContext): LiveAdapter {
       async (receipt) => {
         const deliveryId = randomUUID();
         try {
-          sendFunctionReceipt({ ...candidate, receipt });
+          if (!socket) throw new Error("Gemini Live socket is not open");
+          await sendJsonConfirmed(socket, geminiToolResponseMessage({ ...candidate, receipt }), context.signal);
           return { status: "sent", deliveryId };
         } catch {
           return { status: "not-sent", deliveryId, code: "LIVE_WORK_FEEDBACK_UNDELIVERED" };
@@ -69,7 +71,12 @@ export function createGeminiAdapter(context: LiveAdapterContext): LiveAdapter {
     ).catch(() => context.onEvent({ kind: "error", code: "LIVE_WORK_INTENT_UNAVAILABLE" }));
   }
 
+  function onSocketFailure(): void {
+    if (!closed && !context.signal.aborted) context.onEvent({ kind: "error", code: "LIVE_NETWORK_ERROR" });
+  }
+
   function onSocketMessage(data: unknown): void {
+    if (closed || context.signal.aborted) return;
     try {
       const value = websocketJson(data, MAX_LIVE_JSON_BYTES);
       const root = value as Record<string, unknown>;
@@ -107,16 +114,21 @@ export function createGeminiAdapter(context: LiveAdapterContext): LiveAdapter {
       const url = new URL(GEMINI_LIVE_ENDPOINT);
       url.searchParams.set("key", apiKey);
       const liveSocket = await openLiveWebSocket({ url: url.toString(), signal: context.signal, endpointOrigin: "third-party" });
+      if (closed || context.signal.aborted) {
+        liveSocket.terminate();
+        throw Object.assign(new Error("Live call was cancelled"), { errorCode: "LIVE_STALE_CALL" });
+      }
       socket = liveSocket;
       liveSocket.on("message", onSocketMessage);
-      liveSocket.once("close", (code) => {
-        if (!closed) context.onEvent({ kind: "error", code: code === 1000 ? "LIVE_NETWORK_ERROR" : "LIVE_NETWORK_ERROR" });
-      });
-      liveSocket.once("error", () => {
-        if (!closed) context.onEvent({ kind: "error", code: "LIVE_NETWORK_ERROR" });
-      });
+      liveSocket.once("close", onSocketFailure);
+      liveSocket.once("error", onSocketFailure);
       await waitForSocketReady(liveSocket, context.signal);
+      if (closed || context.signal.aborted) {
+        liveSocket.terminate();
+        throw Object.assign(new Error("Live call was cancelled"), { errorCode: "LIVE_STALE_CALL" });
+      }
       sendJsonBounded(liveSocket, geminiSetupMessage({ modelId: binding.modelId, voice: binding.voice, ...(context.workProfile ? { workProfile: context.workProfile } : {}) }));
+      setupSent = true;
       await waitForReady(ready, context.signal, 12_000, "Gemini Live setup timed out");
       return {};
     },
@@ -137,7 +149,7 @@ export function createGeminiAdapter(context: LiveAdapterContext): LiveAdapter {
         return { status: "not-sent", deliveryId, code: "LIVE_WORK_FEEDBACK_UNDELIVERED" };
       }
       try {
-        sendJsonBounded(socket, geminiWorkFeedbackMessage(feedback));
+        await sendJsonConfirmed(socket, geminiWorkFeedbackMessage(feedback), context.signal);
         return { status: "sent", deliveryId };
       } catch {
         return { status: "not-sent", deliveryId, code: "LIVE_WORK_FEEDBACK_UNDELIVERED" };
@@ -146,7 +158,10 @@ export function createGeminiAdapter(context: LiveAdapterContext): LiveAdapter {
     async close() {
       if (closed) return;
       closed = true;
-      readyReject?.(new Error("Gemini Live call closed"));
+      if (setupSent) readyReject?.(new Error("Gemini Live call closed"));
+      socket?.off("message", onSocketMessage);
+      socket?.off("close", onSocketFailure);
+      socket?.off("error", onSocketFailure);
       if (socket && socket.readyState !== WebSocket.CLOSED) socket.close(1000, "call ended");
       completedFunctionCalls.clear();
       socket = null;

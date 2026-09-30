@@ -79,7 +79,7 @@ function fakeHost() {
  * test exercises the credential path rather than mocking it away.
  */
 function fakeModels(credentials, { login, models: configuredModels, provider: providerOverride } = {}) {
-  const provider = providerOverride ?? {
+  let provider = providerOverride ?? {
     id: "anthropic",
     name: "Anthropic",
     baseUrl: "https://api.anthropic.com",
@@ -124,13 +124,18 @@ function fakeModels(credentials, { login, models: configuredModels, provider: pr
       maxTokens: 8_192,
     },
   ];
+  provider = { ...provider, getModels: () => models };
   return {
+    setProvider: next => { provider = next; },
     getProviders: () => [provider],
     getProvider: (id) => (id === provider.id ? provider : undefined),
-    refresh: async () => ({ aborted: false, errors: new Map() }),
-    getAvailable: async () => models,
+    refresh: async (options = {}) => {
+      await provider.refreshModels?.({ allowNetwork: options.allowNetwork !== false, signal: options.signal ?? new AbortController().signal, force: options.force, publish: async ({ update }) => { update?.(); return true; } });
+      return { aborted: false, errors: new Map() };
+    },
+    getAvailable: async () => provider.getModels(),
     getModel: (providerId, modelId) => providerId === provider.id
-      ? models.find((model) => model.id === modelId)
+      ? provider.getModels().find((model) => model.id === modelId)
       : undefined,
     login:
       login ??
@@ -170,7 +175,7 @@ function harness(options = {}) {
   let counter = 0;
   const stores = [];
   const oauth = new VendorOAuth({
-    call: host.call,
+    call: (method, params) => options.call ? options.call(method, params, host.call) : host.call(method, params),
     emit: (event) => events.push(event),
     openExternal: async (url) => {
       opened.push(url);
@@ -181,6 +186,8 @@ function harness(options = {}) {
       return fakeModels(store, options);
     },
     modelConfigFor: options.modelConfigFor,
+    onAccountModels: options.onAccountModels,
+    onAccountRemoved: options.onAccountRemoved,
     log: options.log,
     newId: () => `id-${++counter}`,
     fetch:
@@ -338,7 +345,7 @@ test("cancelling takes the half-created row back out", async () => {
 
   await waitFor(events, "cancelled");
   assert.equal(host.providers.size, 0);
-  assert.equal(host.secrets.size, 0);
+  assert.deepEqual([...host.secrets.keys()], ["secret:installation:oauth-device-id"]);
   // The pending prompt is closed out so the dialog cannot hang on it.
   assert.ok(events.some((event) => event.kind === "promptCancelled"));
 });
@@ -526,7 +533,7 @@ test("Meta OAuth removes the provider row when API-key minting reports an expire
     const error = await waitFor(events, "error", 1200);
     assert.match(error.message, /Meta session expired/);
     assert.equal(host.providers.size, 0);
-    assert.equal(host.secrets.size, 0);
+    assert.deepEqual([...host.secrets.keys()], ["secret:installation:oauth-device-id"]);
   } finally {
     globalThis.fetch = previousFetch;
   }
@@ -549,6 +556,7 @@ test("the real pi-ai catalog offers every vendor account we ship", async () => {
       "github-copilot",
       "kimi-coding",
       "meta",
+      "openai",
       "openai-codex",
       "openrouter",
       "radius",
@@ -577,7 +585,7 @@ test("the ChatGPT OAuth catalog includes GPT-6 Astra", async () => {
   assert.equal(model.api, "openai-codex-responses");
 });
 
-test("the pi-ai 0.87.1 OAuth catalogs include the stable model wires", async () => {
+test("the pi-ai 0.99.1 OAuth catalogs include the stable model wires", async () => {
   const { OPENAI_CODEX_MODELS } = await import(
     "@earendil-works/pi-ai/providers/openai-codex.models"
   );
@@ -647,7 +655,7 @@ test("credential writes for one account run one at a time", async () => {
   // pi-ai's locked refresh depends on to avoid double-refreshing a token.
   assert.equal(overlapped, false);
   assert.deepEqual(seen, ["access-for-abc", "rotated-1"]);
-  assert.equal(host.secrets.size, 1);
+  assert.deepEqual([...host.secrets.keys()].sort(), ["secret:installation:oauth-device-id", secretRefForProviderOauth("row-1")].sort());
 });
 
 test("conversation-model filter drops xAI image and video ids", () => {
@@ -793,6 +801,8 @@ async function liveCopilotBinding(sibling, options = {}) {
     },
     models: [sibling],
     modelConfigFor: options.modelConfigFor,
+    onAccountModels: options.onAccountModels,
+    onAccountRemoved: options.onAccountRemoved,
     fetch: async () => new Response(JSON.stringify({
       data: [{ id: modelId, model_picker_enabled: true, policy: { state: "enabled" } }],
     }), { status: 200, headers: { "content-type": "application/json" } }),
@@ -1057,4 +1067,68 @@ test("a failed ChatGPT model list logs the status and a token-free response exce
   const logged = JSON.stringify(logs);
   assert.equal(logged.includes(code), false);
   assert.equal(logged.includes(code.split(".")[1]), false);
+});
+
+test("failed Host deletion keeps the account catalog and credentials usable", async () => {
+  const host = fakeHost();
+  const row = { id: "saved", vendorKey: "anthropic", authKind: "oauth" };
+  host.providers.set(row.id, row);
+  host.secrets.set(secretRefForProviderOauth(row.id), JSON.stringify({
+    type: "oauth", access: "fixture-access", refresh: "fixture-refresh", expires: 4102444800000,
+  }));
+  const removed = [];
+  const oauth = new VendorOAuth({
+    call: async (method, params) => {
+      if (method === "providers.delete") throw new Error("fixture Host deletion failed");
+      return host.call(method, params);
+    },
+    emit: () => {}, openExternal: async () => {},
+    createModels: store => fakeModels(store),
+    onAccountRemoved: id => removed.push(id),
+  });
+  assert.deepEqual(await oauth.resolveAuth(row.id), { apiKey: "fixture-access" });
+  await assert.rejects(oauth.deleteAccount(row.id), /Host deletion failed/);
+  assert.deepEqual(removed, []);
+  assert.deepEqual(await oauth.resolveAuth(row.id), { apiKey: "fixture-access" });
+});
+
+test("an unsigned OAuth account cannot borrow an ambient API key", async (t) => {
+  const previous = process.env.ANTHROPIC_API_KEY;
+  process.env.ANTHROPIC_API_KEY = "fixture-ambient-not-this-account";
+  t.after(() => { if (previous === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = previous; });
+  const host = fakeHost();
+  host.providers.set("unsigned", { id: "unsigned", vendorKey: "anthropic", authKind: "oauth", enabled: true });
+  const oauth = new VendorOAuth({ call: host.call, emit: () => undefined, openExternal: async () => undefined,
+    fetch: async () => { throw new Error("No network expected"); } });
+  await assert.rejects(oauth.resolveAuth("unsigned"), /not signed in/);
+});
+
+test("forced account refresh bypasses the live model TTL", async () => {
+  let models = ["gpt-6-luna"];
+  let attached;
+  const h = harness({ onAccountModels: (_id, collection) => { attached = collection; }, provider: codexProvider(), models: [codexModel("gpt-6-luna"), codexModel("gpt-6.1-sol")],
+    fetch: async () => Response.json({ models: models.map(slug => ({ slug, visibility: "list" })) }) });
+  const { loginId } = await h.oauth.start("openai-codex");
+  const prompt = await waitFor(h.events, "prompt");
+  h.oauth.respond({ loginId, promptId: prompt.request.promptId, value: codexLoginCode() });
+  const done = await waitFor(h.events, "done");
+  models = ["gpt-6.1-sol"];
+  await attached.refresh({ allowNetwork: true, force: true });
+  assert.deepEqual((await h.oauth.listModels(done.providerId)).map(model => model.modelId), ["gpt-6.1-sol"]);
+});
+
+test("failed cleanup after a rejected login preserves the surviving account instance", async () => {
+  const attached = []; const removed = [];
+  const h = harness({ login: async () => { throw new Error("fixture login rejected"); },
+    call: (method, params, call) => { if (method === "providers.delete") throw new Error("fixture delete rejected"); return call(method, params); },
+    onAccountModels: (id, models) => attached.push({ id, models }),
+    onAccountRemoved: id => removed.push(id),
+  });
+  await h.oauth.start("anthropic");
+  await waitFor(h.events, "error");
+  assert.equal(h.host.providers.size, 1);
+  assert.deepEqual(removed, []);
+  const rowId = [...h.host.providers.keys()][0];
+  await h.oauth.listModels(rowId);
+  assert.equal(attached.filter(account => account.id === rowId).length, 1);
 });

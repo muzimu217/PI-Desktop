@@ -41,7 +41,11 @@ validates the tool name and arguments, freezes the call scope, registers a
 bounded operation identity, and returns a short `received / not_started`
 receipt before intent classification or Agent admission. Identical provider
 request IDs are not dispatched twice; changed content under the same ID is
-rejected.
+rejected. WebSocket receipts and work feedback are reported as locally sent
+only after the socket write callback succeeds. Close, cancellation, send error,
+or a one-second write deadline reports undelivered; an undelivered initial
+receipt prevents classification and Host admission. This is not evidence that
+the remote provider processed the message or that a person heard it.
 
 A read-only one-shot classifier uses the selected work session's configured
 model with tools disabled. Its strict output is passed to deterministic

@@ -18,7 +18,7 @@ Live Voice 可以把有界工作请求提交到用户选择的 PI-Desktop 本地
 
 ## 候选请求与路由
 
-每个 Provider 只暴露 `delegate_to_work_session({ instruction })`。Main 校验工具名和参数，冻结通话作用域，登记有界操作身份，并在意图分类或 Agent 受理前返回简短的 `received / not_started` 回执。同一 Provider 请求 ID 不会重复派发；同 ID 的不同内容会被拒绝。
+每个 Provider 只暴露 `delegate_to_work_session({ instruction })`。Main 校验工具名和参数，冻结通话作用域，登记有界操作身份，并在意图分类或 Agent 受理前返回简短的 `received / not_started` 回执。同一 Provider 请求 ID 不会重复派发；同 ID 的不同内容会被拒绝。WebSocket 回执和工作反馈只有在 socket 写入回调成功后才报告为本地已发送；连接关闭、取消、发送错误或超过一秒写入时限均报告未送达。初始回执未送达时，不进行分类或 Host 准入。这不代表远端服务已经处理消息，也不代表用户实际听到内容。
 
 只读的一次性分类器使用所选工作会话的配置模型，且不提供工具。严格校验后的输出进入确定性路由。普通对话和状态查询不会创建回合。只有对观察到的活动回合提出明确约束时才可 steer 该回合。明确独立的任务进入 Host 自有队列。路由含糊、目标回合过期或会话不可用时会失败关闭；steer 失败不会降级为 prompt 或 queue。结果查询读取本次通话最近一个已终态操作，或明确引用的操作，并在不启动新回合的情况下显示其有界摘要。
 

@@ -396,6 +396,7 @@ export function createEventsSlice({
           ...(envelope.parentToolCallId
             ? { parentToolCallId: envelope.parentToolCallId }
             : {}),
+          ...(envelope.nestedParentToolCallId ? { nestedParentToolCallId: envelope.nestedParentToolCallId } : {}),
           ...(envelope.agentName ? { agentName: envelope.agentName } : {}),
         });
       } else if (event.type === "tool_end") {
@@ -544,6 +545,7 @@ export function createEventsSlice({
                 ...(envelope.parentToolCallId
                   ? { parentToolCallId: envelope.parentToolCallId }
                   : {}),
+                ...(envelope.nestedParentToolCallId ? { nestedParentToolCallId: envelope.nestedParentToolCallId } : {}),
                 ...(envelope.agentName ? { agentName: envelope.agentName } : {}),
               },
             ],
@@ -587,6 +589,7 @@ export function createEventsSlice({
               ...(toolStart?.parentToolCallId
                 ? { parentToolCallId: toolStart.parentToolCallId }
                 : {}),
+              ...(toolStart?.nestedParentToolCallId ? { nestedParentToolCallId: toolStart.nestedParentToolCallId } : {}),
               ...(toolStart?.agentName ? { agentName: toolStart.agentName } : {}),
               toolCompletedAt: completedAt,
               toolDurationMs: toolStart

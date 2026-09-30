@@ -109,7 +109,7 @@ test("a custom row on a published host gets that publisher's model metadata", as
 
   const [model] = result.models;
   assert.equal(model.modelId, "glm-5.3", "the wire id is the one the service served");
-  assert.equal(model.catalogSource, "models.dev", "the host identified the publisher");
+  assert.equal(model.catalogSource, "pi", "the host identified the publisher");
   assert.equal(model.contextWindow, 1_000_000);
   assert.equal(model.maxTokens, 131_072);
   for (const capability of ["tools", "reasoning"]) {
@@ -129,7 +129,7 @@ test("a relay's list reads the shipped publisher's record for a known id", async
 
   const byId = new Map(result.models.map((model) => [model.modelId, model]));
   const known = byId.get("claude-sonnet-4-5");
-  assert.equal(known.catalogSource, "models.dev", "several publishers state this id");
+  assert.equal(known.catalogSource, "pi", "several publishers state this id");
   // Anthropic's published window, not a median dragged down by resellers that
   // state a smaller deployment of the same id.
   assert.equal(known.contextWindow, 1_000_000);
@@ -190,13 +190,14 @@ test("a relay enriches unique/official leaves and leaves ambiguous or marker lea
 
   // Unique leaf still enriches.
   const tts = byId.get("mimo-v2.5-tts");
-  assert.equal(tts.catalogSource, "models.dev");
+  assert.equal(tts.source, "bundled");
+  assert.equal(tts.catalogSource, undefined);
   assert.ok(tts.capabilities.includes("audio"));
   assert.equal(tts.contextWindow, 8_192);
 
   // Official Anthropic disambiguation still enriches Claude leaves.
   const claude = byId.get("claude-sonnet-4-5");
-  assert.equal(claude.catalogSource, "models.dev");
+  assert.equal(claude.catalogSource, "pi");
   assert.equal(claude.contextWindow, 1_000_000);
 
   // Marker leaf is not stripped to gemini-2.5-pro.
@@ -214,7 +215,7 @@ test("a relay enriches a uniquely published dated leaf without reseller majority
 
   const [model] = result.models;
   // Accept either enrichment from an exact leaf hit, or generic when ambiguous.
-  if (model.catalogSource === "models.dev") {
+  if (model.catalogSource === "pi") {
     assert.ok(model.contextWindow > 0);
   } else {
     assert.equal(model.catalogSource, undefined);

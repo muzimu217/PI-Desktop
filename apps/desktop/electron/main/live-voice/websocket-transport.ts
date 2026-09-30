@@ -88,10 +88,14 @@ export async function openLiveWebSocket(input: {
   await endpointGuard.assertPublicUrl(input.url.replace(/^wss:/, "https:"), input.endpointOrigin);
   if (input.signal.aborted) throw input.signal.reason;
   const route = await session.defaultSession.resolveProxy(input.url);
+  if (input.signal.aborted) {
+    throw Object.assign(new Error("Live provider connection was cancelled"), { errorCode: "LIVE_STALE_CALL" });
+  }
   const proxy = parseResolvedProxy(route);
   const agent = proxy ? new ProxyTunnelAgent(proxy) : undefined;
 
   try {
+    let cleanupAbort = () => {};
     const connected = await new Promise<WebSocket>((resolve, reject) => {
       const socket = new WebSocket(input.url, {
         ...(agent ? { agent } : {}),
@@ -103,18 +107,18 @@ export async function openLiveWebSocket(input: {
       });
       let settled = false;
       const onAbort = () => {
+        const wasSettled = settled;
+        settled = true;
+        if (!wasSettled) reject(Object.assign(new Error("Live provider connection was cancelled"), { errorCode: "LIVE_STALE_CALL" }));
+        cleanup();
         socket.terminate();
-        if (!settled) {
-          settled = true;
-          reject(input.signal.reason);
-        }
       };
       const cleanup = () => input.signal.removeEventListener("abort", onAbort);
+      cleanupAbort = cleanup;
       input.signal.addEventListener("abort", onAbort, { once: true });
       socket.once("open", () => {
         if (settled) return;
         settled = true;
-        cleanup();
         resolve(socket);
       });
       socket.once("error", (error) => {
@@ -143,9 +147,14 @@ export async function openLiveWebSocket(input: {
         }));
       });
     });
-    connected.once("close", () => agent?.destroy());
+    connected.once("close", () => {
+      cleanupAbort();
+      agent?.destroy();
+    });
     return connected;
   } catch (error) {
+    // Handshake failures normally clean up in their event handlers. This also
+    // covers a constructor failure before those handlers can run.
     agent?.destroy();
     throw error;
   }

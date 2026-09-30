@@ -31,7 +31,30 @@ const composerToolbar = readFileSync(
 );
 
 const identity = (key) => key;
-const experimentalIds = ["voice", "sync", "remoteHosts"];
+const experimentalIds = ["sync", "remoteHosts"];
+
+test("Live Voice is reachable in every build without developer mode", () => {
+  for (const developerMode of [false, true]) {
+    for (const includeDevelopmentOnly of [false, true]) {
+      assert.ok(visibleSettingsNav(developerMode, includeDevelopmentOnly)
+        .some((entry) => entry.id === "voice"));
+      assert.equal(isSettingsDestinationHidden("voice", developerMode, includeDevelopmentOnly), false);
+      for (const query of [
+        "liveVoice.title",
+        "liveVoice.enable",
+        "liveVoice.provider",
+        "liveVoice.adapters.codex-live.title",
+        "liveVoice.adapters.gemini-live.title",
+        "liveVoice.adapters.openai-realtime.title",
+      ]) {
+        assert.ok(searchSettings(query, identity, { developerMode, includeDevelopmentOnly })
+          .some((hit) => hit.tab === "voice"));
+      }
+    }
+  }
+  assert.equal(SETTINGS_NAV.find((entry) => entry.id === "voice")?.experimentalBadgeKey,
+    "settings.voiceExperimental");
+});
 
 test("developer mode retains the experimental destinations in development", () => {
   const off = visibleSettingsNav(false).map((entry) => entry.id);
@@ -52,7 +75,7 @@ test("developer mode retains the experimental destinations in development", () =
   );
 });
 
-test("packaged builds hide voice, cloud sync, and remote hosts", () => {
+test("packaged builds still hide cloud sync and remote hosts", () => {
   const packaged = visibleSettingsNav(true, false).map((entry) => entry.id);
   for (const id of experimentalIds) {
     assert.equal(packaged.includes(id), false);
@@ -71,7 +94,7 @@ test("settings search mirrors developer and packaged visibility", () => {
       .some((hit) => hit.tab === "sync"),
   );
 
-  for (const query of ["liveVoice.enable", "configSync.connectionTitle", "remotehosts"]) {
+  for (const query of ["configSync.connectionTitle", "remotehosts"]) {
     assert.ok(
       searchSettings(query, identity, { developerMode: true })
         .some((hit) => experimentalIds.includes(hit.tab)),

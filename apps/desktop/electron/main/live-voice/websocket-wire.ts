@@ -15,18 +15,60 @@ export function websocketJson(data: unknown, maxBytes = MAX_LIVE_JSON_BYTES): un
   return JSON.parse(text) as unknown;
 }
 
-export function sendJsonBounded(socket: WebSocket, value: unknown): void {
+function boundedJsonBody(socket: WebSocket, value: unknown): string {
   const body = JSON.stringify(value);
   const byteLength = Buffer.byteLength(body, "utf8");
   if (byteLength > MAX_LIVE_JSON_BYTES || socket.bufferedAmount + byteLength > MAX_BUFFERED_JSON_BYTES) {
     throw Object.assign(new Error("Live audio transport queue is full"), { errorCode: "LIVE_AUDIO_BACKPRESSURE" });
   }
-  socket.send(body, (error) => {
+  return body;
+}
+
+export function sendJsonBounded(socket: WebSocket, value: unknown): void {
+  socket.send(boundedJsonBody(socket, value), (error) => {
     if (error) socket.terminate();
   });
 }
 
+/** A receipt is sent only after the local socket write succeeds, not when it is queued. */
+export async function sendJsonConfirmed(socket: WebSocket, value: unknown, signal: AbortSignal): Promise<void> {
+  const body = boundedJsonBody(socket, value);
+  if (socket.readyState !== WebSocket.OPEN || signal.aborted) {
+    throw Object.assign(new Error("Live provider message was not sent"), { errorCode: "LIVE_WORK_FEEDBACK_UNDELIVERED" });
+  }
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const failure = () => Object.assign(new Error("Live provider message was not sent"), { errorCode: "LIVE_WORK_FEEDBACK_UNDELIVERED" });
+    const onFailure = () => finish(failure());
+    const timer = setTimeout(onFailure, 1_000);
+    function finish(error?: Error): void {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.off("close", onFailure);
+      socket.off("error", onFailure);
+      signal.removeEventListener("abort", onFailure);
+      if (error) reject(error);
+      else resolve();
+    }
+    socket.once("close", onFailure);
+    socket.once("error", onFailure);
+    signal.addEventListener("abort", onFailure, { once: true });
+    try {
+      socket.send(body, (error) => {
+        finish(error ? failure() : undefined);
+        if (error) socket.terminate();
+      });
+    } catch {
+      finish(failure());
+    }
+  });
+}
+
 export async function waitForSocketReady(socket: WebSocket, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) {
+    throw Object.assign(new Error("Live provider connection was cancelled"), { errorCode: "LIVE_STALE_CALL" });
+  }
   if (socket.readyState === WebSocket.OPEN) return;
   await new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => finish(Object.assign(new Error("Live provider socket timed out"), { errorCode: "LIVE_TIMEOUT" })), SOCKET_READY_TIMEOUT_MS);

@@ -8,6 +8,30 @@
 
 ## 1. Goals
 
+### E2E-LIVE-VOICE-public-settings-and-reconnect
+
+- **Preconditions:** A built production Renderer and real Electron/Main/Host,
+  isolated data/profile/project, developer mode off, a local TLS Realtime
+  fixture and synthetic microphone. Trust only the fixture CA in the child
+  process; do not disable TLS, sender, sandbox or microphone checks.
+- **Steps:** Open Live from Composer while disabled and follow Open settings.
+  Find Voice through settings search, bind the fixture account, enable Live,
+  connect, unmute, receive audio/captions, mute and hang up. Cancel a delayed
+  startup, disconnect the provider and explicitly reconnect. Restart with the
+  same isolated profile, inspect persisted settings and disable Live.
+- **Expected:** Voice is reachable without developer mode. Enabling settings
+  does not capture audio; the real built Renderer passes the exact main-frame
+  owner check. Only the chosen account is used. Mute stops input, every end
+  closes media/socket resources, and failures never trigger an automatic new
+  call. Settings survive restart without reconnecting. Legacy Dictation
+  settings are unchanged; a voice-only call creates no Agent session.
+- **Coverage:** `pnpm test:e2e:live-voice` drives the built app and its concrete
+  Realtime GA adapter against local WSS; `live-voice-owner.test.mjs` bundles
+  the production owner module and rejects other files/frames. Fixture audio
+  is not physical-device or real-provider acceptance. Commands and results
+  are recorded in `docs/implementation/live-voice-public-readiness.md`.
+- **Specs:** [Live Voice](../03-runtime/live-voice.md).
+
 ### E2E-LIVE-VOICE-provider-call-lifecycle
 
 - **Preconditions:** Isolated desktop profile with Live Voice enabled and one
@@ -3171,6 +3195,20 @@ identify the platform validation still needed.
 - **Acceptance**: G (MCP bridge) + E (tools & permissions) + Security
 - **Status**: Unit-covered (`plugin-mcp.test.mjs` stdio + HTTP stubs); agent-facing scenario Draft
 
+#### E2E-MCP-pi-client-owner-policy: Pi protocol under existing Desktop owners
+
+- **Preconditions**: Pi 0.99.1 with the pinned host-policy patch; offline stdio and
+  HTTP fixtures, no paid provider or user credentials.
+- **Steps**: Run `plugin-mcp.test.mjs`, `user-mcp.test.mjs`,
+  `mcp-stdio-launch.test.mjs`, `mcp-call-registry.test.mjs`, `mcp-oauth.test.mjs`,
+  and `mcp-oauth-discovery.test.mjs` under `apps/desktop/test` using `node --test`.
+- **Expected**: Concurrent discovery starts one process; host launch/env/egress
+  policies remain enforced; Pi delivers progress and structured content; progress
+  cannot extend the total call deadline; cancellation reaches the stdio peer and
+  leaves other calls usable. OAuth uses Pi DCR/PKCE/refresh with host TLS/redirect,
+  scope, callback-state, and encrypted-storage boundaries. No legacy client runs.
+- **Status**: Offline integration-covered; packaged Electron journey NOT RUN.
+
 #### E2E-MCP-CANCEL: Stop interrupts only the calling session's MCP request
 
 - **Preconditions**: Two Agent sessions share one user or plugin MCP server;
@@ -4715,7 +4753,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   runnable with the generic text-only, non-reasoning shape; pi-ai supplies only
   the selected wire adapter, OAuth flow, and account model availability. A
   ChatGPT Plus/Pro or GitHub Copilot account lists `gpt-6-sol`, `gpt-6-luna`,
-  and `grok-4.7` from the pinned pi-ai 0.87.1 catalog; models.dev then
+  and `grok-4.7` from the pinned pi-ai 0.99.1 catalog; the account Pi adapter then
   supplies their published metadata.
 - **Specs linked**: `02-architecture/02-tech-stack.md`,
   `03-runtime/11-provider-model-system.md`,
@@ -15268,11 +15306,11 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 
 #### E2E-MODEL-catalog-window-correction-reaches-saved-bindings
 
-- **Goal**: a models.dev limit correction — the context window or the output cap —
+- **Goal**: a Pi catalog limit correction — the context window or the output cap —
   reaches an already saved binding without deleting and re-adding the model, while
   a number the user entered in Settings is never overwritten.
 - **Steps**:
-  1. Configure a provider, select a model models.dev publishes a `limit.context`
+  1. Configure a provider, select a model Pi publishes a context window
      for, and save. Open the row's Advanced body and read the context-window field
      and its hint.
   2. Serve a corrected catalog record for that model (a different published
@@ -15287,7 +15325,7 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   5. Repeat step 4 with a row whose stored output cap is the generic `8192`, and
      one whose cap the user typed, and read the cap in the settings row and in the
      request a new session launches with.
-- **Expected**: Step 1 shows the published number with the "follows models.dev"
+- **Expected**: Step 1 shows the published number with the "follows the catalog"
   hint. Step 2 shows the corrected number everywhere the effective window is used
   (settings row, context inspector, session launch) with no delete and re-add.
   Step 3 keeps the entered number in the settings row, in the inspector, and in
@@ -16029,3 +16067,35 @@ renderer's durable transcript reads. No real model or provider is contacted.
 - **Acceptance:** Cache-path, migration, and cleanup unit tests pass; Windows task-candidate validation confirms the updater feed transport, installer handoff, and filesystem behavior without a live release feed.
 - **Milestone:** M6+
 - **Status:** Unit and source-contract covered (`update-cache.test.mjs`, `auto-update.test.mjs`); Windows installer/E2E validation remains required.
+
+## E2E-OAUTH-pi-installation-identity-and-standalone-load
+
+- **Preconditions**: Pi 0.99.1; temporary Host secrets and account fixtures;
+  network/browser/callback I/O mocked; no user account or paid service.
+- **Steps**: Run `installation-identity.test.mjs`, `vendor-oauth-login.test.mjs`
+  and `oauth-standalone-bundle.test.mjs` under `apps/desktop/test`.
+- **Expected**: One lazy, persisted UUID per installation; failed persistence
+  never reaches login and is retryable. Multiple same-vendor accounts retain
+  separate credentials. The standalone bundle executes the actual ChatGPT and
+  Meta OAuth flows from outside the repository with empty `NODE_PATH`, including
+  PKCE, callback validation and token conversion. Legacy Codex credentials remain
+  unchanged; account deletion leaves the installation identity and other accounts.
+- **Acceptance**: Offline identity/account/module-loading contracts pass.
+- **Status**: Offline integration covered. Installed Electron artifact loading,
+  Anthropic/Codex/Copilot flow execution and final migration packaging NOT RUN.
+
+## E2E-PI-0991-account-operations-and-usage
+
+- Scope: pi-ai and pi-agent-core; coding-agent design review is reference-only.
+- Offline provider/catalog flows preserve same-vendor account isolation, live
+  entitlement, unavailable-account errors, relay matching and explicit overrides.
+- Native Pi image operation contract tests cover generations/edits, cancellation,
+  downloads, multiple artifacts, text/response IDs and physical usage provenance.
+- Shared/Main/Host tests replay parent, delegate and image records, including late
+  old-turn usage, and assert one ledger entry per physical operation.
+- Production sidecar hosted-search E2E covers seven scenarios with offline
+  providers, delegation and persisted restore. Standalone OAuth tests execute
+  actual login modules outside the repository with mocked external I/O.
+- Installed Electron, real account/paid API and cross-version rollback are
+  separate release qualification. No MCP, Codemode or virtual-router migration
+  is included. See `docs/project/pi-0991-adoption.md` for candidate evidence.

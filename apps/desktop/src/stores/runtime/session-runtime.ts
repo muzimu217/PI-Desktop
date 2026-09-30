@@ -101,6 +101,7 @@ export type SessionRuntime = {
       args: unknown;
       createdAt: string;
       parentToolCallId?: string;
+      nestedParentToolCallId?: string;
       agentName?: string;
     },
   ) => void;
@@ -109,6 +110,7 @@ export type SessionRuntime = {
     args: unknown;
     createdAt: string;
     parentToolCallId?: string;
+    nestedParentToolCallId?: string;
     agentName?: string;
   } | undefined;
   removeToolStart: (toolCallId: string) => void;
@@ -289,6 +291,7 @@ export function createSessionRuntime({ get, set }: StoreAccess): SessionRuntime 
           ...(envelope.parentToolCallId
             ? { parentToolCallId: envelope.parentToolCallId }
             : {}),
+          ...(envelope.nestedParentToolCallId ? { nestedParentToolCallId: envelope.nestedParentToolCallId } : {}),
           ...(envelope.agentName ? { agentName: envelope.agentName } : {}),
         });
         break;

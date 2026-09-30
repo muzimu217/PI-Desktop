@@ -133,6 +133,9 @@ export function createHostRuntime({
             ...(asking?.parentToolCallId
               ? { parentToolCallId: asking.parentToolCallId }
               : {}),
+            ...(asking?.nestedParentToolCallId
+              ? { nestedParentToolCallId: asking.nestedParentToolCallId }
+              : {}),
           },
         },
       };

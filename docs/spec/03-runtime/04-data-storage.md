@@ -1659,3 +1659,15 @@ Hourly rows retain their fields but require explicit calendar confirmation
 when converted. Known intent survives cadence changes and database reopen.
 This additive JSON key needs no table or schema-version migration. Older
 versions ignore the key and cannot enforce the new conversion guard.
+
+## Physical operation usage ledger
+
+Optional operation ID, origin, physical account/model and cost status augment
+existing message/turn usage. `session.recordUsage` merges identities into the
+existing turn `usage_json`; no schema migration or historical rewrite is needed.
+Identified records are idempotent across event replay, outbox retries, tool results
+and parent/subagent rollups. Legacy token-only rows remain readable and additive.
+An unknown price is distinct from a known zero price; partial known costs remain
+on the individual operations. Late usage targets its captured turn and does not
+revive it or debit the currently active turn. Immediate nested parent and owning
+Task remain separate optional transcript/event fields.

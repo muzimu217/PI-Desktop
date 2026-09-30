@@ -135,8 +135,6 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
     labelKey: "liveVoice.title",
     titleKey: "liveVoice.title",
     group: "preferences",
-    developerOnly: true,
-    developmentOnly: true,
     experimentalBadgeKey: "settings.voiceExperimental",
     keywordKeys: [
       "liveVoice.title",
@@ -145,6 +143,9 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "liveVoice.provider",
       "liveVoice.model",
       "liveVoice.voice",
+      "liveVoice.adapters.codex-live.title",
+      "liveVoice.adapters.gemini-live.title",
+      "liveVoice.adapters.openai-realtime.title",
     ],
   },
   {

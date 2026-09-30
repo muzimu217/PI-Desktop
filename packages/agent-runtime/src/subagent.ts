@@ -334,6 +334,7 @@ export class SubagentRun {
             this.provider,
             preflightModel,
             this.opts.sessionId,
+            usage => this.recordUsage(usage),
           ),
         systemPrompt: preflightSystemPrompt,
         tools: preflightTools,
@@ -425,6 +426,11 @@ export class SubagentRun {
     return drop.messages;
   }
 
+  private recordUsage(usage: MessageUsage): void {
+    this.usage = addUsage(this.usage, usage);
+    this.emit({ type: "usage", usage });
+  }
+
   private bindingFor(
     provider: RuntimeProviderConfig,
     thinkingLevel: SubagentThinkingLevel,
@@ -434,6 +440,7 @@ export class SubagentRun {
       thinkingLevel,
       sessionId: this.opts.sessionId,
       maxTokens: this.opts.definition.maxTokens,
+      onUsage: usage => this.recordUsage(usage),
     }, this.retryState);
   }
 
@@ -449,8 +456,6 @@ export class SubagentRun {
     ];
     if (outcome.kind === "compacted") {
       this.contextCompactions += 1;
-      const summaryUsage = usageFromPi(outcome.summaryUsage);
-      this.usage = addUsage(this.usage, summaryUsage);
     } else {
       this.contextDegraded = true;
     }
@@ -477,6 +482,7 @@ export class SubagentRun {
           this.provider,
           this.agent.state.model,
           this.opts.sessionId,
+          usage => this.recordUsage(usage),
         ),
       thinkingLevel: this.agent.state.thinkingLevel,
       signal: signal ?? this.runSignal(),

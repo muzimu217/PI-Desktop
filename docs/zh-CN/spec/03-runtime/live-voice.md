@@ -36,6 +36,10 @@ PCM 采集使用 AudioWorklet，依据实际 `AudioContext.sampleRate` 进行有
 
 ## 设置与兼容性
 
+Voice 在开发构建和打包构建中均向普通用户开放，不再要求开发者模式。实验标记用于提示可用性限制，不是访问门槛。实时语音仍默认关闭，开启设置不会开始采集麦克风。需要配置或恢复账号时，Composer 提供“打开设置”操作。云同步和 Remote Hosts 保留各自的开发构建限制。
+
+账号列表明确区分加载中、可重试的加载失败和无兼容账号。加载失败不会清除已保存的绑定。设置页提供现有模型配置入口，用于登录和管理账号。通话错误区分缺少认证、账号访问被拒、协议不支持、网络/限流及麦克风故障，不显示服务响应内容或凭证。
+
 Voice 设置入口现在只展示实时语音：用户可绑定现有兼容 Provider、选择下次通话使用的绑定，以及设置模型、音色和 Realtime profile。通话进行中，当前绑定不可修改。关闭实时语音会结束通话。Provider 凭证继续由现有 Provider/secret 或 VendorOAuth 系统管理。旧的本地 Dictation 设置和 Composer 入口已隐藏；已有 `voice` 设置值及底层 Dictation 能力保持不变，不会因 UI 调整而删除或改写。旧设置中没有 `liveVoice` 时，会按关闭且无绑定处理。
 
 Live DTO 与 IPC 合同位于 `packages/shared`。纯 wire 解析和 PCM 数学逻辑只从 `@pi-desktop/voice-runtime/live` 导出，不进入旧的本地转写运行时。Electron Main 保持编排角色，不接管凭证或存储所有权。

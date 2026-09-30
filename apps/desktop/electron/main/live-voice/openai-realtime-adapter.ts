@@ -4,7 +4,7 @@ import { LIVE_WORK_TOOL_NAME, MAX_LIVE_AUDIO_BYTES, MAX_LIVE_JSON_BYTES, parseLi
 import type { LiveAdapter, LiveAdapterContext, LivePlaybackCursor, LiveReceiptDelivery } from "./types";
 import type { LiveWorkFeedback } from "@pi-desktop/shared";
 import { openLiveWebSocket } from "./websocket-transport";
-import { sendJsonBounded, waitForReady, waitForSocketReady, websocketJson } from "./websocket-wire";
+import { sendJsonBounded, sendJsonConfirmed, waitForReady, waitForSocketReady, websocketJson } from "./websocket-wire";
 import { WebSocket } from "ws";
 
 const MAX_FRAME_BYTES = 24000 * 2 / 10;
@@ -88,7 +88,8 @@ export function createOpenAIRealtimeAdapter(context: LiveAdapterContext): LiveAd
       async (receipt) => {
         const deliveryId = randomUUID();
         try {
-          sendToolReceipt({ providerRequestId: candidate.providerRequestId, receipt, resume: false });
+          if (!socket) throw new Error("Realtime socket is not open");
+          await sendJsonConfirmed(socket, realtimeToolReceiptMessage({ providerRequestId: candidate.providerRequestId, receipt }), context.signal);
           return { status: "sent", deliveryId };
         } catch {
           return { status: "not-sent", deliveryId, code: "LIVE_WORK_FEEDBACK_UNDELIVERED" };
@@ -97,7 +98,12 @@ export function createOpenAIRealtimeAdapter(context: LiveAdapterContext): LiveAd
     ).catch(() => context.onEvent({ kind: "error", code: "LIVE_WORK_INTENT_UNAVAILABLE" }));
   }
 
+  function onSocketFailure(): void {
+    if (!closed) context.onEvent({ kind: "error", code: "LIVE_NETWORK_ERROR" });
+  }
+
   function onSocketMessage(data: unknown): void {
+    if (closed || context.signal.aborted) return;
     try {
       const value = websocketJson(data, MAX_LIVE_JSON_BYTES);
       const event = value as Record<string, unknown>;
@@ -170,8 +176,8 @@ export function createOpenAIRealtimeAdapter(context: LiveAdapterContext): LiveAd
       const liveSocket = await openLiveWebSocket({ url, headers: { Authorization: `Bearer ${apiKey}`, ...(binding.wireProfile === "realtime-compat-v1" ? { "OpenAI-Beta": "realtime=v1" } : {}) }, signal: context.signal, endpointOrigin: "user" });
       socket = liveSocket;
       liveSocket.on("message", onSocketMessage);
-      liveSocket.once("close", () => { if (!closed) context.onEvent({ kind: "error", code: "LIVE_NETWORK_ERROR" }); });
-      liveSocket.once("error", () => { if (!closed) context.onEvent({ kind: "error", code: "LIVE_NETWORK_ERROR" }); });
+      liveSocket.once("close", onSocketFailure);
+      liveSocket.once("error", onSocketFailure);
       await waitForSocketReady(liveSocket, context.signal);
       await waitForReady(created, context.signal, 12_000, "Realtime session creation timed out");
       await waitForReady(updated, context.signal, 12_000, "Realtime session update timed out");
@@ -202,7 +208,7 @@ export function createOpenAIRealtimeAdapter(context: LiveAdapterContext): LiveAd
         return { status: "not-sent", deliveryId, code: "LIVE_WORK_FEEDBACK_UNDELIVERED" };
       }
       try {
-        for (const message of realtimeWorkFeedbackMessages(feedback)) sendJsonBounded(socket, message);
+        for (const message of realtimeWorkFeedbackMessages(feedback)) await sendJsonConfirmed(socket, message, context.signal);
         return { status: "sent", deliveryId };
       } catch {
         return { status: "not-sent", deliveryId, code: "LIVE_WORK_FEEDBACK_UNDELIVERED" };
@@ -215,6 +221,9 @@ export function createOpenAIRealtimeAdapter(context: LiveAdapterContext): LiveAd
       updatedReject?.(new Error("Realtime call closed"));
       responseTracker.clear();
       settledFunctionCalls.clear();
+      socket?.off("message", onSocketMessage);
+      socket?.off("close", onSocketFailure);
+      socket?.off("error", onSocketFailure);
       if (socket && socket.readyState !== WebSocket.CLOSED) socket.close(1000, "call ended");
       socket = null;
     },

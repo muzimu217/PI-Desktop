@@ -718,7 +718,11 @@ export class LiveWorkCoordinator {
           controller.signal.addEventListener("abort", onAbort, { once: true });
         });
         void Promise.race([lookupPromise, timedOut, aborted]).then((lookup) => {
-          if (call.closed || controller.signal.aborted || lookup === null) return;
+          if (call.closed || controller.signal.aborted) return;
+          if (lookup === null) {
+            schedule(attempt + 1);
+            return;
+          }
           if (lookup.kind === "queued") {
             call.ledger.update(providerRequestId, { admission: "accepted", execution: "queued", queueEntryId: lookup.queueEntryId });
             this.publish(call, providerRequestId, "Work was found in the Host queue.");

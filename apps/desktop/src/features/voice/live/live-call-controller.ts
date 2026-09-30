@@ -21,6 +21,7 @@ export type LiveVoiceSnapshot = {
   call: LiveCallView | null;
   transcripts: LiveTranscriptSegment[];
   starting: boolean;
+  stopping: boolean;
   errorCode?: string;
 };
 
@@ -29,6 +30,7 @@ const EMPTY_SNAPSHOT: LiveVoiceSnapshot = {
   call: null,
   transcripts: [],
   starting: false,
+  stopping: false,
 };
 const MAX_TRANSCRIPTS = 40;
 const ICE_GATHER_TIMEOUT_MS = 10_000;
@@ -50,7 +52,12 @@ type StartResources = {
   playbackActive?: boolean;
   heartbeat?: ReturnType<typeof setInterval>;
   captureEpoch: number;
-  releasePromise?: Promise<void>;
+  releasePromise?: Promise<boolean>;
+  releaseReportPromise?: Promise<void>;
+  localReleaseSettled?: boolean;
+  mainTerminationSettled?: boolean;
+  releaseAckSettled?: boolean;
+  releaseFailed?: boolean;
   abort: AbortController;
   completedControlActions?: Set<string>;
 };
@@ -106,7 +113,11 @@ export class LiveCallController {
   }
 
   async start(options: { workTarget?: { workSessionId: string; contextEnabled: boolean } } = {}): Promise<void> {
-    if (this.snapshot.starting || isLive(this.snapshot.call?.phase)) return;
+    if (this.snapshot.starting || this.snapshot.stopping || isLive(this.snapshot.call?.phase)) return;
+    if (this.snapshot.call?.error?.code === "LIVE_MEDIA_RELEASE_UNCONFIRMED" || this.snapshot.errorCode === "LIVE_MEDIA_RELEASE_UNCONFIRMED") {
+      this.patch({ errorCode: "LIVE_MEDIA_RELEASE_UNCONFIRMED" });
+      throw liveError("LIVE_MEDIA_RELEASE_UNCONFIRMED");
+    }
     const generation = ++this.generation;
     const cachedStatus = this.snapshot.status;
     if (!cachedStatus?.enabled) throw liveError("LIVE_DISABLED");
@@ -117,7 +128,7 @@ export class LiveCallController {
     const requestId = crypto.randomUUID();
     const resources: StartResources = { requestId, abort: new AbortController(), captureEpoch: 0, completedControlActions: new Set() };
     this.resources.set(requestId, resources);
-    this.patch({ starting: true, errorCode: undefined, transcripts: [] });
+    this.patch({ starting: true, stopping: false, errorCode: undefined, transcripts: [] });
 
     let prepareRequest: ReturnType<typeof liveVoiceApi.prepare> | undefined;
     let micRequest: Promise<MediaStream> | undefined;
@@ -197,15 +208,29 @@ export class LiveCallController {
       }, 5_000);
     } catch (error) {
       void micRequest?.then((stream) => stopStream(stream)).catch(() => undefined);
-      if (resources.callId) {
-        await liveVoiceApi.end({ callId: resources.callId, reason: resources.abort.signal.aborted ? "user-cancelled-start" : "network-error" }).catch(() => undefined);
-      } else {
-        await liveVoiceApi.end({ requestId, reason: "user-cancelled-start" }).catch(() => undefined);
+      try {
+        if (resources.callId) {
+          await liveVoiceApi.end({ callId: resources.callId, reason: resources.abort.signal.aborted ? "user-cancelled-start" : "network-error" });
+        } else {
+          await liveVoiceApi.end({ requestId, reason: "user-cancelled-start" });
+          resources.mainTerminationSettled = true;
+        }
+      } catch (endError) {
+        this.patch({ errorCode: errorCode(endError) });
       }
       await this.releaseResources(resources, Boolean(resources.callId));
-      this.resources.delete(requestId);
-      if (resources.callId) this.resources.delete(resources.callId);
-      this.patch({ starting: false, call: null, errorCode: errorCode(error) });
+      const currentCall = this.snapshot.call;
+      const terminalCall = currentCall?.phase === "ended" || currentCall?.phase === "failed";
+      const preserveCall = terminalCall && (!resources.callId || resources.callId === currentCall.callId);
+      const cancelled = resources.abort.signal.aborted && (generation !== this.generation || this.snapshot.stopping);
+      this.patch({
+        starting: false,
+        ...(preserveCall ? {} : { call: null }),
+        ...(!cancelled
+          ? { errorCode: resources.releaseFailed ? "LIVE_MEDIA_RELEASE_UNCONFIRMED" : currentCall?.error?.code ?? errorCode(error) }
+          : resources.releaseFailed ? { errorCode: "LIVE_MEDIA_RELEASE_UNCONFIRMED" } : {}),
+      });
+      this.completeResourceLifecycle(resources);
       throw error;
     } finally {
       if (this.snapshot.starting && generation === this.generation && !resources.callId) this.patch({ starting: false });
@@ -217,16 +242,24 @@ export class LiveCallController {
     if (!resource) return;
     this.generation += 1;
     resource.abort.abort();
-    if (resource.callId) await liveVoiceApi.end({ callId: resource.callId, reason: "user-cancelled-start" }).catch(() => undefined);
-    else await liveVoiceApi.end({ requestId: resource.requestId, reason: "user-cancelled-start" }).catch(() => undefined);
+    this.patch({ starting: false, stopping: true });
+    try {
+      if (resource.callId) await liveVoiceApi.end({ callId: resource.callId, reason: "user-cancelled-start" });
+      else {
+        await liveVoiceApi.end({ requestId: resource.requestId, reason: "user-cancelled-start" });
+        resource.mainTerminationSettled = true;
+        resource.releaseAckSettled = true;
+      }
+    } catch (error) {
+      this.patch({ errorCode: errorCode(error) });
+    }
     await this.releaseResources(resource, Boolean(resource.callId));
-    this.resources.delete(resource.requestId);
-    this.patch({ starting: false });
+    this.completeResourceLifecycle(resource);
   }
 
   async toggleMute(): Promise<void> {
     const call = this.snapshot.call;
-    if (!call || call.phase !== "connected") return;
+    if (this.snapshot.stopping || !call || call.phase !== "connected") return;
     const resources = this.resources.get(call.callId);
     if (!resources) return;
     const muted = !call.muted;
@@ -247,7 +280,7 @@ export class LiveCallController {
 
   async resumePlayback(): Promise<void> {
     const call = this.snapshot.call;
-    if (!call) return;
+    if (this.snapshot.stopping || !call) return;
     const resources = this.resources.get(call.callId);
     if (!resources) return;
     try {
@@ -255,6 +288,9 @@ export class LiveCallController {
       await resources.pcm?.resumePlayback();
       await resources.audio?.play();
       await liveVoiceApi.reportMedia({ callId: call.callId, kind: "playback-blocked", blocked: false });
+      if (this.snapshot.errorCode === "LIVE_PLAYBACK_FAILED" || this.snapshot.errorCode === "LIVE_PLAYBACK_BLOCKED") {
+        this.patch({ errorCode: undefined });
+      }
     } catch (error) {
       this.patch({ errorCode: errorCode(error) });
     }
@@ -263,7 +299,25 @@ export class LiveCallController {
   async end(): Promise<void> {
     const call = this.snapshot.call;
     if (!call) return this.cancelStart();
-    await liveVoiceApi.end({ callId: call.callId, reason: "user-ended" }).catch((error) => this.patch({ errorCode: errorCode(error) }));
+    const resources = this.resources.get(call.callId);
+    this.patch({ stopping: true });
+    try {
+      await liveVoiceApi.end({ callId: call.callId, reason: "user-ended" });
+      const latest = this.snapshot.call;
+      if (resources && latest?.callId === call.callId && (latest.phase === "ended" || latest.phase === "failed")) {
+        resources.mainTerminationSettled = true;
+        if (!resources.releaseReportPromise) resources.releaseAckSettled = true;
+        this.completeResourceLifecycle(resources);
+      } else if (!resources && latest?.callId === call.callId && (latest.phase === "ended" || latest.phase === "failed")) {
+        this.patch({ stopping: false });
+      }
+    } catch (error) {
+      const latest = this.snapshot.call;
+      const awaitingRelease = resources
+        ? !resources.localReleaseSettled || !resources.mainTerminationSettled || Boolean(resources.callId && !resources.releaseAckSettled)
+        : latest?.callId === call.callId && latest.phase === "closing";
+      this.patch({ errorCode: errorCode(error), stopping: awaitingRelease });
+    }
   }
 
   private async connectWebRtc(callId: string, resources: StartResources): Promise<void> {
@@ -468,26 +522,31 @@ export class LiveCallController {
     if (this.terminalCallIds.has(view.callId)) return;
     const current = this.snapshot.call;
     if (current?.callId === view.callId && view.revision < current.revision) return;
-    const resources = this.resources.get(view.callId) ?? (this.snapshot.starting && view.phase === "preparing"
+    const resources = this.resources.get(view.callId) ?? (view.phase === "preparing"
       ? [...this.resources.values()].find((item) => !item.callId)
       : undefined);
     if (resources && !resources.callId) {
       resources.callId = view.callId;
       this.resources.set(view.callId, resources);
     }
-    this.patch({ call: view });
-    if (resources && (view.phase === "ended" || view.phase === "failed")) {
-      this.terminalCallIds.add(view.callId);
-      while (this.terminalCallIds.size > 16) this.terminalCallIds.delete(this.terminalCallIds.values().next().value as string);
-      void this.releaseResources(resources, true).finally(() => {
-        this.resources.delete(resources.requestId);
-        this.resources.delete(view.callId);
-        this.patch({ starting: false });
-      });
-    } else if (view.phase === "ended" || view.phase === "failed") {
-      this.terminalCallIds.add(view.callId);
-      while (this.terminalCallIds.size > 16) this.terminalCallIds.delete(this.terminalCallIds.values().next().value as string);
+    if (view.phase === "closing") {
+      this.patch({ call: view, stopping: true });
+      return;
     }
+    if (view.phase === "ended" || view.phase === "failed") {
+      this.terminalCallIds.add(view.callId);
+      while (this.terminalCallIds.size > 16) this.terminalCallIds.delete(this.terminalCallIds.values().next().value as string);
+      if (resources) {
+        resources.mainTerminationSettled = true;
+        if (!resources.releaseReportPromise) resources.releaseAckSettled = true;
+        this.patch({ call: view, stopping: !resources.localReleaseSettled || !resources.releaseAckSettled });
+        void this.releaseResources(resources, view.mediaRelease === "pending").then(() => this.completeResourceLifecycle(resources));
+      } else {
+        this.patch({ call: view, starting: false, stopping: false });
+      }
+      return;
+    }
+    this.patch({ call: view });
   }
 
   private handleControl(event: LiveControlEvent): void {
@@ -608,30 +667,74 @@ export class LiveCallController {
     await liveVoiceApi.end({ callId, reason: "network-error" }).catch(() => undefined);
   }
 
-  private async releaseResources(resources: StartResources, notifyMain: boolean): Promise<void> {
-    if (resources.releasePromise) return resources.releasePromise;
-    resources.releasePromise = this.releaseResourcesOnce(resources, notifyMain);
-    return resources.releasePromise;
+  private releaseResources(resources: StartResources, notifyMain: boolean): Promise<void> {
+    if (!resources.releasePromise) {
+      resources.releasePromise = this.releaseResourcesOnce(resources).then((released) => {
+        resources.localReleaseSettled = true;
+        if (!released) {
+          resources.releaseFailed = true;
+          this.patch({ errorCode: "LIVE_MEDIA_RELEASE_UNCONFIRMED" });
+        }
+        this.completeResourceLifecycle(resources);
+        return released;
+      });
+    }
+    if (notifyMain && resources.callId && !resources.releaseReportPromise) {
+      resources.releaseReportPromise = resources.releasePromise.then(async (released) => {
+        if (!released) {
+          resources.releaseAckSettled = true;
+          this.completeResourceLifecycle(resources);
+          return;
+        }
+        try {
+          await liveVoiceApi.reportMedia({ callId: resources.callId!, kind: "released" });
+        } catch {
+          resources.releaseFailed = true;
+          this.patch({ errorCode: "LIVE_MEDIA_RELEASE_UNCONFIRMED" });
+        } finally {
+          resources.releaseAckSettled = true;
+          this.completeResourceLifecycle(resources);
+        }
+      });
+    }
+    return resources.releaseReportPromise ?? resources.releasePromise.then(() => undefined);
   }
 
-  private async releaseResourcesOnce(resources: StartResources, notifyMain: boolean): Promise<void> {
+  private async releaseResourcesOnce(resources: StartResources): Promise<boolean> {
+    let released = true;
+    const cleanup = (action: () => void) => {
+      try { action(); } catch { released = false; }
+    };
+    const cleanupAsync = async (action: () => Promise<unknown> | undefined) => {
+      try { await action(); } catch { released = false; }
+    };
     if (resources.heartbeat) clearInterval(resources.heartbeat);
     resources.abort.abort();
-    this.stopPlaybackMonitor(resources);
-    resources.stream && stopStream(resources.stream);
-    resources.channel?.close();
-    resources.peer?.close();
-    if (resources.audio) {
-      resources.audio.pause();
-      resources.audio.srcObject = null;
-      resources.audio.remove();
+    cleanup(() => this.stopPlaybackMonitor(resources));
+    if (resources.stream) cleanup(() => stopStream(resources.stream!));
+    if (resources.channel) cleanup(() => resources.channel!.close());
+    if (resources.peer) cleanup(() => resources.peer!.close());
+    if (resources.audio) cleanup(() => {
+      resources.audio!.pause();
+      resources.audio!.srcObject = null;
+      resources.audio!.remove();
+    });
+    if (resources.pcm) await cleanupAsync(() => resources.pcm?.release());
+    if (!resources.pcm && resources.context && resources.context.state !== "closed") {
+      await cleanupAsync(() => resources.context?.close());
     }
-    await resources.pcm?.release().catch(() => undefined);
-    if (!resources.pcm && resources.context && resources.context.state !== "closed") await resources.context.close().catch(() => undefined);
-    if (notifyMain && resources.callId) {
-      await liveVoiceApi.reportMedia({ callId: resources.callId, kind: "released" }).catch(() => undefined);
+    if (resources.port && resources.pcm === undefined) cleanup(() => resources.port!.close());
+    return released;
+  }
+
+  private completeResourceLifecycle(resources: StartResources): void {
+    if (!resources.localReleaseSettled || !resources.mainTerminationSettled) return;
+    if (resources.callId && !resources.releaseAckSettled) return;
+    if (!resources.callId || this.snapshot.call?.callId === resources.callId) {
+      this.patch({ starting: false, stopping: false });
     }
-    if (resources.port && resources.pcm === undefined) resources.port.close();
+    this.resources.delete(resources.requestId);
+    if (resources.callId) this.resources.delete(resources.callId);
   }
 
   private readonly handlePageHide = (): void => {

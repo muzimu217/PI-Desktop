@@ -48,6 +48,51 @@ suspend/lock, provider change, disable and app quit stop media and close the
 adapter. If renderer media release is not confirmed, Main quarantines the
 microphone lease instead of reusing it blindly.
 
+## Interaction states
+
+Live Voice uses four presentation states without changing the call protocol or
+persisted settings:
+
+1. **Disabled:** no Live Voice or Live Work icon appears in the Composer. The
+   only enablement entry is Settings → Voice, subject to its existing developer
+   mode and development-build gates. Enabling the feature does not start a call.
+2. **Enabled and idle:** one Live Voice icon opens a compact preparation surface.
+   Opening, closing, or expanding it never invokes prepare, requests microphone
+   access, creates media resources, or contacts a voice provider. It identifies
+   the exact selected binding and its readiness reason; another ready binding
+   does not make an unavailable selected binding usable. Start is explicit and
+   starts muted. Optional work access is collapsed initially and requires its
+   own opt-in plus a valid local target; expanding it is not authorization.
+3. **Call in progress:** a stable global compact bar shows startup with Cancel,
+   connected state with mute/unmute, End and Details, and stopping with an
+   explicit Ending state. It is mounted in persistent AppShell chrome outside
+   the visibility-gated chat and Composer subtree, so in-app navigation cannot
+   hide the call controls.
+   Playback blocking and errors, including playback-resume failure, are visible
+   directly in the bar instead of requiring Details. Non-terminal action or
+   missing-work-binding warnings do not falsely say the call has stopped.
+4. **Details open:** an explicitly opened secondary surface contains the
+   transient transcript, provider identity, and any scoped work actions and
+   results. Startup and connection never open it automatically. Close, outside
+   press and Escape dismiss only this surface, not the call, and return focus
+   to an available trigger. The compact bar remains the call-control surface.
+
+Cancel, End, feature disable, and automatic termination retain the stopping bar
+until both Main termination and renderer media cleanup have settled. A Main
+terminal event alone is not proof that local media has been released. An
+unconfirmed release remains an observable error, suppresses another Start
+until the app is restarted, and stays visible because Main has quarantined the
+microphone lease. Hiding or dismissing the UI cannot clear that quarantine.
+Turning the feature off removes idle entry points, not pending cleanup
+visibility. In-app page/session navigation is distinct from renderer
+navigation or loss, which keeps its existing termination policy.
+
+The configurable Live Voice toggle shortcut deliberately starts a voice-only
+call directly from idle and ends an active call, preserving the existing
+shortcut contract. It does not inherit a preparation surface's work choice.
+The startup-cancel shortcut (Escape by default) cancels startup only if an open
+popup has not consumed that key. Escape never ends a connected call.
+
 ## Calls and media
 
 The call state is `preparing → acquiring-mic → negotiating/connecting →
@@ -70,8 +115,8 @@ PCM capture uses an AudioWorklet with the actual `AudioContext.sampleRate`, a
 stateful anti-aliasing resampler and bounded 20 ms worklet frames. PCM output is
 queued in a separate playback path with per-item played cursors; interruption
 advances a playback epoch and drops stale queued audio. If browser playback is
-blocked, the call panel offers a user gesture to resume it. Input never loops
-back to local speakers.
+blocked, the compact call bar offers a user gesture to resume it and reports
+resume failure there. Input never loops back to local speakers.
 
 Mute, barge-in and end are distinct actions. Mute gates only new input and
 keeps provider output available. Codex uses its provider-native full-duplex

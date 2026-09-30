@@ -406,13 +406,17 @@ sidecar 请求
 这类行的模型发现读取已登录账户自己的模型列表；连接测试仍通过解析认证来证明
 账户。请求失败，或返回的不是模型列表时，才回退到 pi-ai（`models.getAvailable`，
 含厂商自己的 `filterModels`）。各厂商打自己的接口：ChatGPT Plus/Pro
-（`openai-codex`）是 `GET {base}/codex/models`，因此 `gpt-6-luna` 这类账户
-已经提供、pin 里还没有的 id 也能出现；普通 `{ data: [...] }` 不当成 Codex
-列表。Copilot 是带 IDE 身份头和 `X-GitHub-Api-Version` 的 `GET {base}/models`，
+（`openai-codex`）是 `GET {base}/codex/models?client_version=…`，因此
+`gpt-6-luna` 这类账户已经提供、pin 里还没有的 id 也能出现；该接口要求
+`client_version`，并隐藏最低 Codex 客户端版本更高的模型，所以取值是固定的
+Codex CLI 版本（`CODEX_MODELS_CLIENT_VERSION`），账户模型缺失时调高；普通
+`{ data: [...] }` 不当成 Codex 列表。Copilot 是带 IDE 身份头和 `X-GitHub-Api-Version` 的 `GET {base}/models`，
 只保留 `model_picker_enabled === true` 且未被策略禁用的 id，pin 不认识的 id
 只有在其家族已经对应唯一线路 API 时才加入。Anthropic 用 OAuth 身份头请求
 `GET {base}/v1/models`。Kimi、Meta、xAI、OpenRouter 请求 `GET {base}/models`
 （Kimi 走 Anthropic 风格的 `/v1`）。Radius 继续用网关目录刷新，不再另打一遍。
+账户请求失败时，日志记录 HTTP 状态码和一小段单行的响应内容摘要，其中去掉了
+请求自身的凭据和任何形似令牌的值，便于从提供商日志诊断上游契约变化。
 图像、视频、语音和嵌入模型会被丢掉。models.dev 不认识的 id 只从同档位的 pin
 兄弟继承限额，xAI 按 `grok-4.7`、`grok-4.6`、`grok-4.5`、`grok-4.3` 的固定新到旧顺序，
 不按 pin 顺序。models.dev 不能把账户列表里没有的 id 加进去。一个厂商可以

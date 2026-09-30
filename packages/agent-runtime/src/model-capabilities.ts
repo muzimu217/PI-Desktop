@@ -83,6 +83,12 @@ export function modelConfigWithBinding(
       >
     | null,
 ): ModelConfig {
+  // A live-only account model may already carry explicit sibling capabilities.
+  // Preserve those until a stored user binding overrides them; only a truly
+  // unclassified generic row needs the unrestricted defaults below.
+  if (!binding && (model.supportedThinkingLevels?.length || model.thinkingLevelMap)) {
+    return model;
+  }
   // A generic discovery row carries no trusted capability restriction. Keep
   // all levels selectable unless the user stored a non-empty override.
   // This is an effective runtime policy, not published catalog metadata.

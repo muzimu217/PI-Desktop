@@ -30,6 +30,7 @@ import {
 import { ComposerAutocomplete } from "./ComposerAutocomplete";
 import { AskToolCard } from "./AskToolCard";
 import { PlanApprovalBar } from "./PlanApprovalBar";
+import { TodoDock } from "./TodoDock";
 import {
   COMPOSER_MAX_VISIBLE_ROWS,
   COMPOSER_MIN_HEIGHT_PX,
@@ -510,6 +511,7 @@ export function Composer({
       data-composer-dock={variant}
     >
       <div className="composer-stack">
+        {activeSessionId ? <TodoDock sessionId={activeSessionId} /> : null}
         {planCheckpoint?.status === "pending" ? (
           <PlanApprovalBar proposal={planCheckpoint} />
         ) : null}
@@ -579,6 +581,8 @@ export function Composer({
               setComposing(false);
               draft.updateCursor(editorSelectionRange(event.currentTarget).start);
             }}
+            // A dropped compositionend must not freeze the menu forever (#929).
+            onSettledInput={() => draft.setComposing(false)}
             onFocus={() => setInputFocused(true)}
             onBlur={() => {
               setInputFocused(false);

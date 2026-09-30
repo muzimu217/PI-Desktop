@@ -121,7 +121,7 @@ export function ComposerToolbar({
             <IconPlus size={15} aria-hidden="true" />
           </TooltipButton>
         </div>
-        <LiveVoiceControls t={t} workSessionId={workSessionId} workSessionLabel={workSessionLabel} />
+        <LiveVoiceControls t={t} workSessionId={workSessionId} />
         <TooltipButton
           type="button"
           className="icon-btn mode-chip composer-mode-chip"

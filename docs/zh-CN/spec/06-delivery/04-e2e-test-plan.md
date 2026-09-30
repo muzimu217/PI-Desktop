@@ -65,6 +65,53 @@
 - 定义代码 pull request 的相关 E2E 合入门。
 - 让验证证据与准备合入的可执行提交保持关联。
 
+### E2E-LIVE-VOICE-four-stage-ui
+
+- **标题：** 已禁用、准备、紧凑通话栏和主动打开的详情。
+- **前提：** 使用隔离的开发构建 Electron 配置，开启开发者模式，Live Voice
+  初始为禁用状态，并使用确定性的本地服务商/媒体 fixture 和本地工作会话
+  fixture。不使用真实账号、麦克风、扬声器、付费端点或用户正在运行的 Desktop。
+- **步骤：**
+  1. 确认禁用时 Composer 中既没有 Live Voice 图标，也没有 Work 图标。仅从
+     「设置 → 语音」启用 Live Voice，并确认空闲时恰好显示一个语音图标。
+  2. 打开准备界面，展开并折叠工作选项，但不开始通话。确认没有准备请求、
+     麦克风获取、媒体初始化、服务商连接或工作派发。让选中的绑定不可用，
+     同时保持另一个绑定就绪：界面显示确切的选中身份和原因、禁用开始操作，
+     且不会隐式切换服务商。
+  3. 绑定就绪后，明确开始并观察紧凑栏显示「连接中」和「取消」，确认不会
+     自动打开详情。在准备或媒体获取仍未完成时取消，再送达延迟的完成事件。
+     再次开始并连接，确认默认静音，然后取消静音/静音并检查状态。
+  4. 打开详情，检查转录、服务商和工作状态，然后分别通过关闭、点击外部和
+     Escape 关闭详情。通话保持连接；通过通话栏恢复暂停的声音，观察恢复失败，
+     再明确重试并恢复。
+  5. 在聊天、设置、插件和会话间导航。在 Main 延迟终止和 Renderer 延迟清理的
+     情况下结束通话或禁用功能，并分别测试两种清理完成顺序。在两者完成前，
+     始终显示「结束中」，且不允许再次开始。模拟释放未确认，确认阻止状态可见。
+  6. 重新打开准备界面，确认工作授权和上下文确认均未勾选。仅展开区域或选择
+     会话不会开始通话；未授权工作时开始只启用语音。明确授权工作请求、选择
+     有效的本地目标并开始；在详情中检查固定绑定和工作结果。结束后重新打开
+     准备界面，再分别变更/创建目标、取消工作授权或取消通话，并确认上下文
+     确认被重置。结束 Live 不会停止已受理的工作。
+  7. 使用已配置的切换快捷键直接开始纯语音通话并结束。启动期间，如果弹窗
+     消费了 Escape，则它只会关闭弹窗，不会取消启动；没有弹窗消费时，启动取消
+     快捷键才生效。Escape 不会结束已连接的通话。用英文和简体中文分别检查
+     可见控件，并确认所有已发布语言目录都齐全。
+- **预期：** 四种明确的界面状态、主动启动和工作授权、确切绑定的就绪状态、
+  默认静音、全局清理状态可见、控件无障碍属性和焦点返回正确，且 IPC、持久化或
+  权限边界没有变化。恢复播放和错误处理不需要打开详情。
+- **规格：** [Live Voice](../03-runtime/live-voice.md)、
+  [Live Work](../03-runtime/live-work-session.md)、
+  [组件规格](../04-ux/08-component-spec.md#1171-live-voice-准备-紧凑通话栏和详情)、
+  [设置 IA](../04-ux/06-settings-ia.md#voice-experimental)。
+- **验收：** C / E / Security / Quality。
+- **里程碑：** MVP 后实验性交互维护。
+- **覆盖：** 定向控制器/展示回归测试和 `pnpm test:e2e:live-voice-interaction`
+  覆盖已挂载的生产控件、控制器、store、快捷键、i18n、清理顺序、工作授权，
+  以及使用模拟 shell 导航和伪造外部边界的错误恢复。该测试不会挂载完整的
+  AppShell/设置/插件路由，也不会实际使用服务商、设备、权限提示或音频输出。
+- **状态：** 请求候选 fixture 的 48/48 项交互检查通过。完整 AppShell、真实服务商
+  和设备兼容性尚未验证。
+
 ## 2. 非目标
 
 - 完全由UI驱动的自动化覆盖；协议和源合同自动化是
@@ -5443,15 +5490,22 @@ eleven-tool-round desktop paths are verified by
   确认来源仍为 Responses 和原别名，副本保存了 Anthropic Messages 与新
   别名。未测试携带凭据的网络发现、外部模型请求及 OpenCode Go UI 分支。
 
+**E2E-CHAT-session-todo-checklist：TodoWrite 到按会话显示的 TodoDock**
+
+- **前提：** 隔离的本地 Electron 配置、确定性的 Agent/Host fixture、两个 Desktop 会话，不使用真实 Provider 或付费 API。
+- **步骤：** 启动调用 `TodoWrite` 的多步骤 Agent 回合，观察 Composer 上方的 TodoDock，展开后切换会话并确认清单隔离。完成和取消条目，确认最多显示八条以及全部取消状态；清空清单后重载/重启 Host。发送乱序旧 `todos.changed` 事件，确认它不能覆盖新快照；再覆盖非法参数、Plan/Goal、委托和远程会话路径。
+- **预期：** Host SQLite 是权威状态；每次成功全量替换（包括清空）都会推进 revision 并只发出一次已提交的 `todos.changed`。非法或未授权写入既不修改也不发事件。TodoDock 渲染纯文本、不抢焦点、切换会话时收起、拒绝旧事件，并对 `remote:` 会话跳过本地恢复，因为 RACP v1 没有 Todo 快照操作。
+- **链接规格：** `03-runtime/03-tools-and-permissions.md`、`03-runtime/04-data-storage.md`、`03-runtime/06-host-rpc-protocol.md`、`04-ux/08-component-spec.md`、ADR 0312。
+- **验收：** C / E / F / Quality / Security。
+- **里程碑：** M6+。
+- **自动化：** `pnpm test:e2e:todos` 从生产 Agent 的 ToolSearch/TodoWrite 路径进入，使用生产渲染器、真实 Host/SQLite 和隔离 Electron 配置验证清单旅程；仅替换外部模型流和 preload 传输，不使用真实 Provider 或用户配置。覆盖 Unicode 截断及警告重放、单一活动项归一化、首次读取失败后不切换会话的主机恢复、已缓存快照重新同步及旧事件拒绝。运行时 `runtime-todos.test.ts` 使用确定性 Provider 验证 Agent 工具校验、超长内容归一化和续跑。
+- **状态：** 构建 Desktop 和 Host 后，在确切的请求候选中执行。Host-core 和渲染器定向测试是辅助检查，不能替代 Electron 用户旅程。
+
 ## 8. 可追溯性矩阵
-
-
-
-
-
-
 | 验收 | 应用场景 |
 |---|---|
+| C / E / F / Quality / Security — Session Todo checklist | E2E-CHAT-session-todo-checklist |
+| C / E / Security / Quality — Live Voice 四阶段交互 | E2E-LIVE-VOICE-four-stage-ui |
 | C / F — Hourly task updates | E2E-SCHEDULED-manual-to-hourly |
 | C / F / Quality — Saved project isolation | E2E-SCHEDULED-manual-workspace-binding |
 | C / F / Quality — 桌面定时任务 | E2E-SCHEDULED-desktop-automation-lifecycle |
@@ -5521,6 +5575,7 @@ eleven-tool-round desktop paths are verified by
 
 | 里程碑 | 应用场景 |
 |---|---|
+| MVP 后实验性交互维护 | E2E-LIVE-VOICE-four-stage-ui |
 | M1 | E2E-001、E2E-002、E2E-003、E2E-028、E2E-029 |
 | M2 | E2E-004、E2E-005、E2E-006、E2E-007、E2E-008、E2E-008d、E2E-009、E2E-010、E2E-011、E2E-011a、E2E-011b、E2E-020、E2E-021、E2E-027、E2E-031、 E2E-036、E2E-037、E2E-042、E2E-087、E2E-088、E2E-088b、E2E-089、E2E-090、E2E-144、E2E-005J、E2E-201 |
 | M3 | E2E-012、E2E-013、E2E-014、E2E-015、E2E-016、E2E-017、E2E-018、E2E-019、E2E-040 |

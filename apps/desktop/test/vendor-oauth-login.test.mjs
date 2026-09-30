@@ -2,6 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  capabilitiesFromModelConfig,
+  clampThinkingLevel,
+  genericModelConfig,
+  modelConfigWithBinding,
+} from "@pi-desktop/agent-runtime";
+import {
+  buildProviderModel,
+  createProviderModels,
+} from "../../../packages/agent-runtime/dist/provider-binding.js";
+
+import {
   VendorOAuth,
   apiStyleForWireApi,
   isXaiConversationModel,
@@ -170,6 +181,7 @@ function harness(options = {}) {
       return fakeModels(store, options);
     },
     modelConfigFor: options.modelConfigFor,
+    log: options.log,
     newId: () => `id-${++counter}`,
     fetch:
       options.fetch ??
@@ -767,5 +779,282 @@ test("a new Grok inherits grok-4.6 even when an older Grok is first in the pin",
   const binding = await oauth.bindingFor(done.providerId, "grok-4.7");
   assert.equal(binding.modelConfig.contextWindow, 500_000);
   assert.equal(binding.modelConfig.maxTokens, 500_000);
-  assert.deepEqual(binding.supportedThinkingLevels, ["low", "medium", "high", "xhigh"]);
+  assert.deepEqual(binding.supportedThinkingLevels, ["minimal", "low", "medium", "high", "xhigh"]);
+});
+
+async function liveCopilotBinding(sibling, options = {}) {
+  const modelId = options.modelId ?? "claude-sonnet-99";
+  const { events, oauth } = harness({
+    provider: {
+      id: "github-copilot",
+      name: "GitHub Copilot",
+      baseUrl: "https://api.individual.githubcopilot.com",
+      auth: { oauth: { name: "GitHub Copilot", loginLabel: "Sign in" } },
+    },
+    models: [sibling],
+    modelConfigFor: options.modelConfigFor,
+    fetch: async () => new Response(JSON.stringify({
+      data: [{ id: modelId, model_picker_enabled: true, policy: { state: "enabled" } }],
+    }), { status: 200, headers: { "content-type": "application/json" } }),
+  });
+  const { loginId } = await oauth.start("github-copilot");
+  const prompt = await waitFor(events, "prompt");
+  oauth.respond({ loginId, promptId: prompt.request.promptId, value: "test-code" });
+  const done = await waitFor(events, "done");
+  const binding = await oauth.bindingFor(done.providerId, modelId);
+  assert.ok(binding, "the account's newly offered model must be runnable");
+  return binding;
+}
+
+const adaptiveSonnet = {
+  id: "claude-sonnet-5",
+  name: "Claude Sonnet 5",
+  api: "anthropic-messages",
+  provider: "github-copilot",
+  baseUrl: "https://api.individual.githubcopilot.com",
+  reasoning: true,
+  input: ["text", "image"],
+  contextWindow: 1_000_000,
+  maxTokens: 128_000,
+  cost: { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
+  compat: { forceAdaptiveThinking: true },
+  thinkingLevelMap: {
+    off: null,
+    minimal: null,
+    low: "low",
+    medium: "medium",
+    high: "high",
+    xhigh: "xhigh",
+    max: "max",
+  },
+};
+
+test("a live-only Claude model retains its sibling's thinking protocol and effort mapping", async () => {
+  const binding = await liveCopilotBinding(adaptiveSonnet);
+  assert.equal(binding.apiStyle, "anthropic_messages");
+  assert.equal(binding.modelConfig.name, "claude-sonnet-99");
+  assert.equal(binding.modelConfig.compat?.forceAdaptiveThinking, true);
+  assert.deepEqual(binding.modelConfig.thinkingLevelMap, adaptiveSonnet.thinkingLevelMap);
+  assert.equal(binding.modelConfig.contextWindow, 1_000_000);
+  assert.equal(binding.modelConfig.maxTokens, 128_000);
+});
+
+test("live-only reasoning models preserve default levels in sparse effort maps", async () => {
+  const binding = await liveCopilotBinding({
+    ...adaptiveSonnet,
+    thinkingLevelMap: { xhigh: "xhigh", max: "max" },
+  });
+  assert.deepEqual(binding.supportedThinkingLevels, [
+    "off", "minimal", "low", "medium", "high", "xhigh", "max",
+  ]);
+  assert.equal(clampThinkingLevel(binding, "high"), "high");
+});
+
+test("live-only models respect null-disabled levels and non-reasoning siblings", async () => {
+  const restricted = await liveCopilotBinding({
+    ...adaptiveSonnet,
+    thinkingLevelMap: { off: null, minimal: null, low: null, medium: null, high: null, xhigh: "xhigh", max: null },
+  });
+  assert.deepEqual(restricted.supportedThinkingLevels, ["xhigh"]);
+  const nonReasoning = await liveCopilotBinding({ ...adaptiveSonnet, reasoning: false });
+  assert.equal(nonReasoning.supportsReasoning, false);
+  assert.deepEqual(nonReasoning.supportedThinkingLevels, ["off"]);
+});
+
+test("a live-only model without a same-tier sibling keeps generic capabilities", async () => {
+  const binding = await liveCopilotBinding(adaptiveSonnet, { modelId: "claude-haiku-99" });
+  assert.equal(binding.supportsReasoning, false);
+  assert.deepEqual(binding.supportedThinkingLevels, ["off"]);
+  assert.equal(binding.modelConfig.compat, undefined);
+  assert.equal(binding.modelConfig.thinkingLevelMap, undefined);
+});
+
+test("published model metadata takes precedence over the pinned sibling", async () => {
+  const published = {
+    ...genericModelConfig("claude-sonnet-99"),
+    source: "models.dev",
+    reasoning: true,
+    supportedThinkingLevels: ["low", "high"],
+    thinkingLevelMap: { low: "low", high: "high" },
+    thinkingProtocol: "legacy",
+  };
+  const binding = await liveCopilotBinding(adaptiveSonnet, { modelConfigFor: async () => published });
+  assert.deepEqual(binding.modelConfig, published);
+  assert.deepEqual(binding.supportedThinkingLevels, ["low", "high"]);
+});
+
+test("an explicit effort map on generic metadata governs the fallback's supported levels", async () => {
+  const config = {
+    ...genericModelConfig("claude-sonnet-99"),
+    thinkingLevelMap: { off: null, minimal: null, low: null, medium: null, high: "high", xhigh: null, max: null },
+    compat: { forceAdaptiveThinking: false },
+  };
+  const binding = await liveCopilotBinding(adaptiveSonnet, { modelConfigFor: async () => config });
+  assert.equal(binding.modelConfig.compat.forceAdaptiveThinking, false);
+  assert.deepEqual(binding.modelConfig.thinkingLevelMap, config.thinkingLevelMap);
+  assert.deepEqual(binding.supportedThinkingLevels, ["high"]);
+});
+
+test("live-only Claude bindings send adaptive thinking with the requested wire effort", async () => {
+  const binding = await liveCopilotBinding({
+    ...adaptiveSonnet,
+    thinkingLevelMap: { off: null, minimal: null, xhigh: "xhigh", max: "max" },
+  });
+  const modelConfig = modelConfigWithBinding(binding.modelConfig);
+  const provider = {
+    ...binding,
+    modelConfig,
+    ...capabilitiesFromModelConfig(modelConfig),
+    id: "test-account-row",
+    name: "GitHub Copilot",
+    vendorKey: "github-copilot",
+    modelId: "claude-sonnet-99",
+    authKind: "oauth",
+    apiKey: "",
+    resolveAuth: async () => ({ apiKey: "test-copilot-access-token" }),
+  };
+  const model = buildProviderModel(provider);
+  const models = createProviderModels(provider, model);
+  for (const level of ["high", "xhigh", "max"]) {
+    let request;
+    const result = await models.streamSimple(model, {
+      messages: [{ role: "user", content: "fixture", timestamp: 1 }],
+    }, {
+      reasoning: clampThinkingLevel(provider, level),
+      maxRetries: 0,
+      fetch: async (input, init) => {
+        request = new Request(input, init);
+        return Response.json({ type: "error", error: { type: "invalid_request_error", message: "fixture response" } }, { status: 400 });
+      },
+    }).result();
+    assert.equal(result.stopReason, "error");
+    assert.ok(request, "the real adapter must reach the HTTP boundary");
+    const body = await request.json();
+    assert.equal(body.model, "claude-sonnet-99");
+    assert.equal(body.thinking.type, "adaptive");
+    assert.equal(body.output_config.effort, level);
+    assert.equal("budget_tokens" in body.thinking, false);
+    assert.equal(request.headers.get("Authorization"), "Bearer test-copilot-access-token");
+    assert.equal(request.headers.get("x-api-key"), null);
+  }
+});
+
+test("legacy thinking siblings are not implicitly promoted to adaptive", async () => {
+  const binding = await liveCopilotBinding({
+    ...adaptiveSonnet,
+    id: "claude-sonnet-4.5",
+    compat: undefined,
+    thinkingLevelMap: undefined,
+  });
+  assert.notEqual(binding.modelConfig.compat?.forceAdaptiveThinking, true);
+  assert.equal(binding.modelConfig.thinkingLevelMap, undefined);
+  assert.deepEqual(binding.supportedThinkingLevels, ["off", "minimal", "low", "medium", "high"]);
+});
+
+test("live-only thinking restrictions survive runtime launch without a saved model binding", async () => {
+  const disabled = { off: null, minimal: null, low: null, medium: null, high: null, xhigh: null, max: null };
+  for (const [sibling, expected] of [
+    [{ ...adaptiveSonnet, thinkingLevelMap: { ...disabled, high: "high" } }, { supportsReasoning: true, supportedThinkingLevels: ["high"] }],
+    [{ ...adaptiveSonnet, reasoning: false, thinkingLevelMap: undefined }, { supportsReasoning: false, supportedThinkingLevels: ["off"] }],
+    [{ ...adaptiveSonnet, thinkingLevelMap: disabled }, { supportsReasoning: false, supportedThinkingLevels: ["off"] }],
+  ]) {
+    const binding = await liveCopilotBinding(sibling);
+    const effective = modelConfigWithBinding(binding.modelConfig);
+    assert.deepEqual(capabilitiesFromModelConfig(effective), expected);
+    assert.deepEqual(effective.thinkingLevelMap, sibling.thinkingLevelMap);
+  }
+});
+
+function codexProvider() {
+  return {
+    id: "openai-codex",
+    name: "ChatGPT",
+    baseUrl: "https://chatgpt.com/backend-api",
+    auth: { oauth: { name: "ChatGPT Plus/Pro", isSubscription: true, loginLabel: "Sign in" } },
+  };
+}
+
+function codexModel(id) {
+  return {
+    id,
+    name: id,
+    api: "openai-codex-responses",
+    provider: "openai-codex",
+    baseUrl: "https://chatgpt.com/backend-api",
+    input: ["text"],
+    reasoning: true,
+    thinkingLevelMap: { off: null, low: "low", medium: "medium", high: "high" },
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 272_000,
+    maxTokens: 128_000,
+  };
+}
+
+/** A pasted code that makes `access-for-<code>` a ChatGPT-shaped JWT. */
+function codexLoginCode() {
+  const payload = Buffer.from(JSON.stringify({
+    "https://api.openai.com/auth": { chatgpt_account_id: "acct_123" },
+  })).toString("base64url");
+  return `h.${payload}.sig`;
+}
+
+test("a ChatGPT account lists the models /codex/models returns for its client version", async () => {
+  const seen = [];
+  // The live endpoint rejects a request without client_version.
+  const fetchModels = async (input) => {
+    const url = new URL(String(input));
+    seen.push(url);
+    if (!url.searchParams.get("client_version")) {
+      return new Response(JSON.stringify({
+        detail: [{ loc: ["query", "client_version"], msg: "Field required" }],
+      }), { status: 400 });
+    }
+    return new Response(JSON.stringify({
+      models: [{ slug: "gpt-6-luna", visibility: "list" }, { slug: "gpt-6.1-sol", visibility: "list" }],
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  const { host, events, oauth } = harness({
+    fetch: fetchModels,
+    provider: codexProvider(),
+    models: [codexModel("gpt-6-luna")],
+  });
+  const { loginId } = await oauth.start("openai-codex");
+  const prompt = await waitFor(events, "prompt");
+  oauth.respond({ loginId, promptId: prompt.request.promptId, value: codexLoginCode() });
+  const done = await waitFor(events, "done");
+  const row = host.providers.get(done.providerId);
+  assert.deepEqual(row.models.map((model) => model.id), ["gpt-6-luna", "gpt-6.1-sol"]);
+  assert.equal(seen[0].pathname, "/backend-api/codex/models");
+  const binding = await oauth.bindingFor(done.providerId, "gpt-6.1-sol");
+  assert.equal(binding.baseUrl, "https://chatgpt.com/backend-api");
+});
+
+test("a failed ChatGPT model list logs the status and a token-free response excerpt", async () => {
+  const logs = [];
+  const code = codexLoginCode();
+  const fetchModels = async () => new Response(JSON.stringify({
+    detail: [{ loc: ["query", "client_version"], msg: "Field required" }],
+    echoed: `access-for-${code}`,
+  }), { status: 400 });
+  const { host, events, oauth } = harness({
+    fetch: fetchModels,
+    log: (level, message, data) => logs.push({ level, message, data }),
+    provider: codexProvider(),
+    models: [codexModel("gpt-6-luna")],
+  });
+  const { loginId } = await oauth.start("openai-codex");
+  const prompt = await waitFor(events, "prompt");
+  oauth.respond({ loginId, promptId: prompt.request.promptId, value: code });
+  const done = await waitFor(events, "done");
+  // pi-ai's pinned list is still the fallback.
+  assert.deepEqual(host.providers.get(done.providerId).models.map((model) => model.id), ["gpt-6-luna"]);
+  const failed = logs.find((entry) => entry.message === "vendor account model list failed");
+  assert.ok(failed, `no model list failure log; saw ${logs.map((entry) => entry.message).join(", ")}`);
+  assert.equal(failed.level, "warn");
+  assert.equal(failed.data.vendorId, "openai-codex");
+  assert.equal(failed.data.status, 400);
+  assert.match(failed.data.responseExcerpt, /client_version/);
+  const logged = JSON.stringify(logs);
+  assert.equal(logged.includes(code), false);
+  assert.equal(logged.includes(code.split(".")[1]), false);
 });

@@ -1350,7 +1350,10 @@ Project drag/drop follows these patterns:
 - All autocomplete key handling sits behind the standard guard
   (`isComposing || keyCode === 229`).
 - During active composition the trigger detector neither opens, updates,
-  nor closes the menu; state re-evaluates on `compositionend`.
+  nor closes the menu; state re-evaluates on `compositionend`. An input event
+  that is not part of a composition also ends the composition, so an IME that
+  drops `compositionend` (a Windows Chinese IME deleting its composing text)
+  cannot leave the menu frozen until the composer unmounts (#929).
 - Enter that confirms an IME candidate never sends and never accepts a menu
   item; ↑/↓ during candidate navigation belong to the IME.
 

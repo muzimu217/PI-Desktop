@@ -1043,7 +1043,9 @@ Mode/provider/model/permission/shell 配置和新提示仍然存在
 - 所有自动完成按键处理均位于标准防护装置后面
   （`isComposing || keyCode === 229`）。
 - 在主动合成期间，触发检测器既不打开、更新，
-  也不关闭菜单；状态重新评估 `compositionend`。
+  也不关闭菜单；状态重新评估 `compositionend`。不属于合成中的输入事件同样
+  表示合成已结束，因此当 IME 丢失 `compositionend`（Windows 中文输入法删除
+  正在合成的文本）时，菜单不会被永久冻结到组件卸载为止（#929）。
 - 输入确认 IME 候选者从不发送且从不接受菜单
   项目；候选导航期间的 ↑/↓ 属于 IME。
 

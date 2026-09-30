@@ -97,6 +97,6 @@ test("settings routes, global search, and composer use build visibility", () => 
   assert.match(searchDialog, /includeDevelopmentOnly: import\.meta\.env\.DEV/);
   assert.match(composer, /useVoiceInput/);
   assert.doesNotMatch(composer, /VoiceOverlay|voiceEnabled/);
-  assert.match(composerToolbar, /<LiveVoiceControls t=\{t\} workSessionId=\{workSessionId\} workSessionLabel=\{workSessionLabel\} \/>/);
+  assert.match(composerToolbar, /<LiveVoiceControls\b/);
   assert.doesNotMatch(composerToolbar, /VoiceMicButton|voicePhase|onVoiceToggle|onVoiceCancel/);
 });

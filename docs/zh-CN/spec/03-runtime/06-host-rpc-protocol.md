@@ -349,6 +349,20 @@ ids 和非负 `tokensBefore`；它不会插入 message/search 行
 工具值会清理主机保留键。每个插件每 60 秒最多 10 次单条导入、5 次批量导入和
 20 次删除。P2/P3 方法不在协议 v11 中。
 
+**会话 Todo 清单**
+- `todos.get({ sessionId })` 返回活动 Desktop 会话已提交的完整清单快照：
+  `{ sessionId, todos, revision, updatedAt }`。未知或软删除会话返回 `NOT_FOUND`；
+  原生 Pi 会话和空 id 返回 `INVALID_ARGUMENT`。
+- `tools.execute` 的 `toolName: "TodoWrite"` 只接受 `{ todos }`，并替换整个有序清单。
+  主机会裁剪内容、将 priority 默认设为 `medium`，把超长 Unicode 内容限制在 500 个字符并
+  返回警告，把后续 `in_progress` 降级为 `pending`，并拒绝超过 50 项或格式错误的值。
+  所属 session 和运行中的 turn 来自可信传输字段，不来自工具参数。
+- TodoWrite 只允许 Agent 会话自己的运行 turn。Plan/Goal、委托、插件和 MCP 调用会返回工具错误，
+  不会修改存储。成功替换即使 `todos` 为空也会推进 revision，并且只在事务提交后发出
+  `todos.changed`；事件负载与 `todos.get` 返回的完整快照一致。
+- SQLite 只由 host-core 拥有。渲染器通过 Electron Main IPC 接收快照，按 session id 保存并忽略
+  更旧或相同 revision。远程 RACP 会话在这条垂直切片中保持 local-only，因为 RACP v1 尚无 Todo 快照操作。
+
 ### Plan 和 Goal 状态和批准
 
 两种合约类型共享这些方法；可选的 `kind`

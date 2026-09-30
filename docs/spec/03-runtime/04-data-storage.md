@@ -717,6 +717,32 @@ CREATE UNIQUE INDEX idx_turn_queue_idempotency
   until a controller attaches, and drains one entry after the active turn's
   terminal event. Deleting the session cascades to its entries.
 
+**Session Todo checklist — schema v21**
+
+```sql
+CREATE TABLE session_todo (
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL CHECK (position >= 0 AND position < 50),
+  content TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'in_progress', 'completed', 'cancelled')),
+  priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('high', 'medium', 'low')),
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (session_id, position)
+);
+```
+
+`sessions.todo_revision` and `sessions.todo_updated_at` retain ordering metadata
+even when the checklist is empty. A host transaction updates those fields,
+deletes the prior rows, and inserts the normalized replacement. The revision
+advances for every successful write, including a clear. A unique partial
+`in_progress` index enforces the single active item invariant at the database
+boundary. Forks begin with revision zero and no rows; session deletion cascades
+the rows.
+
+The row content is bounded at 500 Unicode scalar values, contains no NUL, and
+is trimmed before storage. TodoWrite is the only writer; renderer and sidecar
+code access this state through host RPC.
+
 ### 4.6c session collaboration ledger — Host-owned delivery state (schema v16)
 
 ```sql

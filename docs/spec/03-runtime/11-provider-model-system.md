@@ -219,9 +219,11 @@ PI-Desktop must not permanently restrict users to a short fixed model list.
    `last_updated`, `modalities.input/output`, `open_weights`,
    `limit.context/input/output`, `cost`, `interleaved`, `status`,
    `experimental`, and `provider` into the shared model surfaces.
-5. pi-ai remains only the request/OAuth implementation layer. Its bundled model
-   catalog and model capability functions are not read for names, limits,
-   pricing, modalities, reasoning, or other model configuration.
+5. pi-ai remains the request/OAuth implementation layer; published model
+   configuration comes from models.dev, not pi-ai's bundled catalog. The
+   bounded exception is the live-only OAuth same-tier fallback in §8a, which
+   borrows an existing adapter contract and interprets its effort mapping with
+   pi-ai's capability helper until published metadata becomes available.
 6. Input and output modality arrays retain `text`, `image`, `audio`, `video`,
    and `pdf`. The text agent picker exposes models that can handle text while
    preserving all raw records in the file for future surfaces. Image input is
@@ -497,10 +499,13 @@ and the connection test still proves the account by resolving auth. pi-ai
 when the account request fails or the payload is not a model list. The probe
 is the endpoint that vendor actually publishes:
 
-- ChatGPT Plus/Pro (`openai-codex`): `GET {base}/codex/models`, with the
-  account id taken from the access token. A `{ data: [...] }` payload is not
-  accepted. A newly published id such as `gpt-6-luna` is selectable without a
-  client update when that response includes it.
+- ChatGPT Plus/Pro (`openai-codex`): `GET {base}/codex/models?client_version=…`,
+  with the account id taken from the access token. The endpoint requires
+  `client_version` and hides models whose minimum Codex client is newer, so
+  the value is a pinned Codex CLI version (`CODEX_MODELS_CLIENT_VERSION`) that
+  is bumped when an account model goes missing. A `{ data: [...] }` payload is
+  not accepted. A newly published id such as `gpt-6-luna` is selectable
+  without a client update when that response includes it.
 - GitHub Copilot: `GET {base}/models` with the pinned IDE identity headers and
   `X-GitHub-Api-Version`. Only ids with `model_picker_enabled === true` (and
   not policy-disabled) are kept. An id the pin does not know is added only when
@@ -511,13 +516,30 @@ is the endpoint that vendor actually publishes:
   for Kimi). xAI still drops image and video generators.
 - Radius keeps its gateway catalog refresh and is not probed again.
 
+A failed account request logs the HTTP status and a short, single-line
+excerpt of the response body with the request's credentials and any
+token-shaped value removed, so an upstream contract change is diagnosable
+from the provider log.
+
 Image, video, speech and embedding ids are dropped. A model models.dev does
-not know yet inherits limits from a pinned sibling of the same tier; xAI uses
-an explicit newest-first sibling (`grok-4.7`, then `grok-4.6`, then
-`grok-4.5`, then `grok-4.3`) so pin order cannot select an older Grok. A different tier is not
-used. models.dev still cannot add an id the account list did not return. A
-vendor may span wire APIs — Copilot serves Anthropic, Chat Completions and
-Responses models — so the row's `apiStyle` follows the selected model.
+not know yet inherits limits, reasoning, adapter compatibility, and the wire
+effort mapping from a pinned sibling of the same tier; xAI uses an explicit
+newest-first sibling (`grok-4.7`, then `grok-4.6`, then `grok-4.5`, then
+`grok-4.3`) so pin order cannot select an older Grok. A different tier is not
+used. Existing model metadata takes precedence over borrowed compatibility and
+effort mappings. Supported thinking levels follow pi-ai's mapping contract:
+missing entries retain adapter defaults, `null` disables a level, and `xhigh`
+or `max` requires an explicit mapping. Non-reasoning siblings remain off-only.
+Without a stored user binding, runtime configuration preserves these inferred
+restrictions instead of reopening every generic thinking level. An all-disabled
+effort map remains non-reasoning. Truly unclassified generic models and explicit
+user overrides retain their existing effective-thinking policy.
+The same effective mapping determines both the supported levels and wire
+effort, so a sparse map cannot silently promote `high` to `xhigh` or lose the
+adaptive protocol. Published models.dev records bypass this fallback entirely.
+models.dev still cannot add an id the account list did not return. A vendor
+may span wire APIs — Copilot serves Anthropic, Chat Completions and Responses
+models — so the row's `apiStyle` follows the selected model.
 Deleting a row calls the normal host `providers.delete` path, which removes its
 OAuth secret and metadata; it never logs out or deletes another row with the
 same vendor key.

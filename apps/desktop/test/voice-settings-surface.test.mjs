@@ -85,6 +85,6 @@ test("Composer keeps Live Voice and no longer mounts local Dictation controls", 
 
   assert.match(composer, /useVoiceInput/);
   assert.doesNotMatch(composer, /VoiceOverlay|voiceEnabled/);
-  assert.match(toolbar, /<LiveVoiceControls t=\{t\} workSessionId=\{workSessionId\} workSessionLabel=\{workSessionLabel\} \/>/);
+  assert.match(toolbar, /<LiveVoiceControls\b/);
   assert.doesNotMatch(toolbar, /VoiceMicButton|voicePhase|onVoiceToggle|onVoiceCancel/);
 });

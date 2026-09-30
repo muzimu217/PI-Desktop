@@ -169,6 +169,7 @@ test("renderer and Main complete a Codex Live user path without invoking an Agen
 
     await controller.end();
     assert.equal(controller.getSnapshot().call.phase, "ended");
+    assert.equal(controller.getSnapshot().stopping, false);
     assert.equal(tracks[0].stopped, true);
     assert.equal(sentViews.at(-1).phase, "ended");
     assert.equal(controller.getSnapshot().transcripts.length, 1);

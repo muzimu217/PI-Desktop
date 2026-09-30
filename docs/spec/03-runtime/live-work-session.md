@@ -14,17 +14,25 @@ subagent work under the session's current model and permission policy.
 ## Scope and authorization
 
 - A call without a `workTarget` remains a voice-only call.
-- Enabling work access is an explicit renderer action. Main resolves the
-  selected local session and creates a call-scoped `LiveWorkBinding`; a provider
-  tool request cannot choose a session, project path, model, mode, or permission.
+- Enabling work access is an explicit renderer action, independent of opening
+  or expanding the preparation surface. A collapsed **Connect a work session**
+  section starts with **Allow work requests** unchecked. Start includes a
+  `workTarget` only after that opt-in and a valid local-session selection; an
+  expanded section, an existing session, or context consent alone never grants
+  work access. Main resolves the selected local session and creates a
+  call-scoped `LiveWorkBinding`; a provider tool request cannot choose a
+  session, project path, model, mode, or permission.
 - A call's work binding does not follow sidebar selection. Opening another
   session is navigation only; changing the work target requires a new call.
 - The first implementation accepts local desktop sessions. Native Pi and
   remote work sessions stay unavailable until their Host surfaces implement the
   same scoped controls and terminal events.
-- Context sharing is an explicit work-call option. When disabled, the intent
-  classifier receives the current request and bounded work-state metadata but
-  does not read prior session messages.
+- Context sharing is a separate, unchecked-by-default, next-call work option.
+  Closing or reopening preparation, changing or creating the target session,
+  disabling work access, and finishing or canceling the call reset consent.
+  When disabled, the intent classifier receives the current request and bounded
+  work-state metadata but does not read prior session messages. No work or
+  context opt-in is persisted by this interaction.
 
 ## Candidate and routing flow
 
@@ -111,13 +119,29 @@ does not imply tests passed.
 
 ## UI and current capability boundary
 
-The existing Live panel displays the fixed work target, whether bounded context
-sharing is enabled, current operation admission/execution state, feedback
-delivery status, bounded route or rejection messages, exact terminal
-summaries, and short-lived project/session choices. It provides actions to view
-the bound session, open a listed session, create a session in a listed project,
-stop its observed running turn, or cancel its exact queued item. Creating a
-session uses the existing defaults and leaves the current Live binding alone.
+Idle Composer uses the single Live Voice entry and its side-effect-free
+preparation surface; there is no second Live Work icon. A missing or ineligible
+target explains how to choose or create a local work session. The same explicit
+Start action starts a muted voice-only or opted-in work call. Opening the work
+section does not start a call, create a session, read conversation context, or
+authorize work.
+
+Call Details, opened deliberately from the global compact bar, displays the
+fixed work target, whether bounded context sharing is enabled, current operation
+admission/execution state, feedback delivery status, bounded route or rejection
+messages, exact terminal summaries, and short-lived project/session choices.
+It provides actions to view the bound session, open a listed session, create a
+session in a listed project, stop its observed running turn, or cancel its exact
+queued item. Creating a session uses the existing defaults and leaves the
+current Live binding alone. Closing Details, pressing outside it, or pressing
+Escape changes neither the call nor accepted work. Navigating to another page
+or session does not hide the global bar or retarget the work binding.
+
+The compact bar owns Cancel during startup and End/mute during the call;
+Ending remains visible through both Main and renderer cleanup even after the
+feature is disabled. End remains distinct from stopping an observed task or
+canceling an exact queue item. This presentation redesign changes no IPC,
+persistence, Host admission, permission, or context-projection contract.
 
 ### Work feedback and announcement policy
 

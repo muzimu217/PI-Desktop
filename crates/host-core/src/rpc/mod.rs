@@ -5189,8 +5189,8 @@ mod tests {
     use super::{
         capability_err, handle_request, index_grep_boost_enabled, parse_capability_query,
         parse_capability_target, peek_jsonrpc_id, provider_rpc_err, request_budget_ms,
-        resolve_plan_workspace, resolve_tool_workspace, resolve_tool_workspace_for_call,
-        scope_err, skill_err, validate_settings_value, with_request_budget, JsonRpcError,
+        resolve_plan_workspace, resolve_tool_workspace, resolve_tool_workspace_for_call, scope_err,
+        skill_err, validate_settings_value, with_request_budget, JsonRpcError,
         RPC_REQUEST_BUDGET_MS,
     };
     use crate::agent_capabilities::CapabilityLevel;

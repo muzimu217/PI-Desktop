@@ -27,6 +27,7 @@ import {
 } from "./sidecar-config.js";
 import { matchesExpectedTurnId } from "./turn-target.js";
 import { applyNodeNetworkProxy } from "./node-proxy.js";
+import { applyAdditiveDefaultCaCertificates } from "./system-ca.js";
 import { NATIVE_PI_SESSION_PREFIX, nativePiService } from "./native-pi-session.js";
 import {
   isCommandShellOption,
@@ -627,4 +628,7 @@ if (bootProxy) {
     // Invalid boot payload is ignored; sidecar.configure will replace it.
   }
 }
+// The default TLS context is configured before any provider request can be
+// issued, so the merged CA set covers every transport this sidecar builds.
+applyAdditiveDefaultCaCertificates();
 process.stderr.write("[agent-sidecar] ready (host-proxy mode)\n");

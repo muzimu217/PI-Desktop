@@ -150,8 +150,8 @@ async function preparationScenario() {
   await check("enabling exposes exactly one idle trigger",
     `s.snapshot.status.enabled && ui.all('button', undefined, '[data-fixture-composer]').length === 1 && ${button("Live voice")}`);
   await openPreparation();
-  await click(button("Connect a work session", prep));
-  await check("work disclosure is inert until explicit Start", `${checkbox("Allow work requests")}?.checked === false && ${noMedia}`);
+  await check("preparation defaults to the Composer session without a work-access gate",
+    `document.querySelector(${JSON.stringify(prep)})?.textContent.includes('The current Composer session is the default') && !${button("Allow work requests", prep)} && ${checkbox("Share limited recent conversation context")}?.checked === false && ${noMedia}`);
   await click(button("Close", prep));
   await check("closing preparation acquires no media", `${noDialog} && ${noMedia}`);
   await openPreparation();
@@ -180,7 +180,7 @@ async function cancellationScenario() {
   await evaluate("['connect','end','released'].forEach(name => window.liveVoiceFixture.hold(name))");
   await start();
   await check("explicit Start defaults muted and shows compact connecting with Cancel",
-    `ui.state('connecting') && ${button("Cancel", bar)} && ${noDialog} && s.counts.connect === 1 && s.counts.prepare === 1 && s.counts.getUserMedia === 1 && s.counts.audioContext === 0 && s.requests.prepare[0].initialMuted === true && !s.requests.prepare[0].workTarget && s.tracks.every(track => !track.enabled)`);
+    `ui.state('connecting') && ${button("Cancel", bar)} && ${noDialog} && s.counts.connect === 1 && s.counts.prepare === 1 && s.counts.getUserMedia === 1 && s.counts.audioContext === 1 && s.requests.prepare[0].initialMuted === true && s.requests.prepare[0].workTarget?.workSessionId === 'fixture-session-1' && s.requests.prepare[0].shareSelectedSessionContext === false && !('contextEnabled' in s.requests.prepare[0].workTarget) && s.tracks.every(track => !track.enabled)`);
   await click(button("Cancel", bar));
   await check("Cancel enters stopping while deferred release remains pending",
     `ui.state('stopping') && s.snapshot.stopping && s.counts.released === 1 && s.tracks.every(track => track.readyState === 'ended') && !${button("Live voice")}`);
@@ -247,34 +247,25 @@ async function playbackScenario() {
 
 async function enableWork() {
   await openPreparation();
-  await click(button("Connect a work session", prep));
-  await click(checkbox("Allow work requests"));
 }
 async function workScenario() {
   await fresh();
   await enableWork();
-  await check("work and context require separate opt-ins", `${checkbox("Allow work requests")}?.checked && ${checkbox("Share limited recent conversation context")}?.checked === false && ${noMedia}`);
+  await check("Composer target is default; context consent is separate and unchecked",
+    `${checkbox("Share limited recent conversation context")}?.checked === false && !${checkbox("Allow work requests")} && ${noMedia}`);
   await click(checkbox("Share limited recent conversation context"));
-  await selectOption(`ui.named('select', 'Work session for the next call', ${JSON.stringify(prep)})`, "fixture-session-2");
-  await check("changing selected work session clears context consent",
-    `ui.named('select', 'Work session for the next call', ${JSON.stringify(prep)})?.value === 'fixture-session-2' && ${checkbox("Share limited recent conversation context")}?.checked === false && ${noMedia}`);
-  await click(checkbox("Share limited recent conversation context"));
-  await click(checkbox("Allow work requests"));
-  await click(checkbox("Allow work requests"));
-  await check("removing work opt-in clears context consent", `${checkbox("Share limited recent conversation context")}?.checked === false && ${noMedia}`);
-  await click(checkbox("Share limited recent conversation context"));
-  await click(button("Close", prep));
-  await enableWork();
-  await check("reopening preparation does not retain context consent", `${checkbox("Share limited recent conversation context")}?.checked === false && ${noMedia}`);
+  await evaluate("window.liveVoiceFixture.switchSession('fixture-session-2')");
+  await check("changing Composer session preserves independent context consent",
+    `${checkbox("Share limited recent conversation context")}?.checked === true && ${noMedia}`);
   await click(button("Start Live voice", prep));
   await connected();
-  await check("only explicit work opt-in reaches prepare with selected target",
-    "s.requests.prepare[0].workTarget?.workSessionId === 'fixture-session-1' && s.requests.prepare[0].workTarget.contextEnabled === false && s.counts.audioContext === 1");
+  await check("Start sends the current Composer target and separate context consent",
+    "s.requests.prepare[0].workTarget?.workSessionId === 'fixture-session-2' && s.requests.prepare[0].shareSelectedSessionContext === true && !('contextEnabled' in s.requests.prepare[0].workTarget) && s.counts.audioContext === 1");
   await click(button("End call", bar));
   await wait("work call ended", `!s.snapshot.stopping && ${button("Live voice")}`);
   await openPreparation();
-  await click(button("Connect a work session", prep));
-  await check("the next call resets work opt-in", `${checkbox("Allow work requests")}?.checked === false`);
+  await check("reopening preparation resets call-only context consent",
+    `${checkbox("Share limited recent conversation context")}?.checked === false && !${checkbox("Allow work requests")}`);
   await key("Escape");
   await clean();
 }

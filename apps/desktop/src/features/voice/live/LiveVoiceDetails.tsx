@@ -64,42 +64,43 @@ export function LiveVoiceDetails({ t, call, status, transcripts, open, onClose, 
           <strong>{provider?.providerLabel ?? t("liveVoice.providerUnavailable")}</strong>
           <span className="live-voice-hint">{t(`liveVoice.adapters.${call.adapterId}.title`)}</span>
         </div>
-        {workBinding ? (
-          <section className="live-voice-work-setup">
-            <div className="live-voice-service-row">
-              <span>{t("liveVoice.boundWorkSession", { label: workBinding.label || t("liveVoice.untitledWorkSession") })}</span>
-              <TooltipButton
-                type="button"
-                className="icon-btn icon-btn-square"
-                tooltip={t("liveVoice.viewWorkSession")}
-                onClick={() => void selectSession(workBinding.workSessionId).catch(() => setMessage(t("liveVoice.sessionOpenFailed")))}
-              >
-                <IconExternal size={15} aria-hidden="true" />
-              </TooltipButton>
-            </div>
-            <p className="live-voice-hint">{t(workBinding.contextEnabled ? "liveVoice.contextShared" : "liveVoice.contextNotShared")}</p>
-            {activeSessionId !== workBinding.workSessionId ? (
-              <p className="live-voice-hint">{t("liveVoice.viewingDifferentSession", {
-                label: viewingSession
-                  ? formatWorkSessionLabel(viewingSession.projectPath, viewingSession.title, t("liveVoice.untitledWorkSession"))
-                  : t("liveVoice.unknownSession"),
-              })}</p>
-            ) : null}
-            {call.workOperations?.length ? (
-              <LiveWorkOperations
-                callId={call.callId}
-                sessionId={workBinding.workSessionId}
-                operations={call.workOperations}
-                t={t}
-                busyOperationId={busyOperationId}
-                setBusyOperationId={setBusyOperationId}
-                setMessage={setMessage}
-                onOpenSelection={openSelection}
-                onCreateSession={createSessionForProject}
-              />
-            ) : null}
-          </section>
-        ) : null}
+        <section className="live-voice-work-setup" aria-label={t("liveVoice.workStatusTitle")}>
+          {workBinding ? (
+            <>
+              <div className="live-voice-service-row">
+                <span>{t("liveVoice.boundWorkSession", { label: workBinding.label || t("liveVoice.untitledWorkSession") })}</span>
+                {workBinding.sessionSource ? <span className="live-voice-hint">{t(`liveVoice.sessionSource.${workBinding.sessionSource}`)}</span> : null}
+                <TooltipButton
+                  type="button"
+                  className="icon-btn icon-btn-square"
+                  tooltip={t("liveVoice.viewWorkSession")}
+                  onClick={() => void selectSession(workBinding.workSessionId).catch(() => setMessage(t("liveVoice.sessionOpenFailed")))}
+                >
+                  <IconExternal size={15} aria-hidden="true" />
+                </TooltipButton>
+              </div>
+              <p className="live-voice-hint">{t(workBinding.contextEnabled ? "liveVoice.contextShared" : "liveVoice.contextNotShared")}</p>
+              {activeSessionId !== workBinding.workSessionId ? (
+                <p className="live-voice-hint">{t("liveVoice.viewingDifferentSession", {
+                  label: viewingSession
+                    ? formatWorkSessionLabel(viewingSession.projectPath, viewingSession.title, t("liveVoice.untitledWorkSession"))
+                    : t("liveVoice.unknownSession"),
+                })}</p>
+              ) : null}
+            </>
+          ) : <p className="live-voice-hint" role="status">{t("liveVoice.noWorkTarget")}</p>}
+          <LiveWorkOperations
+            callId={call.callId}
+            currentSessionId={workBinding?.workSessionId}
+            operations={call.workOperations ?? []}
+            t={t}
+            busyOperationId={busyOperationId}
+            setBusyOperationId={setBusyOperationId}
+            setMessage={setMessage}
+            onOpenSelection={openSelection}
+            onCreateSession={createSessionForProject}
+          />
+        </section>
         {message ? <p className="live-voice-hint" role="status">{message}</p> : null}
         <section aria-label={t("liveVoice.transcript")} className="live-voice-transcript-section">
           <span className="live-voice-hint">{t("liveVoice.transcript")}</span>

@@ -53,6 +53,7 @@ import { registerIpcHandlers } from "./ipc/register";
 import { createVoiceService } from "./voice-service";
 import { MicrophoneLeaseRegistry } from "./live-voice/microphone-lease";
 import { createLiveCallService } from "./live-voice/runtime";
+import { getActiveRemoteHostsBoot } from "./bootstrap/remote-hosts";
 import { installLiveMicrophonePermissionHandlers } from "./live-voice/microphone-permissions";
 import { MainProcessState } from "./bootstrap/main-state";
 import { registerApplicationActivation } from "./bootstrap/app-activation";
@@ -838,6 +839,9 @@ const liveCallService = createLiveCallService({
   getHost,
   getMainWindow,
   getAgentHostBridge: () => mainState.agentHostBridge,
+  getSidecar,
+  getBackendRouter: () => startupState.backendRouter,
+  getRemoteHosts: () => getActiveRemoteHostsBoot(),
   vendorOAuth,
   microphoneLeases,
   resolveAgentRuntimeLaunch: (sessionId, session, settings, overrides) => {
@@ -847,6 +851,7 @@ const liveCallService = createLiveCallService({
       mode: "agent",
     });
   },
+  log: (level, message, data) => logger.app("provider", level, message, { data }),
 });
 
 function registerIpc() {

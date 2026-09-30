@@ -12,6 +12,7 @@ export type LiveWorkIntent =
   | { kind: "list-projects"; query?: string }
   | { kind: "list-sessions"; query?: string }
   | { kind: "open-session"; selectionRef: string }
+  | { kind: "select-session"; selectionRef: string }
   | { kind: "create-session"; projectRef?: string; title?: string }
   | { kind: "speech-only"; automaticAnnouncements: "normal" | "silent" };
 
@@ -62,6 +63,10 @@ export function parseLiveWorkIntent(value: unknown): LiveWorkIntent | null {
       return exact(["kind", "selectionRef"]) && shortText(value.selectionRef)
         ? { kind: "open-session", selectionRef: value.selectionRef.trim() }
         : null;
+    case "select-session":
+      return exact(["kind", "selectionRef"]) && shortText(value.selectionRef)
+        ? { kind: "select-session", selectionRef: value.selectionRef.trim() }
+        : null;
     case "create-session":
       return exact(["kind", "projectRef", "title"]) &&
         (value.projectRef === undefined || shortText(value.projectRef)) &&
@@ -94,7 +99,7 @@ export const LIVE_WORK_INTENT_SCHEMA = {
     { type: "object", properties: { kind: { const: "stop-current" }, urgency: { enum: ["graceful", "immediate"] } }, required: ["kind", "urgency"], additionalProperties: false },
     { type: "object", properties: { kind: { const: "cancel-queued" }, operationRef: { type: "string", maxLength: 512 } }, required: ["kind", "operationRef"], additionalProperties: false },
     { type: "object", properties: { kind: { enum: ["list-projects", "list-sessions"] }, query: { type: "string", maxLength: 512 } }, required: ["kind"], additionalProperties: false },
-    { type: "object", properties: { kind: { const: "open-session" }, selectionRef: { type: "string", maxLength: 512 } }, required: ["kind", "selectionRef"], additionalProperties: false },
+    { type: "object", properties: { kind: { enum: ["open-session", "select-session"] }, selectionRef: { type: "string", maxLength: 512 } }, required: ["kind", "selectionRef"], additionalProperties: false },
     { type: "object", properties: { kind: { const: "create-session" }, projectRef: { type: "string", maxLength: 512 }, title: { type: "string", maxLength: 512 } }, required: ["kind"], additionalProperties: false },
     { type: "object", properties: { kind: { const: "speech-only" }, automaticAnnouncements: { enum: ["normal", "silent"] } }, required: ["kind", "automaticAnnouncements"], additionalProperties: false },
   ],

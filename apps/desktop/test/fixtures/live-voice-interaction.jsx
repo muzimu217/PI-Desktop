@@ -7,6 +7,7 @@ import { IPC, KEYBOARD_SHORTCUTS, keybindingMatchesEvent, resolveKeybinding } fr
 import { useAppStore } from "../../src/stores/app-store";
 import { PortalVisibilityProvider } from "../../src/lib/portal-visibility";
 import { LiveVoiceControls } from "../../src/features/voice/live/LiveVoiceControls";
+import { ToastHost } from "../../src/components/Toast";
 import { LiveVoiceStatusHost } from "../../src/features/voice/live/LiveVoiceStatusHost";
 import { getLiveCallController } from "../../src/features/voice/live/live-call-controller";
 import { runLiveVoiceShortcut } from "../../src/features/voice/live/live-voice-shortcuts";
@@ -75,6 +76,7 @@ async function handleInvoke(channel, request) {
         ...(request.workTarget ? { workBinding: {
           ...request.workTarget, workBindingRevision: 1,
           label: sessions.find((session) => session.id === request.workTarget.workSessionId)?.title ?? "Fixture session",
+          contextEnabled: request.shareSelectedSessionContext === true,
         } } : {}),
       };
       updateCall({});
@@ -235,6 +237,7 @@ function SimulatedShell() {
         </PortalVisibilityProvider>
       ) : <p data-fixture-settings>Settings route: composer unmounted</p>}
       <LiveVoiceStatusHost />
+      <ToastHost />
     </div>
   );
 }

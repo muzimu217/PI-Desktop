@@ -59,6 +59,19 @@ export function registerLiveVoiceIpc(input: {
   registrar.handleWithEvent(IPC.invoke.liveVoiceResolveWorkSelection, async (event, raw: unknown) => {
     return service.resolveWorkSelection(owner(event), parseResolveWorkSelection(raw));
   });
+  registrar.handleWithEvent(IPC.invoke.liveVoiceStopWorkOperation, async (event, raw: unknown) => {
+    return service.stopWorkOperation(owner(event), parseWorkOperationControl(raw));
+  });
+  registrar.handleWithEvent(IPC.invoke.liveVoiceCancelQueuedOperation, async (event, raw: unknown) => {
+    return service.cancelQueuedWorkOperation(owner(event), parseWorkOperationControl(raw));
+  });
+}
+
+export function parseWorkOperationControl(raw: unknown): { callId: string; operationId: string } {
+  const input = record(raw);
+  exactKeys(input, ["callId", "operationId"]);
+  if (typeof input.operationId !== "string" || !input.operationId.trim() || input.operationId.length > 256) return invalid();
+  return { callId: callId(input.callId), operationId: input.operationId };
 }
 
 function parseResolveWorkSelection(raw: unknown): { callId: string; selectionRef: string } {
@@ -68,23 +81,25 @@ function parseResolveWorkSelection(raw: unknown): { callId: string; selectionRef
   return { callId: callId(input.callId), selectionRef: input.selectionRef };
 }
 
-function parsePrepare(raw: unknown) {
+export function parsePrepare(raw: unknown) {
   const input = record(raw);
-  exactKeys(input, ["requestId", "bindingId", "expectedSettingsRevision", "initialMuted", "workTarget"]);
+  exactKeys(input, ["requestId", "bindingId", "expectedSettingsRevision", "initialMuted", "workTarget", "shareSelectedSessionContext"]);
   if (typeof input.requestId !== "string" || typeof input.bindingId !== "string" || !input.bindingId.trim() || input.bindingId.length > 256 || !Number.isSafeInteger(input.expectedSettingsRevision) || (input.expectedSettingsRevision as number) < 0 || typeof input.initialMuted !== "boolean") return invalid();
-  let workTarget: { workSessionId: string; contextEnabled: boolean } | undefined;
+  let workTarget: { workSessionId: string } | undefined;
   if (input.workTarget !== undefined) {
     const target = record(input.workTarget);
-    exactKeys(target, ["workSessionId", "contextEnabled"]);
-    if (typeof target.workSessionId !== "string" || !target.workSessionId.trim() || target.workSessionId.length > 256 || typeof target.contextEnabled !== "boolean") return invalid();
-    workTarget = { workSessionId: target.workSessionId, contextEnabled: target.contextEnabled };
+    exactKeys(target, ["workSessionId"]);
+    if (typeof target.workSessionId !== "string" || !target.workSessionId.trim() || target.workSessionId.length > 256) return invalid();
+    workTarget = { workSessionId: target.workSessionId };
   }
+  if (input.shareSelectedSessionContext !== undefined && typeof input.shareSelectedSessionContext !== "boolean") return invalid();
   return {
     requestId: input.requestId,
     bindingId: input.bindingId,
     expectedSettingsRevision: input.expectedSettingsRevision as number,
     initialMuted: input.initialMuted,
     ...(workTarget ? { workTarget } : {}),
+    ...(input.shareSelectedSessionContext !== undefined ? { shareSelectedSessionContext: input.shareSelectedSessionContext } : {}),
   };
 }
 

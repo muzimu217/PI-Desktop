@@ -66,7 +66,7 @@ export class LiveWorkFeedbackManager {
 
   setPolicy(callId: string, policy: "normal" | "silent"): void {
     const slot = this.deps.current();
-    if (!slot || slot.callId !== callId || !slot.workBinding) return;
+    if (!slot || slot.callId !== callId || !slot.workScopeOpened) return;
     slot.workFeedbackScheduler.setPolicy(policy);
     this.pump(slot);
   }
@@ -76,10 +76,10 @@ export class LiveWorkFeedbackManager {
       clearTimeout(slot.workFeedbackTimer);
       slot.workFeedbackTimer = undefined;
     }
-    if (this.deps.current() !== slot || slot.phase !== "connected" || !slot.workBinding) return;
+    if (this.deps.current() !== slot || slot.phase !== "connected" || !slot.workScopeOpened) return;
     const localPlaybackIdle = slot.bridge
       ? slot.bridge.isPlaybackIdle()
-      : slot.workBinding && slot.binding?.adapterId === "codex-live"
+      : slot.workScopeOpened && slot.binding?.adapterId === "codex-live"
         ? slot.playbackMonitorReady && !slot.assistantPlaybackActive
         : true;
     const idle = !slot.userSpeaking && !slot.assistantSpeaking && localPlaybackIdle;
@@ -110,8 +110,8 @@ export class LiveWorkFeedbackManager {
   private async deliver(slot: Slot, scheduled: ScheduledLiveWorkFeedback): Promise<void> {
     const { feedback, operationIds, delegationId } = scheduled;
     if (
-      this.deps.current() !== slot || slot.abort.signal.aborted || !slot.workBinding ||
-      feedback.callId !== slot.callId || feedback.workBindingRevision !== slot.workBinding.workBindingRevision
+      this.deps.current() !== slot || slot.abort.signal.aborted || !slot.workScopeOpened ||
+      feedback.callId !== slot.callId || feedback.workBindingRevision !== slot.workBindingRevision
     ) return;
     let status: Exclude<FeedbackStatus, "pending"> = "undelivered";
     try {
@@ -161,7 +161,7 @@ function feedbackDraft(
       speakWhenSilent: true,
     };
   }
-  if (intent && ["query-status", "query-result", "query-queue", "stop-current", "cancel-queued", "open-session"].includes(intent.kind)) {
+  if (intent && ["query-status", "query-result", "query-queue", "stop-current", "cancel-queued", "open-session", "select-session"].includes(intent.kind)) {
     return operation.summary
       ? { kind: intent.kind === "query-result" ? "result" : "status", delivery: "speak-when-idle", content: operation.summary, speakWhenSilent: true }
       : null;
@@ -177,7 +177,7 @@ function feedbackDraft(
     };
   }
   if (operation.execution === "queued") {
-    return { kind: "admission", delivery: "speak-when-idle", content: "The task is queued in the bound work session." };
+    return { kind: "admission", delivery: "speak-when-idle", content: "The task is queued in the selected work session." };
   }
   if (operation.execution === "waiting-permission" || operation.execution === "waiting-input") {
     return {

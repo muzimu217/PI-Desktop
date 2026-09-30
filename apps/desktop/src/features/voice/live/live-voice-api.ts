@@ -11,6 +11,8 @@ import {
   type LivePreparedCall,
   type LiveStatus,
   type LiveTranscriptEvent,
+  type LiveWorkCancelQueuedOperationResult,
+  type LiveWorkStopOperationResult,
 } from "@pi-desktop/shared";
 import type { LiveCallView } from "@pi-desktop/shared";
 
@@ -39,6 +41,8 @@ export const liveVoiceApi = {
     | { kind: "session"; sessionId: string }
     | { kind: "project"; projectPath: string }
   >(IPC.invoke.liveVoiceResolveWorkSelection, input),
+  stopWorkOperation: (input: { callId: string; operationId: string }) => invoke<LiveWorkStopOperationResult>(IPC.invoke.liveVoiceStopWorkOperation, input),
+  cancelQueuedWorkOperation: (input: { callId: string; operationId: string }) => invoke<LiveWorkCancelQueuedOperationResult>(IPC.invoke.liveVoiceCancelQueuedOperation, input),
   onView: (listener: (view: LiveCallView) => void) => subscribe(IPC.event.liveVoiceChanged, listener),
   onControl: (listener: (event: LiveControlEvent) => void) => subscribe(IPC.event.liveVoiceControl, listener),
   onTranscript: (listener: (event: LiveTranscriptEvent) => void) => subscribe(IPC.event.liveVoiceTranscript, listener),

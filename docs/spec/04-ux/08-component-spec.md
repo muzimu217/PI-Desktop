@@ -3166,7 +3166,7 @@ has four presentation states:
 | State | Surface and allowed interaction |
 |---|---|
 | Disabled | No Live Voice or Live Work Composer icons. Enable only in Settings → Voice. |
-| Enabled, idle | One Live Voice icon opens preparation, not a call. Show the exact selected provider and readiness cause, an explicit Start action, and initially collapsed optional work controls. |
+| Enabled, idle | One Live Voice icon opens preparation, not a call. Show the exact selected provider and readiness cause, an explicit Start action, the current Composer session as the default work target when present, and separate default-off bounded-context consent. |
 | Call in progress | One global compact bar: Connecting with Cancel; connected with mute/unmute, End, and Details; Ending until Main and renderer cleanup both settle. |
 | Details open | Deliberately opened transcript/provider/work inspection surface; dismissing it does not end the call. |
 
@@ -3176,12 +3176,14 @@ has four presentation states:
   exact selected binding is not ready, even if another binding is ready; show
   the actual readiness cause and a Settings action instead of silently falling
   back to another account.
-- Start defaults to muted. The work disclosure contains an independent,
-  unchecked **Allow work requests** opt-in, a valid local-session target, and
-  separate unchecked context consent. Expanding the section or selecting a
-  target is not authorization. A missing target offers choose/create guidance.
-  Context consent is next-call-only and resets on preparation dismissal,
-  reopening, target change/create, work opt-out, and call completion/cancel.
+- Start defaults to muted and uses the current Composer session as the work
+  target after Main validates it against the fresh multi-backend catalog. No
+  per-call work-access checkbox or mandatory preselection is required. If there
+  is no current session, start unbound and let the user list/select a target by
+  voice. Voice target changes apply only to subsequent operations.
+- Bounded session-context sharing remains a separate, unchecked call consent.
+  It reads only the current target's bounded plain-text history and resets when
+  the call ends; it does not grant work permissions or approve actions.
 - The compact bar is persistent AppShell chrome outside the visibility-gated
   chat and Composer subtree. It stays available across Settings, Plugins, and
   project/session navigation. Feature disable hides the idle icon but not the
@@ -3194,12 +3196,15 @@ has four presentation states:
   controls have localized names and tooltips, and muted state is explicit.
 - Details never opens automatically during startup or connection. It owns the
   bounded transient transcript (including an empty state), provider identity,
-  fixed work binding, work actions and results. Close, outside press and Escape
+  current work target, per-operation targets, work actions and results. Target
+  changes do not retarget existing operations. Close, outside press and Escape
   dismiss the surface only and restore focus to an available trigger. The bar
   remains usable, and dismissing Details never submits or stops work.
-- The configurable toggle shortcut retains deliberate direct voice-only start
-  from idle and end during a call. The startup-cancel shortcut only acts when
-  no popup has consumed the key; Escape never ends a connected call.
+- The configurable toggle shortcut retains deliberate direct start from idle
+  and end during a call. Direct start also defaults to the current Composer
+  session and leaves bounded-context consent off. The startup-cancel shortcut
+  only acts when no popup has consumed the key; Escape never ends a connected
+  call.
 
 See [Live Voice](../03-runtime/live-voice.md) and
 [Live Work](../03-runtime/live-work-session.md) for the unchanged ownership,

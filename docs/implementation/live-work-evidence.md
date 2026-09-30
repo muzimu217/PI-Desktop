@@ -6,8 +6,30 @@ based on `origin/main` at
 endpoint, user project, or running Electron instance was used. The v2.1 case
 map is [`live-work-v21-coverage.md`](live-work-v21-coverage.md), and its manual
 device matrix is [`live-work-v21-device-matrix.md`](live-work-v21-device-matrix.md).
+This status and the evidence below describe that prior v2.1 candidate only; they
+do not claim acceptance for the multi-backend extension.
 
-## Current v2.1 candidate
+## Multi-backend session-targeting extension candidate (2026-09-30)
+
+- Worktree: `feat/live-voice-all-sessions` at
+  `/Users/lan/Project/AI/PI-Desktop-worktrees/live-voice-all-sessions-20260930`,
+  based on `e93295ad9`; changes remain uncommitted.
+- The current Composer session is the default target. Main revalidates it against
+  Desktop/Native Pi/Remote catalogs. Voice switching uses opaque references;
+  prior operations retain their own target. Context consent remains separate.
+- Verified locally: `pnpm build:js`; Desktop typecheck; host-runtime typecheck;
+  29 Coordinator tests; 34 Desktop Live Voice/Work tests; 28 i18n tests;
+  local-fixture Live Voice E2E (5/5 journeys); mounted interaction E2E
+  (46/46 checks).
+- The local fixture E2Es use a local TLS Realtime fixture, temporary data/profile,
+  and synthetic microphone. Real provider, hardware, and user Desktop checks
+  were not performed.
+- **Task-candidate gate remains unmet:** latest `pnpm check:pr-base` reports
+  `origin/main` `4b4a1fc95b90` is 15 commits ahead of this worktree. Per task
+  constraints this branch was not rebased or merged, so the fixture E2Es above
+  are exploratory rather than latest-base task-candidate evidence.
+
+## Historical v2.1 candidate snapshot
 
 - Branch/worktree: `codex/live-voice-v21-reliability` at
   `/Users/lan/.codex/worktrees/live-voice-v21-refresh/PI-Desktop`.

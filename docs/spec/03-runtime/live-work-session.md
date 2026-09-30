@@ -6,33 +6,33 @@
 
 ## Purpose
 
-Live Voice may submit a bounded work request to the existing local PI-Desktop
-Agent session selected by the user. The Live provider remains a voice interface;
-the existing Agent Runtime continues to own file, shell, MCP, plugin, skill, and
-subagent work under the session's current model and permission policy.
+Live Voice may submit a bounded work request to a PI-Desktop session through
+its existing backend. At call start, the current Composer session is the default
+work target when one exists; the user can switch targets by voice during the
+call. The Live provider remains a voice interface; the existing Agent Runtime
+continues to own file, shell, MCP, plugin, skill, and subagent work under the
+target session's current model and permission policy.
 
 ## Scope and authorization
 
-- A call without a `workTarget` remains a voice-only call.
-- Enabling work access is an explicit renderer action, independent of opening
-  or expanding the preparation surface. A collapsed **Connect a work session**
-  section starts with **Allow work requests** unchecked. Start includes a
-  `workTarget` only after that opt-in and a valid local-session selection; an
-  expanded section, an existing session, or context consent alone never grants
-  work access. Main resolves the selected local session and creates a
-  call-scoped `LiveWorkBinding`; a provider tool request cannot choose a
-  session, project path, model, mode, or permission.
-- A call's work binding does not follow sidebar selection. Opening another
-  session is navigation only; changing the work target requires a new call.
-- The first implementation accepts local desktop sessions. Native Pi and
-  remote work sessions stay unavailable until their Host surfaces implement the
-  same scoped controls and terminal events.
-- Context sharing is a separate, unchecked-by-default, next-call work option.
-  Closing or reopening preparation, changing or creating the target session,
-  disabling work access, and finishing or canceling the call reset consent.
-  When disabled, the intent classifier receives the current request and bounded
-  work-state metadata but does not read prior session messages. No work or
-  context opt-in is persisted by this interaction.
+- Starting from a Composer with an active session uses that current session as
+  the initial `workTarget`. With no active Composer session, the call starts
+  unbound and the user can list and select a target by voice. Main resolves the
+  renderer's session hint against a fresh Desktop/Native Pi/Remote catalog and
+  fails closed when it is missing or ambiguous.
+- There is no per-call **Allow work requests** gate or mandatory preselection.
+  A voice work request remains only a candidate: the target backend continues
+  to enforce its existing identity, admission, permission, and approval rules.
+  A provider tool request cannot choose a raw session ID, project path, model,
+  mode, or permission.
+- Voice selection changes the target only for subsequent requests. Existing
+  operations remain associated with their original session; opening another
+  session for UI navigation does not silently retarget work.
+- Context sharing remains a separate, unchecked-by-default call consent. When
+  enabled, only bounded plain-text history from the current work target may be
+  read for classification; changing target changes the eligible session.
+  When disabled, no prior session messages are read. Context consent grants no
+  execution authority and is not persisted.
 
 ## Candidate and routing flow
 
@@ -124,16 +124,17 @@ does not imply tests passed.
 ## UI and current capability boundary
 
 Idle Composer uses the single Live Voice entry and its side-effect-free
-preparation surface; there is no second Live Work icon. A missing or ineligible
-target explains how to choose or create a local work session. The same explicit
-Start action starts a muted voice-only or opted-in work call. Opening the work
-section does not start a call, create a session, read conversation context, or
-authorize work.
+preparation surface; there is no second Live Work icon. The current Composer
+session is the default target, when present; otherwise the user may choose one
+by voice after explicitly starting the call. Start is always an explicit user
+action and starts muted. Opening preparation does not start a call, create a
+session, read conversation context, or grant backend permissions.
 
 Call Details, opened deliberately from the global compact bar, displays the
-fixed work target, whether bounded context sharing is enabled, current operation
-admission/execution state, feedback delivery status, bounded route or rejection
-messages, exact terminal summaries, and short-lived project/session choices.
+current work target, whether bounded context sharing is enabled, current
+operation admission/execution state, feedback delivery status, bounded route or
+rejection messages, exact terminal summaries, and short-lived project/session
+choices. Voice target changes apply only to subsequent requests.
 It provides actions to view the bound session, open a listed session, create a
 session in a listed project, stop its observed running turn, or cancel its exact
 queued item. Creating a session uses the existing defaults and leaves the
@@ -184,5 +185,6 @@ requires the manual matrix in the delivery plan.
 
 The implementation and test evidence are tracked in
 [`../../implementation/live-work-evidence.md`](../../implementation/live-work-evidence.md).
+The target-selection decision is recorded in [ADR 0313](../../adr/0313-live-voice-default-session-target.md).
 The representative user path and automated coverage status are listed in
 [`../06-delivery/04-e2e-test-plan.md`](../06-delivery/04-e2e-test-plan.md).

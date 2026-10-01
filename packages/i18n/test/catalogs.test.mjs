@@ -37,7 +37,7 @@ test("Live Voice preparation and call recovery copy is localized in every shippe
     "playbackBlocked", "playbackFailed", "mediaReleaseUnconfirmed",
     "callActionFailed", "workNotConnected", "transcript", "transcriptEmpty",
     "userSpeaking", "assistantSpeaking", "muted", "resumePlayback",
-    "selectWorkSession", "shareContext", "contextConsent", "contextShared",
+    "selectWorkSession", "shareContext", "contextShared",
     "contextNotShared", "createWorkSession", "viewWorkSession", "enableDetail",
     "microphoneDenied", "microphoneUnavailable", "microphoneBusy",
     "phase.connecting", "phase.closing",

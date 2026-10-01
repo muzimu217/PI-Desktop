@@ -53,6 +53,7 @@ import { registerIpcHandlers } from "./ipc/register";
 import { createVoiceService } from "./voice-service";
 import { MicrophoneLeaseRegistry } from "./live-voice/microphone-lease";
 import { createLiveCallService } from "./live-voice/runtime";
+import { createLiveVoiceWidget } from "./live-voice/widget-window";
 import { getActiveRemoteHostsBoot } from "./bootstrap/remote-hosts";
 import { installLiveMicrophonePermissionHandlers } from "./live-voice/microphone-permissions";
 import { MainProcessState } from "./bootstrap/main-state";
@@ -835,6 +836,16 @@ const voiceService = createVoiceService(
   (token) => microphoneLeases.acquire("dictation", token),
 );
 voiceServiceReference = voiceService;
+// The docked call widget: a desktop-level window that shows the call chrome
+// wherever the user put it and sends every action back to this window, which
+// stays the Live Voice owner (media, microphone lease, work scope).
+const liveVoiceWidget = createLiveVoiceWidget({
+  getMainWindow,
+  dataDir,
+  safeOpenExternal,
+  log: (message, data) => logger.app("diagnostics", "warn", message, data ? { data } : undefined),
+});
+
 const liveCallService = createLiveCallService({
   getHost,
   getMainWindow,
@@ -852,6 +863,7 @@ const liveCallService = createLiveCallService({
     });
   },
   log: (level, message, data) => logger.app("provider", level, message, { data }),
+  onCallView: (view) => liveVoiceWidget.publish(view),
 });
 
 function registerIpc() {
@@ -950,6 +962,7 @@ function registerIpc() {
     sendToRenderer,
     voiceService,
     liveCallService,
+    liveVoiceWidget,
   });
 }
 
@@ -993,6 +1006,9 @@ app.once("ready", () => {
   powerMonitor.on("suspend", () => void liveCallService.endForLifecycle("app-suspended"));
   powerMonitor.on("lock-screen", () => void liveCallService.endForLifecycle("app-suspended"));
 });
+
+// The widget is chrome for a call this window owns; it must never outlive the app.
+app.once("will-quit", () => liveVoiceWidget.close());
 
 registerApplicationStartup({
   hasSingleInstanceLock,

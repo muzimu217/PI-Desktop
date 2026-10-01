@@ -1,5 +1,5 @@
 import { LiveWorkOperationLedger, type LiveWorkOperation } from "./operation-ledger.js";
-import { parseLiveWorkIntent, type LiveWorkIntent } from "./intent.js";
+import { parseLiveWorkIntent, type LiveWorkIntent, type LiveWorkQuestionAnswer } from "./intent.js";
 import type {
   LiveWorkCancelQueuedOperationResult,
   LiveWorkSelectionOption,
@@ -43,6 +43,11 @@ export interface LiveWorkPort {
   enqueue(input: { sessionId: string; text: string; userMessageId: string; voiceOrigin: { callId: string; operationId: string }; idempotencyKey: string }): Promise<{ queueEntryId: string }>;
   stop(input: { callId: string; sessionId: string; expectedTurnId: string; urgency: "graceful" | "immediate" }): Promise<{ status: "requested" | "already-terminal" | "stale-target" | "unsupported"; message?: string }>;
   cancelQueued(input: { callId: string; sessionId: string; queueEntryId: string }): Promise<{ status: "canceled" | "already-delivered" | "not-found" | "unknown" | "unsupported" }>;
+  respondInput(input: {
+    callId: string;
+    sessionId: string;
+    answers: LiveWorkQuestionAnswer[];
+  }): Promise<{ status: "resolved" | "rejected" | "unavailable"; message?: string; turnId?: string }>;
   listProjects(input: { callId: string; workBindingRevision: number; query?: string; action: "none" | "create" }): Promise<LiveWorkSelectionOption[]>;
   listSessions(input: { callId: string; workBindingRevision: number; query?: string }): Promise<LiveWorkSelectionOption[]>;
   openSelection(input: { callId: string; workBindingRevision: number; selectionRef: string }): Promise<{ status: "opened" | "ambiguous" | "expired" | "unavailable" }>;
@@ -69,10 +74,21 @@ export type LocalReceiptDelivery =
   | { status: "sent"; deliveryId: string }
   | { status: "not-sent" | "unknown"; deliveryId: string; code: string };
 
+/**
+ * The question a bound work session is waiting on, as far as the transport
+ * could read it. It travels with the operation update so the voice surface can
+ * read the question and its own options out, and so a spoken answer can be
+ * checked against the question the user actually heard.
+ */
+export type LiveWorkPendingQuestion = {
+  questions: Array<{ question: string; options: string[]; multiSelect: boolean }>;
+};
+
 export type LiveWorkOperationUpdate = {
   operation: LiveWorkOperation;
   intent?: LiveWorkIntent;
   message?: string;
+  pendingQuestion?: LiveWorkPendingQuestion;
 };
 
 export type LiveWorkCoordinatorOptions = {
@@ -465,6 +481,39 @@ export class LiveWorkCoordinator {
     if (intent.kind === "speech-only") {
       this.options.onAnnouncementPolicy?.({ callId: candidate.callId, policy: intent.automaticAnnouncements });
       this.acceptWithoutExecution(call, candidate.providerRequestId, "Announcement preference updated for this call.");
+      return;
+    }
+    if (intent.kind === "respond-input") {
+      // A spoken answer resolves the session's own open question. It never
+      // creates a turn and never approves a permission or Plan; the work port
+      // re-checks every option label against that question before resolving.
+      const result = await this.withDispatchTimeout(call, this.options.workPort.respondInput({
+        callId: candidate.callId,
+        sessionId: candidate.workSessionId,
+        answers: intent.answers,
+      })).catch(() => null);
+      if (call.closed) return;
+      if (result?.status === "resolved") {
+        this.acceptControl(
+          call,
+          candidate.providerRequestId,
+          result.message ?? "Answered the open question in the work session.",
+          result.turnId ?? candidate.observedTurnId ?? "",
+        );
+      } else if (!result) {
+        this.markDispatchUnknown(
+          call,
+          candidate.providerRequestId,
+          "The answer result is unknown. The question may still be open; check the session before answering again.",
+        );
+      } else {
+        this.reject(
+          call,
+          candidate.providerRequestId,
+          result.message ?? "That answer was not accepted. Answer the question in the desktop.",
+          "host-rejected",
+        );
+      }
       return;
     }
     if (intent.kind === "query-status" || intent.kind === "query-result" || intent.kind === "query-queue") {
@@ -1002,12 +1051,13 @@ function isControlSchedulingHint(instruction: string): boolean {
   return /^(?:please\s+)?(?:stop|cancel|abort)\s+(?:(?:the|my)\s+)?(?:current|active|running)\s+(?:task|work|turn)\b/u.test(text) ||
     /^(?:what(?:'s| is)\s+the\s+status|status\s+of\s+(?:the\s+)?(?:current|active|last|previous)\s+(?:task|work)|what\s+(?:happened|did\s+the\s+(?:task|work)\s+do)|show\s+(?:the\s+)?(?:task\s+)?result)\b/u.test(text) ||
     /^(?:请)?(?:停止|停掉|中止)(?:当前|正在运行的)?(?:任务|工作|会话)/u.test(text) ||
-    /^(?:请)?(?:取消|撤销)(?:当前|正在运行的)?(?:任务|工作|排队任务)/u.test(text) ||
+    /^(?:请)?(?:取消|撤销)(?:当前|正在运行的)?(?:任务|排队任务)/u.test(text) ||
     /^(?:查询|查看|告诉我)(?:当前|最近|刚才的)?(?:任务|工作)?(?:状态|结果|进展)/u.test(text);
 }
 
 function isControlIntent(intent: LiveWorkIntent): boolean {
   return intent.kind === "stop-current" || intent.kind === "cancel-queued" || intent.kind === "speech-only" ||
+    intent.kind === "respond-input" ||
     intent.kind === "query-status" || intent.kind === "query-result" || intent.kind === "query-queue";
 }
 

@@ -104,6 +104,9 @@ export const IPC = {
     liveVoiceResolveWorkSelection: "pi-desktop/voice/live/work/resolveSelection",
     liveVoiceStopWorkOperation: "pi-desktop/voice/live/work/stopOperation",
     liveVoiceCancelQueuedOperation: "pi-desktop/voice/live/work/cancelQueuedOperation",
+    liveVoiceWidgetAction: "pi-desktop/voice/live/widget/action",
+    liveVoiceWidgetIssue: "pi-desktop/voice/live/widget/issue",
+    liveVoiceWidgetVisibility: "pi-desktop/voice/live/widget/visibility",
     agentCompact: "pi-desktop/agent/compact",
     agentAbort: "pi-desktop/agent/abort",
     agentStop: "pi-desktop/agent/stop",
@@ -190,6 +193,7 @@ export const IPC = {
     todosGet: "pi-desktop/todos/get",
     askToolResolve: "pi-desktop/agent/askTool/resolve",
     plansPending: "pi-desktop/plans/pending",
+    pendingInteractive: "pi-desktop/agent/pendingInteractive",
     plansResolve: "pi-desktop/plans/resolve",
     /**
      * List every paired remote `pi-host` this desktop knows, redacted so no
@@ -410,6 +414,8 @@ export const IPC = {
     liveVoicePort: "pi-desktop/voice/live/event/port",
     liveVoiceControl: "pi-desktop/voice/live/event/control",
     liveVoiceTranscript: "pi-desktop/voice/live/event/transcript",
+    liveVoiceWidgetState: "pi-desktop/voice/live/event/widgetState",
+    liveVoiceWidgetAction: "pi-desktop/voice/live/event/widgetAction",
   },
 } as const;
 

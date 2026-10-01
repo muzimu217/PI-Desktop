@@ -57,6 +57,17 @@ queue. A result query reads the latest terminal operation recorded for the
 current call, or the explicitly referenced operation, and shows its bounded
 summary without starting another turn.
 
+When the bound session has exactly one open AskTool question, the classifier
+also receives that question and its own options, and the provider is told the
+same bounded question as interaction-required feedback so it can read it out.
+The user's answer is routed as a `respond-input` control request, not as work:
+it resolves that one question through the Host-owned input path and never
+creates, steers, or queues a turn. Every question of the open ask must be
+answered exactly once and every chosen label must be one of that question's own
+labels; free-text answers, unknown labels, partial answers, and a session with
+zero or several open questions are refused with an honest reason and without
+retry, and an unresolved dispatch stays unknown instead of being resubmitted.
+
 ### Reliability and admission identity
 
 Main captures the active turn synchronously when it registers a provider
@@ -114,7 +125,9 @@ that metadata remain valid.
 Stop and abort requests include the observed turn ID and are checked at the
 actual run owner. Ending a Live call closes its candidate scope and media but
 does not cancel work already accepted by the Agent or Host queue. Permission,
-Plan, Goal, and AskTool decisions stay in their existing UI and policy paths.
+Plan, and Goal approvals stay in their existing desktop UI and policy paths; a
+spoken "yes" is never an approval. An AskTool question may also be answered by
+voice, under the option-only rule below.
 
 Only the Host's authoritative turn-terminal event settles the Live operation.
 Message completion, tool output, or a provider response ending is not proof
@@ -141,6 +154,22 @@ queued item. Creating a session uses the existing defaults and leaves the
 current Live binding alone. Closing Details, pressing outside it, or pressing
 Escape changes neither the call nor accepted work. Navigating to another page
 or session does not hide the global bar or retarget the work binding.
+
+A bound work session that is waiting on the user is surfaced in both Live
+surfaces, because the card that decides it lives in that session's own
+Composer, not in the call. The compact bar carries a persistent
+waiting-for-decision line, and Details shows the pending request itself: the
+asktool question text (bounded and plain), the tool awaiting permission, or the
+plan awaiting approval, plus an action that opens the exact bound session and
+closes Details. Another session's pending request is never attributed to the
+bound session, and an unbound call shows nothing. When the backend state says
+the session waits but this renderer no longer holds the request (a renderer
+reload, or an ask delivered before the renderer subscribed), Details still
+offers the same action under a generic wording. The panel and the bar never
+answer or approve: they carry no approve or answer control, the request text is
+display-only data, and no panel action can resolve a permission, Plan, or
+AskTool request. Answering an AskTool question by voice is a separate,
+option-only path (see the routing section above).
 
 The compact bar owns Cancel during startup and End/mute during the call;
 Ending remains visible through both Main and renderer cleanup even after the

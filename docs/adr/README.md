@@ -345,9 +345,11 @@ Each ADR includes:
 | 0311 | [Recheck Live Work workspace identity at Host admission](0311-live-work-workspace-admission-guard.md) | Implemented candidate |
 | 0312 | [Session-scoped Todo checklist](0312-session-scoped-todo-checklist.md) | Accepted for implementation |
 | 0313 | [Default Live Work to the Current Composer Session](0313-live-voice-default-session-target.md) | Accepted |
+| 0315 | [A spoken answer selects among an open asktool question's own options](0315-live-voice-spoken-asktool-answers.md) | Accepted for implementation (amends the Live Voice Work Session decision path for AskTool only) |
 | turn-process-and-thinking-display | [Turn process and thinking presentation](turn-process-and-thinking-display.md) | Accepted |
 | provider-display-order | [Provider display order](provider-display-order.md) | Accepted |
 | registry-header-variable-spelling | [Remote header variables accept the registry's `{name}` spelling](registry-header-variable-spelling.md) | Proposed |
 | provider-system-certificates | [Desktop sidecar uses OS-trusted certificates](provider-system-certificates.md) | Accepted |
 | image-generation-capability | [Image generation as a configured Agent capability](image-generation-capability.md) | Accepted |
 | retained-browser-pages-per-tab | [Retain a host-owned browser page per resource tab](retained-browser-pages-per-tab.md) | Accepted |
+| 0314 | [The Live Voice call bar is a docked desktop widget window](0314-live-voice-docked-widget.md) | Accepted |

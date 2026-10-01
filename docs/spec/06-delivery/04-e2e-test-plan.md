@@ -94,7 +94,10 @@
   4. Open Details, inspect transcript/provider/work state, and dismiss it with
      Close, outside press, and Escape. Keep the call connected; use the bar to
      resume blocked sound, observe a rejected resume, and recover explicitly.
-  5. Navigate between chat, Settings, Plugins, and sessions. End or disable the
+  5. Navigate between chat, Settings, Plugins, and sessions. The call chrome is
+     a docked desktop widget window, so drag it by its own bar, verify the
+     position survives that navigation and is clamped back inside the work area,
+     and verify the main window draws no call bar. End or disable the
      feature with delayed Main termination and renderer cleanup, in either
      completion order. Keep Ending visible and prevent another Start until both
      settle. Exercise unconfirmed release and verify visible blocked recovery.
@@ -150,7 +153,15 @@
   terminal event arriving before submit resolves. Query an exact terminal
   result without creating another Host turn. Request project/session lists,
   verify labels and opaque call-scoped references, then test opening and
-  creating only through their existing panel actions. Exercise feedback while
+  creating only through their existing panel actions. With a submission
+  waiting on the user, confirm the compact bar keeps a waiting line and
+  Details shows the pending ask question with an action that opens that exact
+  session; verify another session's pending request stays unattributed. Then
+  answer the open asktool question by voice and confirm the session's card
+  resolves through the Host input path; retry with a label the question never
+  offered, with a partial answer, and with two open questions, and confirm each
+  is refused without a write and without being retried.
+  Exercise feedback while
   generation, user speech, and playback are active; finish by ending Live after
   Host admission.
 - **Expected:** The initial target is the current Composer session when present;
@@ -185,6 +196,13 @@
   cover provider/user/local playback gating and separate delivery status.
   `apps/desktop/test/live-work-scope.test.mjs` covers selection reference
   scope/expiry, and `live-work-operations.test.mjs` covers the panel actions.
+  `apps/desktop/test/live-work-decision.test.mjs` covers the waiting-decision
+  projection, its session scoping, bounded plain-text rendering and the panel
+  action that opens the bound session.
+  `packages/host-runtime/src/live-work/ask-answer.test.ts` covers the spoken
+  answer intent and its routing (resolved, refused, unknown and never resent),
+  and `apps/desktop/test/spoken-answer.test.mjs` covers the option-only
+  matching, the bounded read-out and the delivery budget.
   `voice-runtime/src/live/playback-monitor.test.ts` covers local audio signal
   detection. This is targeted automated coverage, not the complete
   W2-001—W2-096 matrix or real-provider E2E.
@@ -1454,11 +1472,13 @@ identify the platform validation still needed.
 
 - **Preconditions**: A session can produce both a deliberately delayed first
   token and a streaming response.
-- **Steps**: 1) Send ordinary text and stop before assistant text, thinking, or
-  a tool row begins. 2) Confirm the user row is undone and the text returns to
-  the composer. 3) Send again, wait for partial output, then stop during the
-  stream. 4) Observe the transcript and composer.
-- **Expected**: The unanswered send is undone and its draft restored. The
+- **Steps**: 1) Send ordinary text and click Stop immediately, including while
+  the prompt is still being admitted. 2) Confirm the user row is undone and
+  the text returns to the composer after that first Stop. 3) Send again, wait
+  for partial output, then stop during the stream. 4) Observe the transcript
+  and composer.
+- **Expected**: The first Stop is honored even if prompt admission is still in
+  progress; the unanswered send is undone and its draft restored. The
   streaming send stops with its partial response preserved and no draft
   restoration or duplicate user turn. The session remains usable.
 - **Specs linked**: `03-runtime/02-agent-runtime.md`

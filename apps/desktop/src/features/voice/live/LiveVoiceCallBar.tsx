@@ -1,10 +1,11 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useMemo, useRef, type RefObject } from "react";
 import type { TFunction } from "i18next";
 import { IconClose, IconInfo, IconMic, IconMicOff, IconPhoneOff, IconSettings, IconVolume, IconWaveform } from "../../../components/icons";
 import { TooltipButton } from "../../../components/ui";
 import type { LiveVoiceSnapshot } from "./live-call-controller";
 import { useAppStore } from "../../../stores/app-store";
 import { liveVoiceMode, type liveVoiceIssue } from "./live-voice-presentation";
+import { liveWorkDecision, operationAwaitsDecision } from "./live-work-decision";
 
 type CallBarProps = {
   t: TFunction;
@@ -22,6 +23,14 @@ type CallBarProps = {
   onDismiss: () => void;
 };
 
+/**
+ * The compact call bar, drawn by the docked widget window from the state main
+ * pushes. It is presentation only — the widget owns no media and is not the
+ * call owner, so every button forwards an action instead of reaching a
+ * controller — and it is the only call chrome the user sees. A failure that
+ * outlives a toast is therefore drawn in place next to its verbatim `LIVE_*`
+ * code, because nothing else on screen could name it.
+ */
 export function LiveVoiceCallBar({
   t, snapshot, issue, detailsOpen, detailsRef, actionPending,
   onCancel, onMute, onEnd, onDetails, onResume, onSettings, onDismiss,
@@ -30,13 +39,13 @@ export function LiveVoiceCallBar({
   // reported through the global toast together with their allow-listed code.
   // Only call states that outlive a toast stay in the bar: the playback hint and
   // the quarantine that still has to confirm the microphone was released.
-  const issueStaysInline = !issue || issue.warning || issue.code === "LIVE_MEDIA_RELEASE_UNCONFIRMED";
+  const issueStaysInline =
+    !issue ||
+    issue.warning ||
+    issue.code === "LIVE_MEDIA_RELEASE_UNCONFIRMED" ||
+    issue.code === "LIVE_NETWORK_ERROR";
   const showToast = useAppStore((state) => state.showToast);
   const reportedIssue = useRef<string | null>(null);
-  // Starting an action clears the mark: a retry that fails the same way is a new
-  // failure and has to speak up again, not be swallowed as a repeat of the last
-  // one. The call itself is preserved across a reconnect, so the key alone
-  // cannot tell the two apart.
   const previousActionPending = useRef(actionPending);
   useEffect(() => {
     const startedAttempt =
@@ -64,6 +73,23 @@ export function LiveVoiceCallBar({
                 : "liveVoice.phase.connected";
   const unmute = call?.muted !== false;
   const speaking = mode === "connected" && (call?.assistantSpeaking || (call?.userSpeaking && !call.muted));
+  // A waiting work session outlives a spoken announcement: the user may be
+  // reading another session when the decision appears, and the card that
+  // answers it lives in the bound session, not in this bar.
+  const boundSessionId = call?.workBinding?.workSessionId;
+  const planCheckpoints = useAppStore((state) => state.planCheckpoints);
+  const pendingPermissions = useAppStore((state) => state.pendingPermissions);
+  const pendingAsks = useAppStore((state) => state.pendingAsks);
+  const decisionWaiting = useMemo(
+    () => Boolean(liveWorkDecision({
+      sessionId: boundSessionId,
+      awaiting: operationAwaitsDecision(call?.workOperations, boundSessionId),
+      asks: pendingAsks,
+      permissions: pendingPermissions,
+      planCheckpoints,
+    })),
+    [boundSessionId, call?.workOperations, pendingAsks, pendingPermissions, planCheckpoints],
+  );
 
   return (
     <div className="live-voice-call-bar" data-state={mode}>
@@ -132,6 +158,9 @@ export function LiveVoiceCallBar({
               never reaches this bar (live-voice spec). */}
           <code className="live-voice-error-code">{issue.code}</code>
         </p>
+      ) : null}
+      {decisionWaiting && (mode === "connected" || mode === "reconnecting") ? (
+        <p className="live-voice-feedback live-voice-hint" role="status">{t("liveVoice.decisionWaiting")}</p>
       ) : null}
     </div>
   );

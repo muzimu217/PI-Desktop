@@ -20,7 +20,7 @@ import {
   type LiveWorkOperationView,
   type LiveWorkStopOperationResult,
 } from "@pi-desktop/shared";
-import { LiveWorkFeedbackScheduler, liveWorkUnselectedSessionId, type LiveWorkIntent } from "@pi-desktop/host-runtime";
+import { LiveWorkFeedbackScheduler, liveWorkUnselectedSessionId, type LiveWorkIntent, type LiveWorkPendingQuestion } from "@pi-desktop/host-runtime";
 import { LIVE_WORK_TOOL_NAME, parseLiveWorkArguments, type LiveWireEvent } from "@pi-desktop/voice-runtime/live";
 import { LiveAuthResolver } from "./auth-resolver";
 import type { LivePcmBridge } from "./audio-port";
@@ -322,11 +322,11 @@ export class LiveCallService {
     this.workHandlers.reportControlApplied(slot, input);
   }
 
-  notifyWorkOperation(callId: string, operation: LiveWorkOperationView, delegationId?: string, resultSummary?: string, intent?: LiveWorkIntent): void {
+  notifyWorkOperation(callId: string, operation: LiveWorkOperationView, delegationId?: string, resultSummary?: string, intent?: LiveWorkIntent, pendingQuestion?: LiveWorkPendingQuestion): void {
     this.workHandlers.notifyWorkOperation(callId, operation);
     const slot = this.current;
     if (!slot || slot.callId !== callId || !slot.workScopeOpened) return;
-    this.feedback.notifyOperation(slot, operation, delegationId, resultSummary, intent);
+    this.feedback.notifyOperation(slot, operation, delegationId, resultSummary, intent, pendingQuestion);
   }
 
   setWorkAnnouncementPolicy(callId: string, policy: "normal" | "silent"): void {

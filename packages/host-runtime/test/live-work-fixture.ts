@@ -6,6 +6,7 @@ export function build(input: {
   hangSnapshot?: boolean;
   onSubmit?: LiveWorkPort["submit"];
   onCancelQueued?: LiveWorkPort["cancelQueued"];
+  onRespondInput?: LiveWorkPort["respondInput"];
   lookupAdmission?: LiveWorkPort["lookupAdmission"];
   resolveIntent?: LiveWorkCoordinatorOptions["resolveIntent"];
   selectSession?: LiveWorkPort["selectSession"];
@@ -47,6 +48,13 @@ export function build(input: {
     cancelQueued: async (request) => {
       calls.push(`cancel:${request.sessionId}:${request.queueEntryId}`);
       return input.onCancelQueued ? input.onCancelQueued(request) : { status: "canceled" };
+    },
+    respondInput: async (request) => {
+      const labels = request.answers.map((answer) => answer.options.join("+")).join(",");
+      calls.push(`answer:${request.sessionId}:${labels}`);
+      return input.onRespondInput
+        ? input.onRespondInput(request)
+        : { status: "resolved", turnId: "turn-1" };
     },
     listProjects: async (request) => [{ selectionRef: "project-ref", kind: "project", action: request.action, label: "Demo" }],
     listSessions: async () => [{ selectionRef: "session-ref", kind: "session", action: "open", label: "Demo / Chat" }],

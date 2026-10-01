@@ -19,8 +19,10 @@ import {
   type LiveWorkContextMessage,
   type LocalReceiptDelivery,
   type ProviderReceipt,
+  type LiveWorkPendingQuestion,
   type WorkSnapshot,
 } from "@pi-desktop/host-runtime";
+import { buildSpokenAnswers, toPendingQuestion } from "./spoken-answer";
 import {
   ErrorCodes,
   IPC,
@@ -83,6 +85,8 @@ const INTENT_SYSTEM_PROMPT = [
   "Use stop-current only for a request to stop the active work turn; use immediate only for an explicit abort request.",
   "Use speech-only only for a request to stop or resume voice announcements while leaving work running.",
   "Fail closed with clarify when intent or target is ambiguous.",
+  "When the Host context names an open question and the user answers it, use respond-input with that question's own option labels: one entry per question, questionIndex matching the order the questions were read out, and never a label the question did not offer. An incomplete or paraphrased answer is not respond-input; say what is still needed instead.",
+  "A spoken answer is never approval for a permission, Plan, or Goal request; those stay in the desktop UI.",
   `Schema: ${JSON.stringify(LIVE_WORK_INTENT_SCHEMA)}`,
 ].join("\n");
 
@@ -277,6 +281,14 @@ export function createLiveWorkBridge(input: {
     requireCallScope,
     observeTurnTarget: (sessionId) => selectedTurnIds.get(sessionId) ?? null,
   });
+
+  /**
+   * What the session's open question says, bounded and flattened, so the voice
+   * surface can read it out and an answer can be checked against it. `null`
+   * whenever there is not exactly one question open.
+   */
+  const readPendingQuestion = (sessionId: string): LiveWorkPendingQuestion | null =>
+    toPendingQuestion(input.getAgentHostBridge()?.openAsk(sessionId));
   const workPort: LiveWorkPort = {
     ...backendPort,
     async snapshot(sessionId) {
@@ -305,6 +317,37 @@ export function createLiveWorkBridge(input: {
       } catch (error) {
         if (session.source === "pi-native") interruptedNativeTurns.delete(key);
         throw error;
+      }
+    },
+    /**
+     * A spoken answer resolves the session's one open question. Every option
+     * label is re-checked against that question's own options — the model can
+     * choose among what the user was read out and can never introduce an
+     * answer the question did not offer — and every question has to be
+     * answered, or nothing is resolved at all.
+     */
+    async respondInput(request) {
+      const bridge = input.getAgentHostBridge();
+      if (!bridge) return { status: "unavailable", message: "The work session backend is unavailable. Answer this question in the desktop." };
+      const open = bridge.openAsk(request.sessionId);
+      if (!open) {
+        return {
+          status: "rejected",
+          message: "That session is not asking a single question right now. Answer it in the desktop.",
+        };
+      }
+      const answers = buildSpokenAnswers(open.questions, request.answers);
+      if (!answers) {
+        return {
+          status: "rejected",
+          message: "That answer does not match the question's own options. Read the question and its options again, or answer it in the desktop.",
+        };
+      }
+      try {
+        await bridge.resolveOpenAsk({ sessionId: request.sessionId, inputId: open.inputId, answers });
+        return { status: "resolved", message: "Answer delivered to the open question.", turnId: open.turnId };
+      } catch {
+        return { status: "unavailable", message: "The answer could not be delivered. Answer the question in the desktop." };
       }
     },
     async listProjects(request) {
@@ -445,12 +488,16 @@ export function createLiveWorkBridge(input: {
         }
         signal.throwIfAborted();
       }
+      // Read the open question at classification time: it is the only source
+      // for the option labels a spoken answer may select.
+      const pendingQuestion = readPendingQuestion(snapshot.sessionId);
       const contextInput = buildLiveWorkClassifierInput({
         candidate,
         snapshot,
         contextEnabled: binding.contextEnabled,
         recentMessages,
         recentOperations,
+        ...(pendingQuestion ? { pendingQuestion } : {}),
       });
       const classifierSessionId = hasTarget ? binding.workSessionId : `live-work-classifier:${candidate.callId}`;
       const launch = await raceWithSignal(input.resolveAgentRuntimeLaunch(
@@ -498,7 +545,16 @@ export function createLiveWorkBridge(input: {
       }
     },
     onOperation: ({ operation, ...update }) => {
-      input.onOperation(operation.callId, { operation, ...update });
+      // A waiting operation carries the question it waits on, so the voice
+      // surface can read it out and pass the user's answer back.
+      const pendingQuestion = operation.execution === "waiting-input"
+        ? readPendingQuestion(operation.workSessionId)
+        : null;
+      input.onOperation(operation.callId, {
+        operation,
+        ...update,
+        ...(pendingQuestion ? { pendingQuestion } : {}),
+      });
       flushTerminalResult(operation);
     },
   });
@@ -794,3 +850,4 @@ function raceWithSignal<T>(promise: Promise<T>, signal: AbortSignal, timeoutMs?:
     );
   });
 }
+

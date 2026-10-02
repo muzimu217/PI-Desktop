@@ -65,6 +65,7 @@ import { PromptEnhancementCard } from "./prompt-enhancement-card";
 import { CloseBehaviorSection, DeveloperSection } from "./developer-sections";
 import { PluginScenicThemesDestination } from "../../components/settings/PluginScenicThemesDestination";
 import { ConfigSyncPage } from "../../components/settings/ConfigSyncPage";
+import { StorageSettingsSection } from "./StorageSettingsSection";
 
 type SettingsTab = ReturnType<typeof useAppStore.getState>["settingsTab"];
 
@@ -422,6 +423,8 @@ export function SettingsPage() {
               </SettingsCard>
 
               <NetworkProxySection settings={settings} saveSettings={saveSettings} />
+
+              <StorageSettingsSection />
 
               <SettingsCard title={t("settings.power")}>
                 <SettingsRow

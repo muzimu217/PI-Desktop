@@ -149,7 +149,7 @@ test("Live Voice separates idle entry and compact call presentation", async (t) 
     assert.match(html, /LIVE_NETWORK_ERROR/);
     // A failure only the owner frame can see — a refused action — reaches the
     // widget as a reported code, because the call view never carries it.
-    assert.match(hostSource, /liveVoiceApi\.reportWidgetIssue\(\{ callId, code: issue\?\.code \?\? null \}\)/);
+    assert.match(hostSource, /liveVoiceApi\.reportWidgetOwnerState\(\{ callId, errorCode: issue\?\.code \?\? null, decisionWaiting \}\)/);
     // account failures read as account failures, not as generic configuration advice
     const auth = liveVoiceIssue({ ...snapshot, call: { ...call, phase: "failed", error: { code: "LIVE_AUTH_REQUIRED", retriable: false } } });
     assert.equal(auth.message, "liveVoice.authRequired");

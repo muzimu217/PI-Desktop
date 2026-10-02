@@ -81,7 +81,9 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
 - Work panel resize: its inner left-edge handle changes the committed panel
   width in the renderer, so dragging left gives the panel more internal space
   and dragging right returns space to MainChat (§5.4)
-- Window resize: native edges and corners resize the fixed application window;
+- Window resize: native edges and corners on all platforms resize the fixed
+  application window; Windows keeps Electron's frameless hit test without its
+  painted thick-frame rim;
   they never resize or reserve the work panel. Responsive layout follows
   [07-ui-design-system.md](07-ui-design-system.md) §10.1
 
@@ -523,7 +525,12 @@ visually distinct from list content.
   one logical project group: the primary folder is activated and names the
   group, while every other selected folder is retained as a group root and is
   shown in Project archive details, not as an open project tab. Group chats,
-  instructions, and memory use the same group identity. A source selector
+  instructions, and memory use the same group identity. If a local selection
+  contains exactly one root already owned by a durable group, Create reopens
+  that group at its primary root instead of creating a duplicate group; this
+  applies when the group was closed from the sidebar. A multi-folder selection
+  that overlaps an existing group remains subject to host duplicate-root
+  validation. A source selector
   offers This computer and Git repository: the git source swaps the folder
   list for a repository URL field plus a clone destination row and creates
   the project by cloning into the chosen folder first. The dialog follows
@@ -1107,12 +1114,12 @@ entirely inside the plugin's isolated page:
 | Preview (maximize) | MainChat is unmounted and the panel fills the client area beside the sidebar. The mode is transient and restores the prior panel width and sidebar state when left. |
 | Multiple artifacts | The header keeps a horizontally scrollable tab strip. The fixed `+` action creates a new launcher tab; its buttons open Review and all in-scope plugin views without duplicating open resource tabs. |
 | Session switch | The destination session's retained open state, tabs, active tab, and Browser resource replace the previous session's panel context atomically; neither context is deleted |
-| Resizing | The inner left divider follows anchored pointer delta or keyboard input for the panel target; pointer changes are frame-coalesced and committed in the renderer. Escape, pointer cancellation, or lost capture restores the prior panel width. Native window edges resize only the fixed application window. |
+| Resizing | The inner left divider follows anchored pointer delta or keyboard input for the panel target; pointer changes are frame-coalesced and committed in the renderer. Escape, pointer cancellation, or lost capture restores the prior panel width. Native window edges resize only the fixed application window on every platform. |
 | No workspace | Each tab renders its own "open a project" empty state |
 | Open with no resource | `Cmd/Ctrl + J` reveals the panel without creating a tab, so the body renders the New launcher. Clicking `+` creates an explicit, closable New tab with the same launcher rows. Activating a row from that tab replaces it with or selects the singleton view. Closing the final tab leaves the panel open in the no-resource state. |
 | Constrained work area | The panel is capped by the shared three-column budget inside the existing client area; MainChat never drops below its 450px floor and the expanded sidebar yields at the threshold |
 | New launcher active | The body hosts concise Review and plugin-view buttons. Each row replaces the launcher tab with its destination or activates the existing singleton; the page is independently closeable. |
-| Plugin view active | The body hosts the plugin's own isolated page as a native `WebContentsView`, positioned from the measured surface rect. It remains visible at its full rect while the divider is being resized or a New launcher tab is created; creating a page never pushes the plugin body down or changes its bounds. It is hidden whenever the tab is inactive, the panel is animating, or a panel-wide blocking overlay is open — the same rule the Browser preview follows, since both composite above renderer content. A view whose plugin is disabled, uninstalled, reloaded, or crashed is destroyed; the tab stays and re-opens the page on the next lifecycle event (ADR 0104) |
+| Plugin view active | The body hosts the plugin's own isolated page as a native `WebContentsView`, positioned from the measured surface rect. It remains visible at its full rect while the divider is being resized or a New launcher tab is created; creating a page never pushes the plugin body down or changes its bounds. Embedded plugin documents start with zero root/body margin and border and a transparent background, so the host panel and plugin theme own the visible surface edge. It is hidden whenever the tab is inactive, the panel is animating, or a panel-wide blocking overlay is open — the same rule the Browser preview follows, since both composite above renderer content. A view whose plugin is disabled, uninstalled, reloaded, or crashed is destroyed; the tab stays and re-opens the page on the next lifecycle event (ADR 0104) |
 | Plugin out of scope | A view contributed by a plugin that is not active in the current project disappears from the New launcher when the project changes. Unlike contributed themes, which are one global setting and stay unfiltered, a view is scoped work |
 
 ### 5.4 Interactions
@@ -3199,7 +3206,9 @@ has four presentation states:
   work, and the resulting state returns through the same authoritative view the
   owner receives. A failure only the owner frame can observe — a refused mute, a
   playback retry that failed — is reported so the bar names it in place next to
-  its verbatim `LIVE_*` code; the bar is the only call chrome the user sees.
+  its verbatim `LIVE_*` code; the bar is the only call chrome the user sees. The
+  same report carries whether the bound work session waits on a decision the user
+  has to make in that session's own card, which the widget window cannot see.
 - The main window draws no call bar. It keeps the details surface, which the
   widget's Details action opens after bringing that window forward, and it stays
   the frame that runs the actions. Feature disable hides the idle icon; the

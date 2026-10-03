@@ -14,13 +14,6 @@ import {
 } from "./delegation-message.js";
 import {
   Agent,
-  BACKGROUND_CONTEXT,
-  compact,
-  convertToLlm,
-  estimateContextTokens,
-  estimateTokens,
-  prepareCompaction,
-  withAbortSignal,
   type AgentContext,
   type AgentEvent,
   type AgentLoopTurnUpdate,
@@ -29,13 +22,8 @@ import {
   type AgentToolResult,
   type AfterToolCallContext,
   type AfterToolCallResult,
-  type CompactionPreparation,
-  type CompactionEntry,
-  type CompactionSettings,
   type BeforeToolCallContext,
   type BeforeToolCallResult,
-  type Entry,
-  type MessageEntry,
   type PrepareNextTurnContext,
 } from "@earendil-works/pi-agent-core";
 import {
@@ -134,6 +122,20 @@ import {
 } from "./agent-messages.js";
 import { withExplicitRequired } from "./tool-schema.js";
 import { buildSessionContext } from "./session-context.js";
+import { prepareCompaction } from "./pi-runtime-compaction-plan.js";
+import { compact } from "./pi-runtime-compaction-summary.js";
+import {
+  estimateContextTokens,
+  estimateTokens,
+} from "./pi-runtime-estimates.js";
+import { convertToLlm } from "./pi-runtime-messages.js";
+import type {
+  CompactionEntry,
+  CompactionPreparation,
+  CompactionSettings,
+  Entry,
+  MessageEntry,
+} from "./pi-runtime-types.js";
 import {
   initialSystemTranscript,
   rebuildSystemTranscript,
@@ -1467,16 +1469,12 @@ function selectRetainedUserMessages(
 
 /** Rebuild a pi-ai tool result from a persisted tool row. Rows that never
  * finished (app quit / abort mid-tool) restore as errored results so the
- * model knows the call produced nothing. */
-function toolResultFromUi(
+ * model knows the call produced nothing. Exported for tests. */
+export function toolResultFromUi(
   m: UiMessage,
   timestamp: number,
 ): ToolResultMessage {
-  const raw = m.toolResult as
-    | { content?: unknown; details?: unknown }
-    | string
-    | null
-    | undefined;
+  const raw: unknown = m.toolResult;
   const blocks: ToolResultMessage["content"] = [];
   const rawBlocks =
     isRecord(raw) && Array.isArray(raw.content) ? raw.content : undefined;
@@ -1496,7 +1494,27 @@ function toolResultFromUi(
   } else if (typeof raw === "string" && raw.trim()) {
     blocks.push({ type: "text", text: raw });
   } else if (raw !== undefined && raw !== null) {
-    blocks.push({ type: "text", text: safeJson(raw) });
+    // A host Read of an image file returns a top-level `images` array rather
+    // than content blocks; restore those as real image content so the model
+    // sees the picture across a restart, not just the JSON text (#1073).
+    const rawObject = isRecord(raw) ? raw : undefined;
+    const images = rawObject?.images;
+    if (rawObject && Array.isArray(images)) {
+      const rest = { ...rawObject };
+      delete rest.images;
+      blocks.push({ type: "text", text: safeJson(rest) });
+      for (const image of images) {
+        if (
+          isRecord(image) &&
+          typeof image.data === "string" &&
+          typeof image.mimeType === "string"
+        ) {
+          blocks.push({ type: "image", data: image.data, mimeType: image.mimeType });
+        }
+      }
+    } else {
+      blocks.push({ type: "text", text: safeJson(raw) });
+    }
   }
   const interrupted = m.toolStatus === "running";
   const rawRecord: Record<string, unknown> | undefined = isRecord(raw)
@@ -2576,6 +2594,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
   private extensionModelRegistry(): Record<string, unknown> {
     const getRunner = () => this.extensionRunner;
     const models = () => [this.model, ...(getRunner()?.getAgentModels() ?? [])];
+    const hasConfiguredProvider = (providerId: string) =>
+      providerId === this.provider.id ||
+      providerId === this.model.provider ||
+      (getRunner()?.getAgents().some((agent) => agent.providerId === providerId) ?? false);
     return {
       getAll: () => [...new Map(models().map((model) => [`${model.provider}/${model.id}`, model])).values()],
       getAvailable: () => [...new Map(models().map((model) => [`${model.provider}/${model.id}`, model])).values()],
@@ -2585,12 +2607,11 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         getRunner()?.getAgents().find((agent) => agent.providerId === providerId)?.name ??
         (providerId === this.provider.id ? this.provider.name : providerId),
       getProviderAuthStatus: (providerId: string) => ({
-        configured: [this.provider.id, ...(getRunner()?.getAgents().map((agent) => agent.providerId) ?? [])].includes(providerId),
+        configured: hasConfiguredProvider(providerId),
         source: "plugin",
       }),
       hasConfiguredAuth: (model: { provider?: string }) =>
-        typeof model.provider === "string" &&
-        [this.provider.id, ...(getRunner()?.getAgents().map((agent) => agent.providerId) ?? [])].includes(model.provider),
+        typeof model.provider === "string" && hasConfiguredProvider(model.provider),
     };
   }
 
@@ -6983,9 +7004,9 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     try {
       const result = await compact(
         preparation,
-        // The summary is a provider request like any other turn, but
-        // pi-agent-core builds its options itself and never reaches `streamFn`,
-        // so the headers have to ride on the collection.
+        // The summary is a provider request like any other turn. The desktop
+        // compaction adapter calls `completeSimple` directly instead of
+        // `streamFn`, so headers have to ride on the collection.
         models,
         this.model,
         undefined,
@@ -6995,7 +7016,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         // pi's classifier decides what is transient; the waits honour `signal`.
         COMPACTION_SUMMARY_RETRY_POLICY,
         undefined,
-        withAbortSignal(signal, BACKGROUND_CONTEXT),
+        signal,
       );
       if (!result.ok) {
         this.emitCompactionFailureDiagnostic(

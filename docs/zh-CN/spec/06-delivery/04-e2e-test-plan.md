@@ -1569,6 +1569,14 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 - **关联规格**：`03-runtime/01-ipc-protocol.md` §12a、`07-plugins/04-plugin-security.md` §8.1
 - **状态**：客户端及会话隔离已有单元测试；完整桌面流程待验证
 
+#### E2E-MCP-tool-requires-approval：用户 MCP 工具在 ask 与 accept-edits 下需要审批
+
+- **先决条件**：一个绑定项目的 Agent 会话；一个用户配置的 stdio MCP 服务器，其工具列表把某个工具标注为只读/低风险。
+- **步骤**：1) 会话处于 `ask` 时，让代理调用该 MCP 工具。2) 以“允许一次”回应卡片后再次调用，再以“本会话允许”回应并第三次调用。3) 在新会话中切到 `accept-edits` 并重复调用。4) 切到 `auto` 调用。5) 依次切到 Plan、Goal 调用。
+- **预期**：在 `ask` 与 `accept-edits` 下，每次调用都显示审批卡片，原因为 "MCP server tool requires approval"，风险为 `medium`，与服务器自行声明的标注无关。“允许一次”只覆盖该次调用；“本会话允许”只在该会话内对同一 `mcp_<serverId>_<tool>` 名称不再提示，不覆盖该服务器的其他工具。`auto` 不显示卡片直接执行。Plan 与 Goal 即使存在会话授权也拒绝。
+- **关联规格**：`03-runtime/03-tools-and-permissions.md`、`05-security/01-security.md`、D640、ADR `mcp-tool-approval-risk`
+- **状态**：已有单元测试（host-core `permissions.rs` MCP 风险与模式测试）；桌面流程待验证
+
 #### E2E-024L：常驻插件服务受监督且可见
 
 - **先决条件**：在授予 `background.service` 的情况下启用 `examples/plugins/hello`。
@@ -7031,6 +7039,20 @@ eleven-tool-round desktop paths are verified by
 - **验收**：B（模型配置）、质量
 - **里程碑**：M6+
 
+#### E2E-OAUTH-anthropic-copy-code：Anthropic 复制代码登录复用现有提示桥接
+
+- **前置条件**：本地 token 端点夹具只拦截 Anthropic OAuth token URL。生产 pi-ai
+  Anthropic 流程与 Desktop `VendorOAuth` 使用内存 Host RPC 夹具；不使用真实账户或远程端点。
+- **步骤**：发起 Anthropic 厂商登录；在 `select` 提示中选择 `copy_code`；检查授权 URL；
+  为 manual-code 提示输入合成的 `code#state`；通过夹具完成 token 交换；解析请求认证并检查
+  Host 中存储的凭据。
+- **预期**：选择项保留 `browser` 和 `copy_code`；授权 URL 使用
+  `https://platform.claude.com/oauth/code/callback`；token 交换成功；refresh 凭据保存在
+  provider 作用域的 Host OAuth 引用中，运行时只获得短期 access token；不创建 API-key secret。
+- **链接规格**：`03-runtime/14-secrets-storage.md` §10；`07-plugins/16-trusted-extensions.md` §4。
+- **验收**：B（厂商账户）、安全、质量。
+- **状态**：本地 provider-flow 集成夹具；未验证真实账户或渲染器视觉流程。
+
 #### E2E-164：上下文压缩保留活动任务边界
 
 - **先决条件**：提供商夹具可以在一个会话中完成多个连续任务，在终止边界触发自动
@@ -7729,18 +7751,20 @@ runner 会在运行时的隔离临时目录中生成六个插件形态 fixture�
 
 #### E2E-244：不支持的 API、加载错误与处理器超时降级为诊断
 
-- **前置条件**：三个已启用的夹具扩展：一个在顶层导入 `@earendil-works/pi-tui` 并
-  调用 `ui.setWidget`；一个模块在加载时抛出；一个 `context` 处理器永不返回。
-- **步骤**：1）开始一个回合。2）打开每个条目的诊断抽屉。3）等待超过 30 秒处理器
-  限制。4）禁用抛出的扩展并开始另一个回合。
+- **前置条件**：四个已启用的夹具扩展：一个在顶层导入 `@earendil-works/pi-tui` 并
+  调用 `ui.setWidget`；一个从 `@earendil-works/pi-coding-agent` 导入不支持的命名导出；
+  一个模块在加载时抛出；一个 `context` 处理器永不返回。
+- **步骤**：1）开始一个回合。2）打开每个条目的诊断抽屉。3）确认不支持的导出仍为
+  undefined。4）等待超过 30 秒处理器限制。5）禁用抛出的扩展并开始另一个回合。
 - **预期**：pi-tui 导入成功，`setWidget` 返回惰性 `dispose`，每个成员记录一条诊断；
-  抛出的扩展显示 `error` 及消息和堆栈，composer 显示一行提示，其余扩展仍加载；
+  不支持的 coding-agent 导出保持不可用并记录 `unsupported_api`；抛出的扩展显示 `error`
+  及消息和堆栈，composer 显示一行提示，其余扩展仍加载；
   停滞的处理器在 30 秒后被放弃并记诊断，回合以未修改的上下文完成；禁用后提示在
   下一回合边界消失，且没有运行中的回合被打断。
 - **链接规格**：`07-plugins/16-trusted-extensions.md` §4.2、§4.4、§5、§6
 - **验收**：质量
 - **里程碑**：MVP 后（R7 v1）
-- **状态**：部分自动化（`pnpm test:e2e:trusted-extensions`）；加载错误与惰性 terminal-UI API 会降级为诊断；停滞处理器超时和边界禁用旅程仍需额外验证
+- **状态**：部分自动化（`pnpm test:e2e:trusted-extensions`）；`runner.test.ts` 通过真实 Jiti loader 覆盖缺失的静态命名导出；该导入对应的诊断抽屉渲染、停滞处理器超时和边界禁用旅程仍需额外验证
 
 #### E2E-245：打包后的 sidecar 经 jiti 加载 TypeScript 扩展
 
@@ -8757,16 +8781,17 @@ the latest destination. These assertions measure work counts, not device FPS.
 
 - **前提：** 独立桌面配置、构建后的任务候选版本、本地 SSE 模拟模型；不使用真实
   服务凭据或付费 API。
-- **步骤：** 点击页脚时钟；创建每天上午 09:00 的任务；选择另一个已保存项目、Auto 权限和非默认模型；编辑名称；暂停／启用；立即运行；
-  打开结果会话；验证周期／四个时段主题下拉菜单、星期多选及选中标记、保存回显、空选择与固定时间；
+- **步骤：** 点击页脚时钟；创建每天上午 09:00 的任务；选择另一个已保存项目、Auto 权限和非默认模型；编辑名称；暂停／启用；立即运行并在任务页面内读取刚准入运行的转写；从该页面打开结果会话，确认顶部栏提供返回定时任务的入口，返回后仍选中同一个任务与同一次运行；验证周期／四个时段主题下拉菜单、星期多选及选中标记、保存回显、空选择与固定时间；
   验证方向键、Home/End、Enter、Escape／Tab 和外部点击关闭；
   验证每小时无时间输入且首次等待一小时；设置每天任务在下一个真实分钟执行；
+  选择间隔周期并填入 30 分钟，确认任务行显示该跨度而不是时钟，再切到每周周期后切回，确认该值仍然保留；打开编辑表单，确认任务列与任务页面让位；
+  让一个任务积累超过共享窗口的运行记录、另一个任务保持空闲，确认空闲任务仍然显示自己的最近一次结果；
   观察自动完成；删除已结束的任务。普通 Agent 对话经模型工具调用发现、创建、查询、
   修改任务到 15:30，再删除；验证页面显示具体时间，改名保存不覆盖。模型为本地确定性夹具。
 - **预期：** 项目、权限和精确 provider/model 只保存在该任务，重新打开仍显示相同值并实际传到 sidecar，其他任务不受影响；项目、权限和模型控件保持嵌在“指令”框的 Composer 风格底栏中，窄窗口也不产生横向溢出；缺少新增字段的旧记录保持原默认行为。配置持久化并显示下次时间；暂停后不触发；手动与自动入口均调用真实
-  Agent sidecar；历史记录链接到持久化会话；自动执行不依赖渲染器发送提示词。
+  Agent sidecar；本任务的运行记录列出每次运行的状态与耗时，「打开会话」到达持久化会话，而会话列表与会话搜索不会列出它，该会话顶部栏可返回同一个任务与同一次运行；间隔任务按表单给出的跨度排程并在任务行中显示，表单打开时独占本页；让一个任务积累超过共享窗口的运行记录、另一个保持空闲时，空闲任务仍显示自己的最近一次结果；自动执行不依赖渲染器发送提示词。
   宿主测试补充验证重复准入、错过时段、无效输入和重启恢复。
-- **规格：** 04-ux/01-ui-ia §3.3；03-runtime/04-data-storage §4.11；
+- **规格：** 04-ux/01-ui-ia §3.3；04-ux/08-component-spec §6、§20A；03-runtime/04-data-storage §4.11；
   ADR scheduled-desktop-automations；ADR 0305。
 - **验收：** 定时执行与可恢复的运行历史。
 - **里程碑：** MVP 后的桌面自动化。

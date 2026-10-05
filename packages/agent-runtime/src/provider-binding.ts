@@ -1,3 +1,4 @@
+import { transcriptCompat } from "./transcript-compat.js";
 /**
  * Provider/model wiring shared by the session runtime and its subagents.
  *
@@ -312,7 +313,7 @@ export function buildProviderModel(
   const binding = apiBindingForProviderModel(provider);
   const catalog = provider.modelConfig;
   const catalogModel = catalog
-    ? (({ source: _source, nativeCost, ...model }) => ({
+    ? (({ source: _source, transcriptBinding: _transcriptBinding, nativeCost, ...model }) => ({
         ...model,
         ...(nativeCost ? { cost: nativeCost } : {}),
       }))(catalog)
@@ -348,6 +349,17 @@ export function buildProviderModel(
     : undefined;
   const autoAdaptiveThinking =
     catalogModel.thinkingProtocol === undefined && requiresAdaptiveThinking(catalogModel);
+  // A generic model projection can still be present when the catalog misses a
+  // model (#926). OAuth vendor rows may expose live-only Claude ids, so only
+  // use the id heuristic for non-OAuth rows without protocol or options.
+  const customClaudeId =
+    catalog?.source === "generic" &&
+    provider.authKind !== "oauth" &&
+    catalogModel.reasoning === true &&
+    catalogModel.thinkingProtocol === undefined &&
+    (catalogModel.reasoningOptions?.length ?? 0) === 0 &&
+    binding.api === "anthropic-messages" &&
+    /claude/i.test(provider.modelId);
   // OpenAI-compatible gateways are not guaranteed to implement the newer
   // `developer` role, even when the selected model supports reasoning. Keep
   // the broadest Chat Completions wire shape as the default; a catalog/model
@@ -364,11 +376,18 @@ export function buildProviderModel(
           supportsDeveloperRole: catalogModel.compat?.supportsDeveloperRole === true,
         }
       : binding.api === "anthropic-messages" &&
-          (catalogModel.thinkingProtocol === "adaptive" || autoAdaptiveThinking)
+          (catalogModel.thinkingProtocol === "adaptive" ||
+            autoAdaptiveThinking ||
+            customClaudeId)
         ? {
             ...(catalogModel.compat ?? {}),
             ...(thinkingProtocolCompat ?? {}),
-            forceAdaptiveThinking: true,
+            // Explicit protocol selection wins, followed by per-model compat;
+            // the Claude-id heuristic supplies only the missing default.
+            forceAdaptiveThinking:
+              thinkingProtocolCompat?.forceAdaptiveThinking ??
+              catalogModel.compat?.forceAdaptiveThinking ??
+              true,
           }
         : thinkingProtocolCompat
           ? { ...(catalogModel.compat ?? {}), ...thinkingProtocolCompat }
@@ -386,7 +405,7 @@ export function buildProviderModel(
       }) === "on"
         ? true
         : undefined,
-    ...(compat ? { compat } : {}),
+    compat: { ...compat, ...transcriptCompat(catalog, provider.modelId, binding.api, baseUrl) },
     ...(Object.keys(modelHeaders).length > 0 ? { headers: modelHeaders } : {}),
   } as Model<Api>;
 }

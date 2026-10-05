@@ -73,7 +73,13 @@ const { useOpenPreviewTarget } = loadModule("../src/hooks/use-preview-target.ts"
       },
     },
   },
-  "../lib/chat-links": loadModule("../src/lib/chat-links.ts", {}),
+  "../lib/chat-links": loadModule("../src/lib/chat-links.ts", {
+    "@pi-desktop/shared": await import("@pi-desktop/shared"),
+    "./chat-link-scanner.ts": loadModule("../src/lib/chat-link-scanner.ts", {
+      "./render-diagnostics.ts": { beginRenderDiagnostic: () => () => {} },
+    }),
+    "./render-diagnostics.ts": { beginRenderDiagnostic: () => () => {} },
+  }),
   "../lib/open-http-url": { openHttpUrl: (...args) => calls.urls.push(args) },
   "../lib/work-panel-tabs": workPanelTabs,
 });

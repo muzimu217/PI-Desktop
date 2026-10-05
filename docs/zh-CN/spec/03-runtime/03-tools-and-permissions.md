@@ -51,7 +51,7 @@
 
 按照 pi 的编码代理默认值，第一个 Agent 请求仅激活
 `Read`、`Bash`、`Edit` 和 `Write`； `Glob` 和 `Grep` 按需加载。
-Plan 和 Goal 保留其 read/inspection 核心。`Skill` 有意不作延迟：`/skill-id`
+Plan 和 Goal 保留其 read/inspection 核心。`Skill` 有意不作延迟：`/skill:<skill-id>`
 调用会指示模型调用它，而模式中不存在的工具根本无法被调用，因此只要技能目录非空，
 它就会随第一个请求一起发送（D404、ADR 0230）。运行时还注册功能
 无需预先发送其完整模式：

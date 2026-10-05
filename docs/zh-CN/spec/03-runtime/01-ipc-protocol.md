@@ -812,8 +812,17 @@ type ToolTokenUsage = {
 
 type SessionDetail = SessionSummary & {
  messages: UiMessage[];
+  /** Authoritative metadata for SubmitPlan/SubmitGoal calls in this page. */
+  planHistory?: Array<{ proposal: PlanProposal; superseded: boolean }>;
 };
 ```
+
+历史读取仅为当前会话返回页中的 SubmitPlan/SubmitGoal 调用附加 `planHistory`。
+SQLite 提供真实审批状态、完整 Markdown 快照、文件路径及同类型的新版本替代标记，
+原始 JSONL 工具结果保持不变。显示截断不影响这些有提交大小限制的计划快照。
+该字段兼容旧主机和原生会话；分叉会话不复制审批记录，也不从工具结果或文件名推断状态。
+渲染器可将其投影到 `UiMessage.planHistory`，但不得将显示元数据写回模型证据。
+
 
 Electron 主进程用该会话精确 provider/API URL 与 model 的本地 models.dev
 记录，丰富 session list/get/create/fork/configure 结果中的有效推理能力。
@@ -1811,7 +1820,14 @@ Electron 等待主机关闭之前会停止服务，并将清单标记为非活�
 `read`、`write` 或 `dangerous`；通用危险操作，以及命名的删除会话、配置会话和决议
 计划工具，都要求 `confirm: true`。该标志是 Agent 确认，不是桌面用户弹窗。所有调用
 仍会经过现有 IPC 处理器的校验、主机权限、工作区边界和错误模型。文本负载和
-`structuredContent` 都有大小上限。
+`structuredContent` 都有大小上限：512 KiB（`MAX_RESULT_CHARS`）。超出上限的答复不会被
+原样返回，而是替换为 `{truncated: true, reason: "MCP_RESULT_LIMIT", preview: "<JSON 前
+512 KiB>"}`，因此外部调用方永远不会收到被静默缩短的负载。如果超限答复来自
+`session/get`（`pi_session_get`）且含有 `compaction` 记录，Main 会先将该记录投影为精简身份
+（`createdAt` 与 `details.generation`），再复查大小，然后才返回截断信封。这样，当长会话中
+无界增长的 `ContextCompactionRecord`（`summary` / `retainedTail` / `details.modifiedFiles`）
+本身导致超限时，转写仍可完整返回。未超限的答复保留完整 compaction 详情；桌面自己的会话详情
+保持不变。
 
 六个 `session/collaboration/*` 操作仅限第一方插件：它们要求经过认证的插件工具调用上下文，
 因此会出现在 `pi.desktop.listOperations` 中并可通过 `pi.desktop.invoke` 调用，但被排除在

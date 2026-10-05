@@ -286,28 +286,6 @@ test("model configuration keeps model defaults; AI owns app behavior defaults", 
   assert.doesNotMatch(providersSource, /EnhancementModelCard/);
 });
 
-test("default model selector shows every configured model under its provider", () => {
-  const defaultModelPicker =
-    providersSource.match(
-      /visibleDefaultModelOptions\.map\(\(\{ provider, modelId \}, index\) => \{[\s\S]*?<\/li>/,
-    )?.[0] ?? "";
-  assert.notEqual(defaultModelPicker, "");
-  assert.match(defaultModelPicker, /model-default-provider-group/);
-  assert.match(defaultModelPicker, /model-default-option-model font-mono">[\s\S]*?\{modelId\}/);
-  assert.match(defaultModelPicker, /setDefaultModel\(provider, modelId\)/);
-  assert.match(providersSource, /settings-text-action model-default-trigger/);
-  assert.doesNotMatch(providersSource, /defaultModelDescription/);
-  // The accessible name follows the provider heading, which is the vendor
-  // account's own label when it has one (#785).
-  assert.match(
-    providersSource,
-    /aria-label=\{`\$\{providerDisplayName\(provider\)\} · \$\{modelId\}`\}/,
-  );
-  assert.match(providersSource, /placeholder=\{t\("settings\.defaultModelSearch"\)\}/);
-  assert.match(providersSource, /model-default-results/);
-  assert.match(stylesSource, /\.model-default-results\s*\{[\s\S]*?overflow-y: auto;/);
-  assert.match(stylesSource, /scrollbar-gutter: stable/);
-});
 
 test("model configuration lists AI services and vendor accounts together", () => {
   // One list (D625): nothing filters OAuth rows out, and no second section.
@@ -410,7 +388,7 @@ test("settings nav icons map each destination to a semantic lucide glyph", () =>
   assert.match(settingsPageSource, /shortcuts: <IconKeyboard/);
   assert.match(settingsPageSource, /instructions: <IconFileText/);
   assert.match(settingsPageSource, /agent: <IconBot/);
-  assert.match(settingsPageSource, /import: <IconDownload/);
+  assert.doesNotMatch(settingsPageSource, /import: <IconDownload/);
   assert.match(settingsPageSource, /projects: <IconArchive/);
   assert.match(settingsPageSource, /index: <IconDatabase/);
   assert.match(settingsPageSource, /about: <IconInfo/);
@@ -447,7 +425,9 @@ test("settings nav keeps a flat searchable index with titled visual groups", () 
     "shortcuts",
     "instructions",
     "agent",
-    "import",
+    "skills",
+    "mcp",
+    "subagents",
     "projects",
     "index",
     "about",
@@ -487,7 +467,6 @@ test("settings rail uses short parallel labels and descriptive page titles", () 
     "settings.nav.skills",
     "settings.nav.mcp",
     "settings.nav.subagents",
-    "settings.nav.import",
     "settings.nav.projects",
     "settings.nav.info",
   ];

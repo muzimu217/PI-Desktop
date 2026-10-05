@@ -120,7 +120,10 @@ before it is ever sent to the UI:
   behavior; Windows defaults to 4 DIP
 - The CSS is read from disk at load time and delivered whole over IPC; the
   renderer injects it into a single dedicated `<style>` element appended after
-  the app's own stylesheets, so it can override tokens but never inject markup
+  the app's own stylesheets, so it can override tokens but never inject markup.
+  Later source order wins only at equal selector specificity: use
+  `:root[data-theme="light"]` or `:root[data-theme="dark"]` to match the base
+  palette's selector; bare `:root` has lower specificity
 - Selecting a theme is a settings value (`plugin:<pluginId>:<themeId>`); if the
   providing plugin is disabled or uninstalled the setting falls back to `system`
 

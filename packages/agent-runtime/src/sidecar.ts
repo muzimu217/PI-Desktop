@@ -1,3 +1,4 @@
+import { parseMcpServerIds, parseMcpToolNames } from "./mcp-tool-selection.js";
 /**
  * Node pi agent sidecar.
  * Protocol: NDJSON JSON-RPC on stdio with Electron main.
@@ -241,6 +242,7 @@ async function runtimeFor(
     runtimes.delete(sessionId);
   }
   if (reusable) {
+    reusable.setPluginSkills(pluginSkills);
     reusable.setCompactionSettings(params.compactionSettings);
     reusable.setInfiniteProviderRetry(params.infiniteProviderRetry === true);
     reusable.setMode(mode);
@@ -260,10 +262,9 @@ async function runtimeFor(
     // The current prompt is sent separately below. Exclude its persisted row
     // before attachment hydration so it cannot consume the history byte budget.
     if (currentPrompt !== undefined && params.userMessageId) {
-      const last = restoredMessages.at(-1);
-      if (last?.role === "user" && last.id === params.userMessageId) {
-        restoredMessages = restoredMessages.slice(0, -1);
-      }
+      restoredMessages = restoredMessages.filter((message) =>
+        message.role !== "user" || message.id !== params.userMessageId,
+      );
     }
     const supportsVision = visionFromModelConfig(params.provider.modelConfig);
     history = await hydrateAttachmentHistory(restoredMessages, {
@@ -444,6 +445,8 @@ async function handle(method: string, params: any): Promise<unknown> {
       }
       const prompt: RuntimePrompt = {
         text: content,
+        mcpServerIds: parseMcpServerIds(params.mcpServerIds),
+        mcpToolNames: parseMcpToolNames(params.mcpToolNames),
         attachments,
         ...(params.sessionMessage ? { sessionMessage: params.sessionMessage as SessionMessageOrigin } : {}),
       };
@@ -472,7 +475,7 @@ async function handle(method: string, params: any): Promise<unknown> {
       const expectedTurnId = String(params.expectedTurnId ?? "");
       if (method === "agent.steeringContext") return runtime.steeringContext(expectedTurnId);
       return runtime.steer(
-        { text: String(params.content ?? ""), attachments: params.attachments },
+        { text: String(params.content ?? ""), attachments: params.attachments, mcpServerIds: parseMcpServerIds(params.mcpServerIds), mcpToolNames: parseMcpToolNames(params.mcpToolNames) },
         expectedTurnId,
         params.message,
       );

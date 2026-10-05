@@ -665,6 +665,7 @@ export function createSessionLaunchRuntime({
             })),
           ...userMcpTools.map((tool) => ({
             name: tool.fullName,
+            mcpServerId: tool.serverId,
             description: tool.description,
             parameters: tool.schema ?? { type: "object", properties: {} },
           })),

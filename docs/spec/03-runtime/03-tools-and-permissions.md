@@ -50,7 +50,7 @@ The first Agent request includes `Read`, `Bash`, `Edit`, `Write`, `Glob`, and
 `Grep`. Keeping workspace listing and content search in the initial schema
 avoids a discovery round trip for routine project exploration (the amendment
 to ADR 0048 records this change). Plan and Goal keep their read/inspection core.
-`Skill` is deliberately not deferred: a `/skill-id` invocation instructs the
+`Skill` is deliberately not deferred: a `/skill:<skill-id>` invocation instructs the
 model to call it, and a tool absent from the schema cannot be called at all, so
 it ships with the first request whenever the skill catalog is non-empty (D404,
 ADR 0230). The runtime still registers optional capabilities without sending
@@ -74,6 +74,21 @@ mode's deferred catalog. The host permission,
 workspace/scratch containment, timeout, and audit rules do not change when a
 tool is loaded. `ToolSearch` itself never executes a workspace operation and
 never bypasses host-core policy.
+
+An explicit composer MCP selection carries exact server IDs to the runtime.
+The current host-supplied catalog associates each MCP tool with its server ID;
+selection activates all mode-allowed tools for that server before the request,
+without a ToolSearch call or its result-count limit. An optional `mcpToolNames`
+selection narrows activation to those exact catalog names, each owned by a
+selected server. Unknown, differently owned or mode-denied requested tools fail;
+there is no fallback to whole-server activation. Steering activates only
+when the queued user message is consumed, before the next provider dispatch.
+Unknown servers and selections with no mode-allowed tools fail explicitly.
+Activation preserves other tools, follows existing session restoration, and
+never bypasses execution permissions. Missing selection fields retain normal
+on-demand discovery. Main rejects a selected MCP command without task text or
+an attachment before opening or persisting a turn. See
+`docs/adr/composer-mcp-invocations.md`.
 
 ## 3. Common Tool Constraints
 

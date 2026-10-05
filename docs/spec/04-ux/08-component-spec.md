@@ -576,9 +576,10 @@ visually distinct from list content.
   in its overflow menu. Rename edits the local display name only; open folder
   reveals the project directory in the system file manager for the selected
   project row.
-- Conversation overflow: pin/unpin, archive/restore, Create branch, delete.
-  Create branch is disabled while that conversation is running; success
-  activates the independent child session and focuses the composer. When
+- Conversation overflow: pin/unpin, archive/restore, Create branch, Copy
+  conversation link, delete. Create branch is disabled while that conversation
+  is running; success activates the independent child session and focuses the
+  composer. Copy conversation link is offered to every reader (§20B). When
   developer mode is on, the menu also offers Copy conversation ID (clipboard)
   and Open session path (the session scratch directory in the system file
   manager).
@@ -726,7 +727,7 @@ controls.
 | Project reorder | press-and-move on the title (8px), or ArrowUp/ArrowDown on that title, writes contiguous normalized-path order to sidebar preferences; accent insertion line; no visible grip |
 | Project archive | omitted from default view; restorable from archived view |
 | Project close | removes retained tab only; durable project/sessions remain |
-| Project delete | row-menu danger action behind a second confirmation that names the project and the number of its sessions; refused with a message while any of those sessions is running; removes the durable project row, those sessions, their transcripts, and its project memory; never deletes the folder on disk; a path owned by a multi-folder project group is refused with a message, and a path the host no longer knows is still removed from the list |
+| Project delete | row-menu danger action behind a second confirmation that names the project and the number of its sessions; refused with a message while any of those sessions is running and leaves group membership unchanged; removes the durable project row, those sessions, their transcripts, and its project memory; never deletes the folder on disk; deleting a root of a multi-folder project group detaches it as part of deletion, promotes the first remaining root when the primary is deleted, and removes the group record when its last root is deleted. A path the host no longer knows is still removed from the list. Detaching a root with chats through Edit project preserves them under a standalone project |
 | Project memory | row-menu editor reads and saves a compact list of titled or untitled memory cards for the exact project path; cards can be added, edited, and removed, the context is available in later chats, and it is never a higher-priority instruction |
 | Session list | exact-path matches only; no basename grouping |
 | Active group | exactly one group reflects the selected host workspace |
@@ -888,7 +889,7 @@ pending action cards remain reachable outside a hidden process. See
 
 | State | Behavior |
 |---|---|
-| Empty | Restrained hero + optional onboarding checklist in a scrollable content region, with a bottom-reserved home composer and no starter-card or contextual quick-action layer (D111/D204/D206). A project-bound empty session underlines the project name; the control opens a searchable switcher of the sidebar's open projects, with clone-git-project and open-project actions. |
+| Empty | Restrained hero + optional onboarding checklist in a scrollable content region, with a bottom-reserved home composer and no starter-card or contextual quick-action layer (D111/D204/D206). An open project underlines the project name, including before its first session exists; the control opens a searchable switcher of the sidebar's open projects, with clone-git-project and open-project actions. |
 | Streaming | Auto-scroll follows while pinned; new tokens append |
 | Active progress | Immediately after send, before the first assistant or tool event, a compact localized `Working…` status with elapsed time appears inline. Its model and subagent elapsed labels use the carried-unit format in §9.1. When the runtime names a quiet interval, that same row identifies starting, waiting for the model, preparing the next request, compacting context, recovering an empty response, retrying, or waiting for delegated work (with each running subagent's latest coarse action). It remains visible through thinking, tool execution, completed-tool gaps, and partial answers until the turn ends. Runtime phases take precedence over the Planning/Goal or Working fallback. Pending permissions, questions, and plan/goal approvals suppress the row; history reading never shows live status; no large generic progress card is rendered. The row lives in the reserved tail lane, so it appears and clears mid-turn without changing the transcript's content height. A retrying row remains compact at rest; hovering or focusing it reveals an error-styled tooltip with the localized error summary, stable code/HTTP status, and bounded provider message. The tooltip mixes the error tint over `--ds-bg-elevated-opaque` so transcript text does not show through. |
 | Turn outcome | After a failed turn, a session-scoped recovery card summarizes the interruption and tool evidence. Completed turns use the existing transcript and message-scoped InlineReviewCard without an extra success card; failed turns can continue through one localized prompt without losing the transcript. |
@@ -1205,6 +1206,13 @@ entirely inside the plugin's isolated page:
   the divider restores the default 360px width, clamped by the same live
   minimum and three-column budget, so a reset never breaches the MainChat
   floor.
+- Browser capture and resize: screenshots and raw `Page.captureScreenshot`
+  calls serialize per retained browser page. While a capture is in flight,
+  the page retains the latest requested bounds without changing its native
+  viewport. Capture completion or failure applies those bounds if the page
+  is visible; a hidden page receives them when shown again. Queued captures
+  stay on their original page and fail if that guest was closed. Other pages
+  remain independent, and resizing never triggers an extra screenshot.
 - Persistence: all session contexts are renderer runtime state only. On app
   startup, open state, tabs, active-tab selection, file requests, and Browser
   resources reset; only the committed preferred `{width}` remains in
@@ -1424,6 +1432,10 @@ near-zero duration. A folded group keeps its rows mounted, `aria-hidden`, and
   session path opens `<data_dir>/scratch/<sessionId>/` in the system file
   manager, creating the directory if it does not exist yet. Both actions
   appear only while developer mode is on.
+- Copy conversation link writes the `pi-desktop://session/<id>` reference to
+  the clipboard without developer mode. Pasting it into another conversation's
+  Composer draft sends a bounded excerpt of that conversation with the turn,
+  and the user message then shows it as a chip (§20B).
 - Selecting a conversation with a different project first activates that
   project's workspace. A running turn in the previously selected session is
   not aborted.
@@ -1532,6 +1544,10 @@ storage but compose into one assistant turn until the next user message.
   content's left rule is itself a pointer and keyboard-focusable collapse
   control.
 - Hover code block: copy button appears
+- Click a transcript file reference with `:line[:column]`: resolve the file
+  first, then open it in the host `file:` tab and scroll the requested line into
+  view. Plain project-file references still prefer the bundled file view, whose
+  open contract does not carry a line position.
 - Hover or focus a minimap marker: show the localized sender and a bounded
   plaintext preview; multiple assistant fragments produced within one user
   turn are combined into one AI-response marker and preview; nearby markers
@@ -1659,6 +1675,8 @@ storage but compose into one assistant turn until the next user message.
   normal 100-row page and deliberately loaded full histories, and to foreground
   and background session caches. Shallow array copies
   remain permitted; cold loads and structural changes may rebuild the projection.
+  Structural appends reuse cached content facts for unchanged immutable messages,
+  including delegate answers, instead of rereading and trimming completed text.
 - Completed rows and unchanged parts within a large active turn/activity group
   retain their render boundaries. Deferred presentation consumes one immutable
   projection snapshot. Older-row and child updates, terminal re-keying, Copy,
@@ -1727,9 +1745,17 @@ Single message render — either user (plaintext) or assistant (markdown streami
   collapse. Serialized `@path` file references render as compact leaf-name
   chips matching the composer node (icon + ellipsized name; canonical path in
   the tooltip and accessible name). Image attachments that are not already
-  inlined as `@path` chips render as bounded thumbnails (data URL from
-  `fs/readImageDataUrl`); unresolved loads keep the chip. Bare path tokens in
-  message text recognize Unicode letters and digits. In user-message prose,
+  inlined as `@path` chips render as the same compact image chip inside the
+  body's own text flow, continuing the message text instead of heading it on a
+  line of its own. Hovering or focusing the chip reveals the bounded data URL
+  (`fs/readImageDataUrl`) in a read-only preview card above it (below it when
+  the chip sits at the top), and an unresolved load leaves the chip alone. A
+  referenced
+  conversation (`kind: "session"`) renders as a chat-icon chip labeled with the
+  shared reference label and the referenced title; the tooltip and accessible
+  name come from the catalog, and activating it opens that conversation
+  (§20B). Bare path tokens in message text recognize Unicode letters and
+  digits. In user-message prose,
   these are candidates only: show a chip after the existing `fs/resolveRef`
   lookup confirms a real file. Pending, missing, or failed lookups preserve
   the exact original text, including `使用llama.cpp`. Explicit `@path` refs
@@ -1752,7 +1778,7 @@ Single message render — either user (plaintext) or assistant (markdown streami
    primary folder in the side browser. A primary-folder file is addressed to the
    view as a project-relative path and a sibling-folder file as an absolute one,
    which is also how scratch and attachment files are addressed. A resolved
-   image thumbnail resolves and opens the same way. A chip whose reference
+   image chip resolves and opens the same way. A chip whose reference
    matches nothing opens nothing and reports itself; an absolute path outside
    every allowed root reports the access limit separately. The OS default application
    is no longer what this click does.
@@ -1986,6 +2012,19 @@ Renderer: `apps/desktop/src/components/Markdown.tsx` + `apps/desktop/src/lib/shi
   across the whole message, and footnotes also number, reuse and back-link
   across it, so the message renders as one parse context and gives up per-block
   memoization for as long as it streams.
+- **Bounded large content**: transcript linkification uses one shared per-tree
+  budget of 128 Ki UTF-16 code units, at most 512 file candidates and 256
+  generated links; one file candidate is at most 512 code units, while URLs
+  have their separate 16 Ki candidate limit. Exceeded ranges remain verbatim
+  text, and each new conversion starts with a fresh budget. Markdown skips
+  synchronous full-source formatting above 128 Ki code units. During streaming,
+  an oversized unparsed tail stays verbatim while any trusted stable prefix
+  remains formatted; a message above the full-source bound stays verbatim after
+  streaming ends. The visible localized notice explains the display downgrade.
+  Searchable/copyable source and source offsets continue to use the complete
+  message. Smooth text release stops above 32 Ki code units. Shiki returns to
+  plain text before splitting when code exceeds 100,000 code units, 800 lines,
+  or a 2,000-code-unit line; tool output uses the same guard.
 - **Plugins**: `remark-gfm` (tables, task lists, strikethrough, autolinks),
   `remark-math` + `rehype-katex` (inline `$…$` or `\(…\)`, display `$$…$$`
   or `\[…\]`). Raw HTML is
@@ -2851,14 +2890,20 @@ reasoning-level control.
 - The collapsed header shows completed/active progress and the current
   `in_progress` content. A checklist whose items are all cancelled has a clear
   cancelled label instead of a misleading `0/0 completed` count.
-- The disclosure is keyboard accessible, does not take focus on updates, resets
-  closed when the active session changes, and shows at most eight ordered rows.
-  The list stays mounted while collapsed so opening and closing can animate with
-  a bounded height/opacity transition; collapsed content is `aria-hidden` and
-  reduced-motion users receive an immediate state change. Completed rows use a
-  success-tinted tile with a check icon, in-progress rows use the accent tint,
-  and cancelled rows are muted; each status symbol has a localized accessible
-  name and each row renders plain text.
+- The disclosure is keyboard accessible, does not take focus on updates, and
+  resets closed when the active session changes. The expanded dock lists every
+  ordered row and scrolls inside its own box (`max-height: min(280px, 30dvh)`,
+  `overflow-y: auto`, `overscroll-behavior: contain`), so a long checklist stays
+  readable without growing the Composer stack and reaching the list's end never
+  scrolls the transcript behind it; that scrollport is keyboard reachable only
+  while the disclosure is open. The list stays mounted while collapsed so
+  opening and closing can animate with a bounded height/opacity transition;
+  collapsed content is `aria-hidden` and reduced-motion users receive an
+  immediate state change. A collapsed dock reserves only its header row: the
+  list's inset is clipped, never laid out below the header.
+  Completed rows use a success-tinted tile with a check icon, in-progress rows
+  use the accent tint, and cancelled rows are muted. Each status symbol has a
+  localized accessible name, and each row renders plain text.
 - Renderer snapshots are keyed by session id. A `todos.changed` event with an
   older or equal revision is ignored. Session activation and host recovery
   re-read the authoritative snapshot, including already cached checklists; a
@@ -2910,9 +2955,10 @@ reasoning-level control.
   their source paths until the echo brings the session-scoped refs; a slash
   prompt shows its typed form until the echo brings the expanded body and
   command chip. A send that never reaches the host withdraws the row again.
-  Revalidation and older-page prepends are idempotent by message id, so leaving
-  and re-entering a session cannot display a second copy of an existing user
-  row.
+  Revalidation and older-page prepends are idempotent by message id. If the
+  renderer missed the persistence acknowledgement, re-entry may collapse only
+  an exact, attachment-free optimistic prompt with a nearby durable echo; an
+  older identical prompt cannot hide a newly sent row.
 - Shift+Enter: newline in textarea. Cmd/Ctrl+Enter sends when Enter-to-send is off. IME composition and an open autocomplete menu still take precedence over send.
 - Placeholder guidance: the initially rendered context starts on its welcome copy and remains
   unchanged while the page/session context, draft, focus, and IME state change.
@@ -3027,7 +3073,7 @@ reasoning-level control.
   model therefore updates the draft Composer's available levels and binding
   default thinking level immediately; the persisted session keeps the same
   exact-model capability after materialization.
-- A new session whose catalog-matched default model supports reasoning starts
+- A new session whose inherited catalog-matched model supports reasoning starts
   with Thinking enabled at that model's stored default thinking level, clamped
   onto the enabled set. When the binding has no default, it falls back to the
   highest enabled level. An unmatched model starts at `off` unless its binding
@@ -3276,9 +3322,36 @@ Anatomy:
   whitespace yet): the placeholder teaches `Type / for commands · @ for files`
   (localized in zh-CN), and groups appear in order — prompt templates (name +
   `argument-hint` ghost text + description, project source before
-  user-global), app commands (builtin slash aliases), plugin commands.
+  user-global), app commands (builtin slash aliases), plugin commands,
+  extension commands, connected MCP servers, then Skills.
   The core aliases remain `/new`, `/compact`, `/agent-mode`, `/plan-mode`, and
   `/goal-mode`; matched characters highlight in accent.
+- Catalog discovery refreshes MCP records and initializes enabled in-scope
+  servers through the existing runtime connection path, including on cold start.
+  Failed handshakes retain the runtime's explicit retry policy.
+- The MCP group exposes enabled user-configured servers that are ready, have
+  tools, and are active in the current project. Rows contain a stable
+  `/mcp:<URI-encoded-server-id>` and the display label. Individual tools also
+  appear as `/mcp:<URI-encoded-server-id>:<URI-encoded-tool-name>`, searchable
+  and selectable with the same keyboard and pointer interactions. Tool selections
+  activate only that exact tool; server selections retain whole-server behavior.
+  No connection addresses, credentials, or tool schemas enter the command
+  catalog. Selecting a row only
+  inserts text. At send (including steering), main revalidates availability
+  against the session project and passes exact server IDs to the runtime.
+  The runtime activates that server's currently available tools before the
+  provider request, reusing deferred activation without ToolSearch's result
+  limit. A short instruction identifies the selected server. Other active
+  tools and all permission checks remain in place. The original draft remains
+  the transcript's `command`. Activation does not force tool execution or
+  guarantee model compliance. An unavailable selection fails with localized
+  feedback before opening a turn or replacing history. Native Pi sessions do
+  not support Desktop-managed MCP selections. Existing command aliases win
+  collisions. See `docs/adr/composer-mcp-invocations.md`.
+- Active Skill commands use `/skill:<id>` for builtin, plugin, and user Skills.
+  Completion inserts this explicit prefix; sending resolves it to the unchanged
+  Skill ID. Unprefixed names are not Skill aliases; existing app commands and
+  prompt templates keep their names. Saved Skill mentions remain unchanged.
 - A whitespace-delimited `/` later in the draft offers active Skills only.
   Completion replaces only the token under the cursor, so several Skills and
   ordinary text can coexist in one prompt.
@@ -3309,6 +3382,12 @@ Anatomy:
   main selects image blocks or path fallbacks from the exact model capability.
   Reference-only drafts are sendable. Builtin/plugin dispatch still bypasses
   the model-ready gate when no prompt text or file reference is sent.
+- A `pi-desktop://session/<id>` link in the draft is the reference itself: no
+  new trigger symbol joins `@` files and `/` commands, and the link stays
+  visible plaintext while the draft is unsent. Immediately before dispatch,
+  main resolves each link to another conversation in the same project into a
+  bounded excerpt attachment (§20B). An unknown id, a self-reference, and a
+  conversation in another project stay plaintext.
 - The Agent/Plan/Goal mode aliases can prefix a prompt in the same draft:
   `/agent-mode <prompt>`, `/plan-mode <prompt>`, and `/goal-mode <prompt>` apply
   the mode first, then send `<prompt>` plus any serialized references through
@@ -3361,17 +3440,21 @@ Anatomy:
   Text/plain and `.txt` chips are also keyboard-focusable buttons: clicking or
   pressing Enter/Space expands their bounded contents into editable draft text;
   binary, image, oversized, or failed reads keep the chip. Ordinary files stay
-  compact chips. Unsent images render in a left-aligned attachment row above and
-  outside the input shell, never within editable text. Their existing detached
-  reference metadata survives text selection, editing, undo, and session
-  switching; restored inline-image tokens are removed from text while keeping
-  the attachment. Image-only drafts enable Send; a rejected send restores both
-  text and attachments even when rejection precedes the next render. The
-  attachment row is height-limited and scrolls vertically so every image remains
-  reachable in a narrow chat pane. Thumbnails have an independent
-  remove button shown on hover/focus (always visible for touch input). No
-  separate explanatory vision-status row is rendered.
-  Clicking an image or pressing Enter/Space opens a modal image preview, without
+  compact chips. Unsent images render as the same compact inline chip inside the
+  editable draft, at the insertion point, with the image glyph and leaf name.
+  Hovering one reveals a read-only preview card of its bounded data URL above
+  the chip, or below it when the chip sits on the first line; moving the pointer
+  away, typing, scrolling, resizing, or opening the modal dismisses the card,
+  and the card never takes pointer events from the draft. A restored image
+  reference without an inline token gains one, so a cache written before inline
+  image chips, a restored queue entry, or a prefill still shows every image.
+  Reference metadata survives text selection, editing, undo, and session
+  switching; the chip's own remove button drops the attachment. Image-only
+  drafts enable Send; a rejected send restores both text and attachments even
+  when rejection precedes the next render. No separate explanatory
+  vision-status row is rendered.
+  Clicking an image chip or pressing Enter/Space on it opens a modal image
+  preview, without
   sending the draft or changing the work-panel tabs. Inside the dark viewport,
   the image is horizontally and vertically centered, keeps its aspect ratio,
   and initially fits available space without upscaling small images. The
@@ -3384,7 +3467,7 @@ Anatomy:
   the close button, or a blank-area click dismisses it and restores the prior
   input focus/caret. Focus remains inside the modal, and native plugin surfaces
   are hidden while it is open. The remove button never opens or submits.
-  Thumbnails and previews use the bounded, contained `fs/readImageDataUrl`
+  Preview cards and the modal use the bounded, contained `fs/readImageDataUrl`
   bridge, including allowed scratch files when no project is open. Missing,
   unsupported, oversized, or undecodable images show a retry state and retain
   the draft. Session/project changes or removal of the selected attachment
@@ -3398,6 +3481,8 @@ Anatomy:
   in the bundled `pi.file-manager` view (the host `file:` tab when that view is
   unavailable), a session-scratch or attachment file in the host `file:` tab,
   and a `.html`/`.htm` page of the primary folder in the side browser. A
+  positioned `path:line` reference uses the host read-only `file:` tab and
+  scrolls the requested line into view. A
   primary-folder file is addressed to the view as a project-relative path and a
   sibling-folder file as an absolute one, which is also how scratch and
   attachment files are addressed. A reference that matches no file opens nothing
@@ -3553,8 +3638,10 @@ Guidance surfaces when key data is absent. Must always provide an **action link*
 - Chat home empty: single scrollable stack (hero → optional checklist) centered
   in MainChat, with a bottom-reserved composer sibling; task entry starts
   directly in that composer without a starter-card or quick-action layer. The
-  underlined project name in a project-bound hero is a switcher, not a folder
+  underlined project name in a project hero is a switcher, not a folder
   picker; extra actions clone a git repository or open another local folder.
+  Opening a project with no session yet shows that same project hero, so the
+  empty home never hides which project a task would join.
 - Other empty surfaces: text-xl heading + text-sm description + primary action
 - Icon (48px Lucide / brand mark) above heading where applicable
 - Background: bg-primary (transparent, not a card)
@@ -3695,126 +3782,95 @@ dismissToast(id: number); // ToastHost internal / tests
 
 ---
 
-## 18. Import destination
+## 18. Inline import workbenches
 
 ### 18.1 Purpose
 
-Scan supported local agent stores for the four things this machine can hand
-over — sessions, provider/model configuration, skills, and MCP servers — then
-review the candidates, select them, and start an explicit import.
+Model configuration, external skills, and MCP imports live in the Settings
+pages that own the records they create. Settings does not provide a session
+import destination; plugin session imports remain available through the plugin
+API and keep their existing ownership and project-binding rules.
 
-### 18.2 Anatomy
+### 18.2 Shared anatomy
 
-One workbench per kind behind a segmented kind switcher; every kind owns its
-own scan, selection, and import action.
+Each owning page has an import toggle. The toggle reveals an inline workbench
+that remains mounted while closed, preserving a scan result and selection until
+the scope changes or the user scans again.
 
 ```text
-[ Sessions | Models | Skills | MCP ]                   ← kind switcher
-[ ] Found 12 · 6 selected   Group by: Source ▾   [Scan] [Import selected (6)]
-───────────────────────────────────────────────────────────────────────────
-CLAUDE CODE              ~/code/pi                                  4
-[ ] Refactor the importer   12 messages · Jan 5, 2026   [Claude Code]
+Models:    Providers                         [Import from other tools] [Add provider]
+Skills:    [All | Global | Project] [Search] [Scan other tools] [New] [Market]
+MCP:       [All | Global | Project] [Search] [Scan other tools] [Add] [Market]
+
+[ ] Found 3 · 1 selected                         [Scan] [Import selected (1)]
+CLAUDE CODE                                                            1
+[ ] example-server     node                                  [stdio]
 ```
 
-- The switcher reuses the labels the sidebar and the settings rail already ship
-  (`nav.sessions`, `settings.nav.models`, `settings.nav.skills`,
-  `settings.nav.mcp`), so the page adds no catalog entries of its own.
-- Each kind carries its own toolbar: the select-all checkbox with both the
-  "found" sentence and the selected count, the kind's own option (session
-  grouping, skills import mode), re-scan, and Import selected.
-- Before a kind's first scan its panel shows a quiet next-action state: what the
-  scan reads plus the Scan action. Switching tabs never starts a scan
-  (D007 / D342).
-- Group headers are quiet label lines — source or project name, the resolved
-  path in mono, and a count pill — not tinted bands; the candidates below them
-  are individual tiles.
-- The grouping control supports **Project path** and **Source**. Source is the
-  default. In project-path mode, exact paths remain visible in group headers,
-  and sessions without a project path appear in a final **No project** group.
-- Import source names, grouping and mode controls, counts, results, and
-  accessible names come from the shared i18n catalog. Candidate dates use the
-  active app locale.
+- Scanning is explicit; opening the panel never starts a scan.
+- A successful scan replaces its candidates, clears the selection, and shows
+  source groups expanded. Group headers disclose their rows and expose localized
+  counts.
+- Candidate rows are selectable tiles with source, identity, concise metadata,
+  and any kind-specific badge. Secrets are never displayed.
+- The toolbar and group checkboxes expose checked, unchecked, and indeterminate
+  states. Import remains disabled until at least one candidate is selected.
+- A scope change resets the Skills or MCP panel so candidates from one target
+  cannot be imported into another by mistake.
 
-### 18.3 States and interactions
+### 18.3 Capability scope
 
-- A successful scan replaces the prior candidate set, clears selection, and
-  shows every group expanded: the found candidates are the answer to the scan,
-  so they are not hidden behind a second click.
-- Codex session discovery walks `~/.codex/sessions/YYYY/MM/DD` newest-path-first
-  and stops after 250 `.jsonl` files. That order is folder-date lexicographic,
-  not `updatedAt`. When the cap hits, `session/importScan` returns
-  `truncated.codex = 250` and the sessions toolbar shows the localized cap note;
-  older Codex files are absent from the candidate list.
+- The destination is the current Global / Project filter. The All filter
+  targets Global, matching the existing create action.
+- Project scope requires a selected project. The import toggle is disabled when
+  Project is selected without a project path.
+- Project scans receive the selected path, and imports carry both the level and
+  path through IPC to host-core. The same scope is used when preserving a
+  source MCP server's disabled state.
+- Skills keep their existing copy / link mode. A successful import refreshes
+  the capability list and scan results.
 
-- Every kind scans on its own: a session scan never starts a model-config,
-  skills, or MCP scan, and switching tabs preserves the result and the
-  selection of the kind left behind (inactive panels stay mounted and hidden).
-- A successful import creates or reuses one durable Projects-index entry for
-  each distinct non-empty project path and refreshes sessions/projects.
-- When a successful core or plugin import adds a project-bound session under an
-  archived project, the renderer restores that project's presentation state
-  after the refresh so the project and imported session are visible in the
-  default sidebar. This applies only to newly added bound sessions; ordinary
-  refreshes, pathless sessions, and skipped imports preserve archive state.
-- Path-less imports create no project entry and remain under Temporary
-  sessions. Import never creates a physical filesystem directory.
-- Re-importing an existing source session skips it without duplicating its
-  project entry.
-- Changing the grouping mode preserves candidate selection and shows every
-  newly formed group expanded.
-- Expanding or collapsing one group does not affect the others.
-- Group and global checkboxes support checked, unchecked, and indeterminate
-  selection states; the global checkbox reports a partial selection as
-  indeterminate.
-- Candidates inside each group and groups themselves are ordered newest first;
-  the path-less group remains last in project-path mode.
+### 18.4 Accessibility and responsive behavior
 
-### 18.4 Accessibility
-
-- The kind switcher is a `tablist` of `tab` controls, each carrying
-  `aria-selected` and `aria-controls` that names its panel. Every panel is a
-  `tabpanel` labelled by its tab, and an inactive panel is `hidden` rather than
-  visually covered.
-- Each disclosure button exposes `aria-expanded` and references its body with
+- The import toggle is a button with `aria-expanded` and `aria-controls`; its
+  controlled panel is hidden when closed.
+- Disclosure buttons expose `aria-expanded` and reference their group body with
   `aria-controls`.
-- Global and group checkboxes have localized accessible names and carry the
-  indeterminate state.
-- The grouping and import-mode selectors are the shared in-app menu selects
-  with visible labels and keyboard operation, never a platform-drawn
-  `<select>`.
-- Group count pills carry the localized count sentence as their title.
-- Projects-row disclosure and action-menu buttons expose localized,
-  project-specific accessible names.
+- Global, group, and row checkboxes use the shared checkbox control and carry
+  localized accessible names.
+- Group labels and counts wrap within the available Settings content width;
+  the toolbar actions wrap on narrow windows without horizontal page scrolling.
 
 ### 18.5 ModelConfigImportPanel
 
-Scan the same local agent stores for provider and model settings, review
-candidates grouped by source, select them, and start an explicit import.
+Models exposes model configuration scanning from the Providers section. Scan
+candidates from Claude Code, Codex, OpenCode, Pi, and CC Switch. Rows show the
+provider name, model count, host, source, and an API key / No API key badge; no
+raw secret reaches the renderer. Stored API keys are saved through the host
+secret store. OAuth and subscription logins are not copied. Re-importing an
+equivalent provider (normalized URL, API style, and credential) is skipped;
+different credentials at one endpoint remain separate providers. If no default
+model exists after import, the first created provider becomes the default.
 
-```text
-[ ] Found 3 · 1 selected                        [Scan] [Import selected (1)]
-───────────────────────────────────────────────────────────────────────────
-CLAUDE CODE                                                                1
-[ ] acme-gateway   4 models · api.acme.dev    [API key]
-```
+### 18.6 External skill import
 
-- The kind is independent of session import: its own scan, selection, and
-  Import selected action. A session scan never starts a model-config scan, and
-  the two are shown one at a time behind the switcher.
-- Source grouping is the only grouping. A successful scan replaces the prior
-  candidate set, clears selection, and shows every group expanded.
-- Each row shows the provider name, model count, host, an API key / No API
-  key badge, and the source. The raw secret never reaches the renderer.
-- Import creates one `providers.create` row per selected candidate. An
-  existing provider with the same normalized base URL, API style, and
-  credential is skipped; different credentials at one endpoint create
-  independent rows. OAuth-only source accounts are omitted from the scan.
-  CC Switch is a fifth source (`~/.cc-switch/cc-switch.db`); a live tool
-  file that matches a CC Switch endpoint and credential is not listed twice;
-  a different credential remains visible.
-- If `settings.defaultProviderId` is empty after a successful create, the
-  first new provider becomes the global default.
----
+Skills exposes its external scan from the page toolbar, alongside New and
+Market. The scanner covers supported Claude and Pi skill stores. Candidate
+rows show the name, description or source path, and file / folder shape. The
+copy / link option stays in the workbench. Imported skills follow the selected
+Global / Project scope and project path, then the list and scan results refresh.
+The native file and folder import actions in the level groups remain available.
+
+### 18.7 External MCP import
+
+MCP exposes its external scan from the page toolbar, alongside Add and Market.
+The scanner covers supported Claude Desktop, Claude Code, Cursor, Codex,
+OpenCode, and ChatGPT Desktop stores. Candidate rows show a label, safe
+metadata, source, and transport. URL metadata is reduced to its host so
+userinfo, paths, and query credentials never render; environment and header
+values are not shown. Imported servers follow the selected Global / Project
+scope and project path. A disabled source server remains disabled after the
+host write succeeds.
 
 ## 19. ProviderStudio (Settings → Agent)
 
@@ -3834,31 +3890,21 @@ saves the previewed order; Escape, pointer cancellation, focus loss, unmount or
 catalog changes cancel the drag. Buttons and form controls retain their actions.
 There is no separate drag handle. A focused card accepts Up/Down to move one visible row. Saving blocks further
 moves; a failed save shows an error and restores the accepted order. Late catalog
-responses cannot restore an earlier order. The default-model picker and Composer
-model groups follow the persisted order. Sorting changes neither the selected
+responses cannot restore an earlier order. Composer All models groups follow the persisted order. Sorting changes neither the selected
 default nor provider configuration. OAuth accounts remain in their separate section.
 
-1. **Defaults card** — a compact settings row reusing the shared
-   14px/16px row geometry; the Default model label sits above the provider name
-   and exact model ID, while a quiet Change action opens the picker without
-   duplicating the current value. The floating listbox is anchored to that
-   action rather than expanding the card in place: the surface portals to
-   `document.body` as a fixed layer so the panel's overflow cannot clip it,
-   groups model-level options by provider, marks the exact current entry, bounds
-   its own height so many configured models scroll instead of stretching the
-   card, flips above the trigger when there is no room below, and closes on
-   Escape, an outside press, or the trigger scrolling out of view.
-   A provider is named here the way the Composer model menu names it: an OAuth
-   row uses its non-secret account label when present, so two accounts of one
-   vendor do not collapse into identical group headings, summary lines, or
-   option names; the search matches the account label and the vendor name.
-   Global operating mode, command shell, and Enter-to-send live in the Settings
-   AI destination
-2. **Vendor accounts** — section title + primary Add account action and one
-   single-level list panel using the same row surface as AI services; one row
-   per OAuth account, including duplicate vendors, with account label, Edit,
-   Test connection, and Remove actions; the default model is edited in the
-   account dialog and selected from Defaults
+1. **Model selection** — chat models are selected in the Composer. Its first
+   menu has persistent search, up to three recent available provider/model pairs,
+   and an inline Other models disclosure. Without history, it shows all models.
+   New chats inherit the last actually used available model. Only accepted
+   message submission updates that preference; selection and reasoning changes
+   alone do not count as usage.
+   Existing chats keep their own binding. The fixed chat-default
+   picker and service Make default action are absent. The independent image
+   model row remains when image-generation candidates are configured.
+2. **Vendor accounts** — account labels, configured models, Test connection,
+   and Remove actions remain available through the shared service list and
+   account editor. The first binding remains the provider compatibility default.
 3. **Providers head** — section title + primary Add provider action; its
    button treatment matches Add account
 4. **Dialogs** — both the vendor-account edit dialog and the provider dialog
@@ -4171,6 +4217,85 @@ TASKS (2)                     │ Nightly dependency check   [Enabled] [Run now]
   `prefers-reduced-motion`, including the running dot's pulse.
 
 
+## 20B. Conversation references
+
+### 20B.1 Purpose
+
+Carry another conversation into a turn without retyping it. The
+`pi-desktop://session/<id>` link is the whole interaction: a reader copies it
+from the conversation overflow menu and pastes it into a Composer draft (issue
+#1324, option B). Copy conversation ID stays the developer-mode identifier.
+
+### 20B.2 Anatomy
+
+```text
+Conversation overflow                    Composer draft (unsent)
+┌─────────────────────────────┐          ┌──────────────────────────────────┐
+│ Pin conversation            │          │ continue from                    │
+│ Create branch               │          │ [💬 Conversation · ab12cd34]     │
+│ Copy conversation link      │          └──────────────────────────────────┘
+│ Delete conversation         │
+└─────────────────────────────┘          Sent user message
+                                         ┌──────────────────────────────────┐
+                                         │ continue from                    │
+                                         │ [💬 Conversation · Nightly check]│
+                                         └──────────────────────────────────┘
+```
+
+### 20B.3 States
+
+| State | Appearance |
+|---|---|
+| Reference attached | The body link renders as a chat-icon chip named with the catalog's reference label and the referenced conversation's current title; the message shows no second block for it |
+| Reference skipped | Nothing is attached; the body link still renders as that chip |
+| Another project | Skipped the same way: that transcript is not this turn's context |
+| Self-reference | Dropped before any read, so the conversation itself is never a reference |
+| Empty referenced conversation | The resolver attaches nothing and the message keeps the link |
+| Chip activated | The referenced conversation becomes the active session |
+
+### 20B.4 Interaction
+
+- Copy conversation link writes `pi-desktop://session/<sessionId>` from the
+  conversation overflow menu. The durable id is the reference; Copy
+  conversation ID still exposes the bare id in developer mode.
+- Sending a turn whose draft holds the link attaches a bounded excerpt of the
+  referenced conversation: the 40 newest messages, 8 KB per field, 16 KB for
+  the whole excerpt, newest last, and the count of earlier messages the bound
+  cut. At most four links per message are resolved.
+- The excerpt is stored on the message's attachment and quoted to the model as
+  one `<session_reference name="…" session="…">` block, so later turns read the
+  same reference and re-sending a message that still contains the link
+  re-resolves it from that conversation's current content.
+- Activating the chip opens the referenced conversation; the reference is a
+  link, not a copy of that transcript.
+- The chip names the conversation from its current title, so a rename — manual
+  or the first-turn summary — follows through to every message that references
+  it. The name recorded when the reference was made stays the fallback for a
+  conversation this viewer no longer lists, and is the name the quoted block
+  keeps for the model.
+- The draft shows a pasted link as that chip, and the submitted text still
+  carries the link: prose is never rewritten on the wire, and the attached
+  excerpt is additive.
+- Boundary: only conversations of the same project are read, the current
+  conversation is dropped before any read, and a link to another project, an
+  unknown id, or a `remote:` identifier stays plaintext rather than becoming a
+  reference. A paste cannot make the app read a transcript its reader could not
+  open.
+- A chip inside a message borrows that message's own face, size and leading, and
+  its tile is sized and aligned by that leading so it covers exactly one line of
+  message text: the label sits on the line's baseline instead of poking out of
+  the composer's compact box. The 11.5px/20px metric is draft-only.
+- A conversation reference is an inline run rather than an atomic chip: it breaks
+  with the line it sits on, so a reference too wide for the line continues on the
+  next line and leaves the line it started on filled. Chromium never fragments a
+  `<button>`, so this chip carries the button role and its Enter and Space
+  behaviour on an activatable span.
+- The chip carries the button role with a catalog-built accessible name and a
+  tooltip naming the conversation it opens; it is keyboard-activatable and leaves
+  the surrounding selectable message text intact.
+- `pi-desktop://` is not yet an operating-system protocol handler; opening a
+  link from outside the app is a separate change (issue #1324, option A). This
+  section covers the in-app reference.
 ## 21. Acceptance criteria (all components)
 
 1. All components use semantic color tokens from [07-ui-design-system.md](07-ui-design-system.md) — no raw hex

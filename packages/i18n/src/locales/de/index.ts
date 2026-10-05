@@ -186,6 +186,7 @@ export const de = {
     batchDelete: "{{count}} Sitzungen löschen",
     batchDeleteConfirm: "{{count}} Sitzungen löschen?",
     "copyConversationId": "Gesprächs-ID kopieren",
+    "copySessionLink": "Link zur Unterhaltung kopieren",
     "openSessionPath": "Sitzungspfad öffnen",
     "timeGroupYesterday": "Gestern",
     "timeGroupThisWeek": "Vorherige 7 Tage",
@@ -229,6 +230,7 @@ export const de = {
   },
   "chat": {
     "tableActions": "Tabellenaktionen",
+    "markdownPlainTextFallback": "Große Antworten werden zur besseren Reaktionsfähigkeit als Klartext angezeigt.",
     "copyTableMarkdown": "Tabelle als Markdown kopieren",
     "exportTableCsv": "Tabelle als CSV herunterladen",
     "tablePreview": "Tabelle vergrößern",
@@ -263,6 +265,7 @@ export const de = {
     "slashGroupApp": "App-Befehle",
     "slashGroupPlugins": "Plugin-Befehle",
     "slashGroupExtensions": "Erweiterungsbefehle",
+    slashGroupMcp: "MCP",
     "slashGroupSkills": "Fähigkeiten",
     "slashEmpty": "Keine übereinstimmenden Befehle",
 "slashCommandSourceUnavailable": "Befehlsliste nicht verfügbar, es wurde nichts gesendet. Bitte erneut versuchen.",
@@ -281,7 +284,6 @@ export const de = {
       "progress": "{{completed}}/{{total}} erledigt",
       "current": "{{completed}}/{{total}} · Aktuell: {{content}}",
       "completed": "{{completed}}/{{total}} erledigt",
-      "more": "{{count}} weitere Elemente",
       "updated": "Checkliste aktualisiert",
       "updating": "Checkliste wird aktualisiert",
       "status": { "pending": "Offen", "in_progress": "In Bearbeitung", "completed": "Erledigt", "cancelled": "Abgebrochen" }
@@ -321,6 +323,8 @@ export const de = {
     "conversationMenu": "Gesprächsaktionen",
     "selectMessageText": "Nachrichtentext auswählen",
     "copyConversation": "Gespräch kopieren",
+    "sessionReference": "Unterhaltung",
+    "sessionReferenceOpen": "Unterhaltung {{title}} öffnen",
     "selectConversationText": "Gesprächstext auswählen",
     "scrollToTop": "Nach oben scrollen",
     "speakerYou": "Du",
@@ -526,6 +530,8 @@ export const de = {
     "userMessage": "Benutzernachricht",
     "assistantMessage": "Assistentennachricht",
     "model": "Modell",
+    recentModels: "Zuletzt verwendet",
+    otherModels: "Weitere Modelle",
     "searchModels": "Modelle suchen",
     "noModelResults": "Keine passenden Modelle",
     "modelBadgeReasoning": "Begründung",
@@ -562,6 +568,15 @@ export const de = {
     "renameCancel": "Abbrechen",
     "renameSave": "Speichern",
     "renameSaving": "Speichern…"
+  },
+  planHistory: {
+    pending: "Genehmigung ausstehend",
+    approved: "Genehmigt",
+    rejected: "Abgelehnt",
+    expired: "Abgelaufen",
+    interrupted: "Unterbrochen",
+    unknown: "Status nicht verfügbar",
+    superseded: "Ersetzt",
   },
   "plan": {
     "planning": "Planung",
@@ -774,7 +789,6 @@ sklm: {
       "skills": "Fähigkeiten",
       "mcp": "MCP",
       "subagents": "Subagenten",
-      "import": "Importieren Sie",
       "projects": "Projekte",
       "index": "Index",
       "sync": "Cloud-Synchronisierung",
@@ -784,7 +798,6 @@ sklm: {
     },
     "configSync": {
       title: "Cloud sync",
-      experimental: "Experimentell",
       connectionTitle: "WebDAV cloud sync",
       connectionDescription:
         "Synchronize portable configuration through an encrypted WebDAV vault. Conversation history, source files, and runtime state are never included.",
@@ -1167,7 +1180,6 @@ sklm: {
     "skillSaved": "Gespeichert {{name}}",
     "subagentCreated": "Erstellt {{name}}",
     "subagentSaved": "Gespeichert {{name}}",
-    "import": "Importieren",
     "projectArchive": "Projektarchiv",
     "index": "Indexbibliothek",
     "remoteHosts": {
@@ -1219,7 +1231,6 @@ sklm: {
     "importFound": "Sitzungen gefunden: {{count}}",
     "importFound_one": "1 Sitzung gefunden",
     "importFound_other": "{{count}} Sitzungen gefunden",
-    "importCodexCapped": "Codex ist auf die {{limit}} neuesten Sitzungsdateien (nach Ordnerdatum) begrenzt.",
     "importNone": "Auf diesem Computer wurden keine importierbaren Sitzungen gefunden.",
 
     "importSelectAll": "Alle auswählen",
@@ -1230,9 +1241,6 @@ sklm: {
     "importMessages_other": "{{count}} Nachrichten",
     "importMessagesUnknown": "—",
     "importNoProject": "Kein Projekt",
-    "importSessionCount": "{{count}} Sitzungen",
-    "importSessionCount_one": "1 Sitzung",
-    "importSessionCount_other": "{{count}} Sitzungen",
     "importSelectedCount": "{{count}} ausgewählt",
     "importGroupBy": "Gruppieren nach",
     "importGroupByPath": "Projektpfad",
@@ -1676,7 +1684,7 @@ sklm: {
     "openActions": "Aktionen für {{name}} öffnen",
     "reorder": "Reihenfolge von {{name}} ändern",
     "editTitle": "Projekt bearbeiten",
-    "editDescription": "Projektname und Ordner aktualisieren.",
+    "editDescription": "Ein entfernter Ordner mit Chats wird zu einem eigenen Projekt; die Chats bleiben erhalten.",
     "editAction": "Änderungen speichern",
     "editSaving": "Speichern…",
     "editCancel": "Abbrechen",
@@ -2339,7 +2347,11 @@ sklm: {
       "errorCommandDots": "Der Befehl darf „..\" nicht enthalten.",
       "errorUrl": "Eine URL ist erforderlich.",
       "errorUrlShape": "Das ist keine gültige URL.",
-      "errorUrlScheme": "Verwenden Sie eine http- oder https-URL."
+      "errorUrlScheme": "Verwenden Sie eine http- oder https-URL.",
+      "timeout": "Verbindungs-Timeout",
+      "timeoutHint": "Timeout in Sekunden für Verbindung und Tool-Erkennung (Standard: 10s, max: 600s).",
+      "timeoutPlaceholder": "10",
+      "errorTimeoutRange": "Das Timeout muss zwischen 1 und 600 Sekunden liegen."
     },
     "skills": {
       "add": "Neue Fertigkeit",
@@ -2574,6 +2586,8 @@ sklm: {
     phase: { idle: "Aus", preparing: "Wird vorbereitet", "acquiring-mic": "Warte auf Mikrofon", negotiating: "Aushandlung", connecting: "Verbindung wird hergestellt…", connected: "Verbunden", reconnecting: "Verbindung wird wiederhergestellt", closing: "Wird beendet…", ended: "Beendet", failed: "Gestoppt" },
   },
   "errors": {
+    COMPOSER_MCP_UNAVAILABLE: "Der ausgewählte MCP-Server ist getrennt oder in diesem Projekt nicht verfügbar. Verbinde ihn erneut und wähle ihn noch einmal aus.",
+    COMPOSER_MCP_REQUEST_REQUIRED: "Gib nach der Auswahl eines MCP-Servers oder Tools einen Auftragstext ein oder füge einen Anhang hinzu.",
     "HOST_UNAVAILABLE": "Der lokale Dienst ist nicht verfügbar",
     "MODEL_NOT_CONFIGURED": "Dieses Modell ist nicht eingerichtet oder der KI-Anbieter bietet es nicht an.",
     "TOOL_DENIED": "Die Berechtigung für diese Aktion wurde verweigert.",

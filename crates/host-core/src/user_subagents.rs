@@ -101,6 +101,15 @@ fn normalize_name(value: &str) -> String {
     slugify(value, MAX_NAME_CHARS)
 }
 
+/// Whether an enabled user subagent enters a session's delegation catalog
+/// (#1431). Scope filtering mirrors the plugins/skills/MCP activation rule:
+/// `Global` follows the session everywhere, `Projects` applies only inside the
+/// named projects. Records scanned today all carry the default `Global` scope,
+/// so this predicate is behavior-preserving until scope assignment lands.
+fn visible_in(record: &UserSubagentRecord, project_path: Option<&str>) -> bool {
+    record.enabled && record.scope.matches(project_path)
+}
+
 fn clip(value: &str, max_chars: usize) -> String {
     let trimmed = value.trim();
     if trimmed.chars().count() <= max_chars {
@@ -296,11 +305,11 @@ impl UserSubagentRegistry {
         self.scan()
     }
 
-    pub fn active_for(&mut self, _project_path: Option<&str>) -> Result<Vec<UserSubagentRecord>> {
+    pub fn active_for(&mut self, project_path: Option<&str>) -> Result<Vec<UserSubagentRecord>> {
         Ok(self
             .scan()?
             .into_iter()
-            .filter(|record| record.enabled)
+            .filter(|record| visible_in(record, project_path))
             .collect())
     }
 
@@ -565,6 +574,46 @@ mod tests {
             normalize_tools(Some(&vec!["read".into(), "Nope".into(), "Bash".into()])),
             vec!["Read", "Bash"]
         );
+    }
+
+    fn scope_record(scope: ActivationScope, enabled: bool) -> UserSubagentRecord {
+        UserSubagentRecord {
+            id: "x".into(),
+            name: "x".into(),
+            level: Some("global".into()),
+            description: "fixture".into(),
+            enabled,
+            scope,
+            tools: vec!["inherit".into()],
+            model: None,
+            fallback_models: vec![],
+            thinking_level: None,
+            max_tokens: None,
+            path: "/tmp/x.md".into(),
+            size_bytes: 0,
+            created_at: "0".into(),
+            updated_at: "0".into(),
+        }
+    }
+
+    #[test]
+    fn visibility_honors_activation_scope() {
+        let global = scope_record(ActivationScope::default(), true);
+        let scoped = scope_record(
+            ActivationScope {
+                mode: crate::activation::ActivationMode::Projects,
+                projects: vec!["/w/a".into()],
+            },
+            true,
+        );
+        let disabled = scope_record(ActivationScope::default(), false);
+        assert!(visible_in(&global, Some("/w/b")));
+        assert!(visible_in(&global, None));
+        assert!(visible_in(&scoped, Some("/w/a")));
+        assert!(!visible_in(&scoped, Some("/w/b")));
+        // A project-scoped subagent stays inactive in a session with no project.
+        assert!(!visible_in(&scoped, None));
+        assert!(!visible_in(&disabled, Some("/w/a")));
     }
 
     #[test]

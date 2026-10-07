@@ -87,8 +87,7 @@ pub struct UserSubagentInput {
     pub thinking_level: Option<String>,
     pub max_tokens: Option<u32>,
     pub enabled: Option<bool>,
-    /// Kept for protocol compatibility; subagents are global-only now.
-    #[allow(dead_code)]
+    /// Activation scope (#1431); absent means the historical global visibility.
     pub scope: Option<ActivationScope>,
 }
 
@@ -377,7 +376,7 @@ impl UserSubagentRegistry {
             level: Some("global".into()),
             description,
             enabled: input.enabled.unwrap_or(true),
-            scope: ActivationScope::default(),
+            scope: input.scope.map(|scope| scope.normalized()).unwrap_or_default(),
             tools,
             model: normalize_model(input.model.as_deref())?,
             fallback_models: model_fallbacks::normalize(
@@ -472,6 +471,10 @@ impl UserSubagentRegistry {
             None => current.max_tokens,
         };
         next.enabled = input.enabled.unwrap_or(current.enabled);
+        next.scope = match input.scope {
+            Some(scope) => scope.normalized(),
+            None => current.scope,
+        };
         next.path = current.path.clone();
         if next.id != current.id {
             next.path = capability_dir(CapabilityLevel::Global, None, "subagents")?
@@ -802,6 +805,52 @@ mod tests {
                     .unwrap()
                     .is_none()
             );
+        });
+    }
+
+    #[test]
+    fn create_and_update_honor_input_scope() {
+        let dir = tempdir().unwrap();
+        crate::agent_capabilities::test_support::with_global_agents(dir.path(), || {
+            let mut registry = UserSubagentRegistry::new(dir.path());
+            let created = registry
+                .create(UserSubagentInput {
+                    name: Some("scoped".into()),
+                    description: Some("Fixture.".into()),
+                    scope: Some(ActivationScope {
+                        mode: crate::activation::ActivationMode::Projects,
+                        projects: vec!["/w/a".into()],
+                    }),
+                    ..Default::default()
+                })
+                .unwrap();
+            assert_eq!(
+                created.scope.mode,
+                crate::activation::ActivationMode::Projects
+            );
+            let doc = dir.path().join("subagents").join("scoped.md");
+            let raw = fs::read_to_string(&doc).unwrap();
+            assert!(raw.contains("projects: [/w/a]\n"), "{raw}");
+            assert!(!registry
+                .active_for(Some("/w/b"))
+                .unwrap()
+                .iter()
+                .any(|record| record.id == "scoped"));
+
+            // A later update clears the scope and drops the key.
+            let updated = registry
+                .update(
+                    "scoped",
+                    UserSubagentInput {
+                        scope: Some(ActivationScope::default()),
+                        ..Default::default()
+                    },
+                )
+                .unwrap()
+                .unwrap();
+            assert!(updated.scope.matches(Some("/w/b")));
+            let raw = fs::read_to_string(&doc).unwrap();
+            assert!(!raw.contains("projects:"), "{raw}");
         });
     }
 

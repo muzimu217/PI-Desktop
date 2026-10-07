@@ -539,7 +539,14 @@ impl UserSubagentRegistry {
         id: &str,
         scope: ActivationScope,
     ) -> Result<Option<UserSubagentRecord>> {
-        let _ = scope;
+        // The document is the scope's home (#1431): rewrite it through
+        // render_document so hand-edited files and RPC writes converge on one
+        // spelling, and the next scan sees the same scope every reader does.
+        let Some((mut record, body)) = self.read(id)? else {
+            return Ok(None);
+        };
+        record.scope = scope.normalized();
+        fs::write(&record.path, render_document(&record, &body))?;
         self.find(id)
     }
 
@@ -736,6 +743,66 @@ mod tests {
         };
         let rendered = render_document(&cleared, "Do the job.");
         assert!(!rendered.contains("projects:"), "{rendered}");
+    }
+
+    #[test]
+    fn set_scope_rewrites_the_document_and_drives_visibility() {
+        let dir = tempdir().unwrap();
+        let subagents = dir.path().join("subagents");
+        fs::create_dir(&subagents).unwrap();
+        fs::write(
+            subagents.join("worker.md"),
+            "---\nname: worker\ndescription: Fixture.\n---\n\nDo the job.\n",
+        )
+        .unwrap();
+        crate::agent_capabilities::test_support::with_global_agents(dir.path(), || {
+            let mut registry = UserSubagentRegistry::new(dir.path());
+            let scoped = registry
+                .set_scope(
+                    "worker",
+                    ActivationScope {
+                        mode: crate::activation::ActivationMode::Projects,
+                        projects: vec!["/w/a".into()],
+                    },
+                )
+                .unwrap()
+                .expect("worker exists");
+            assert_eq!(
+                scoped.scope.mode,
+                crate::activation::ActivationMode::Projects
+            );
+            // The document itself now carries the scope.
+            let raw = fs::read_to_string(subagents.join("worker.md")).unwrap();
+            assert!(raw.contains("projects: [/w/a]\n"), "{raw}");
+            assert!(registry
+                .active_for(Some("/w/a"))
+                .unwrap()
+                .iter()
+                .any(|record| record.id == "worker"));
+            assert!(!registry
+                .active_for(Some("/w/b"))
+                .unwrap()
+                .iter()
+                .any(|record| record.id == "worker"));
+            // Clearing the scope restores global visibility and drops the key.
+            registry
+                .set_scope("worker", ActivationScope::default())
+                .unwrap()
+                .unwrap();
+            assert!(registry
+                .active_for(Some("/w/b"))
+                .unwrap()
+                .iter()
+                .any(|record| record.id == "worker"));
+            let raw = fs::read_to_string(subagents.join("worker.md")).unwrap();
+            assert!(!raw.contains("projects:"), "{raw}");
+            assert!(
+                registry
+                    .set_scope("missing", ActivationScope::default())
+                    .unwrap()
+                    .is_none()
+            );
+        });
     }
 
     #[test]

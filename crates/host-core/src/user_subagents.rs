@@ -209,6 +209,22 @@ fn parse_record(path: &Path, state: &CapabilityState) -> Option<UserSubagentReco
         return None;
     }
     let enabled = state.enabled(SUBAGENT_KIND, CapabilityLevel::Global, &name, None);
+    // `projects: [/abs/a, /abs/b]` scopes the subagent to those projects
+    // (#1431); its absence keeps the historical global visibility.
+    let scope = match front.get("projects") {
+        Some(raw) if !raw.trim().is_empty() => ActivationScope {
+            mode: crate::activation::ActivationMode::Projects,
+            projects: raw
+                .trim_matches(['[', ']'])
+                .split(',')
+                .map(str::trim)
+                .filter(|entry| !entry.is_empty())
+                .map(str::to_string)
+                .collect(),
+        }
+        .normalized(),
+        _ => ActivationScope::default(),
+    };
     let updated_at = file_timestamp(path);
     let max_tokens = front
         .get("maxtokens")
@@ -221,7 +237,7 @@ fn parse_record(path: &Path, state: &CapabilityState) -> Option<UserSubagentReco
         level: Some("global".into()),
         description,
         enabled,
-        scope: ActivationScope::default(),
+        scope,
         tools,
         model: front
             .get("model")
@@ -257,6 +273,11 @@ fn render_document(record: &UserSubagentRecord, body: &str) -> String {
             "fallbackModels: [{}]\n",
             record.fallback_models.join(", ")
         ));
+    }
+    if record.scope.mode == crate::activation::ActivationMode::Projects
+        && !record.scope.projects.is_empty()
+    {
+        output.push_str(&format!("projects: [{}]\n", record.scope.projects.join(", ")));
     }
     if let Some(level) = &record.thinking_level {
         output.push_str(&format!("thinkingLevel: {level}\n"));
@@ -678,6 +699,43 @@ mod tests {
         assert!(old.fallback_models.is_none());
         let clear: UserSubagentInput = serde_json::from_str(r#"{"fallbackModels":[]}"#).unwrap();
         assert_eq!(clear.fallback_models, Some(vec![]));
+    }
+
+    #[test]
+    fn projects_scope_survives_record_document_round_trips() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("worker.md");
+        fs::write(
+            &path,
+            "---\nname: worker\ndescription: Fixture.\nprojects: [/w/a, /w/b/]\n---\n\nDo the job.\n",
+        )
+        .unwrap();
+        let state = CapabilityState::new(dir.path(), SUBAGENT_KIND);
+        let record = parse_record(&path, &state).expect("scoped document must load");
+        assert_eq!(record.scope.mode, crate::activation::ActivationMode::Projects);
+        assert!(record.scope.matches(Some("/w/a")));
+        assert!(!record.scope.matches(Some("/w/c")));
+
+        // An absent key keeps the historical global visibility.
+        let global_path = dir.path().join("global.md");
+        fs::write(
+            &global_path,
+            "---\nname: global\ndescription: Fixture.\n---\n\nDo the job.\n",
+        )
+        .unwrap();
+        let global = parse_record(&global_path, &state).unwrap();
+        assert!(global.scope.matches(Some("/w/c")));
+        assert!(global.scope.matches(None));
+
+        // Render round-trips the list and drops it when the scope clears.
+        let rendered = render_document(&record, "Do the job.");
+        assert!(rendered.contains("projects: [/w/a, /w/b]\n"), "{rendered}");
+        let cleared = UserSubagentRecord {
+            scope: ActivationScope::default(),
+            ..record
+        };
+        let rendered = render_document(&cleared, "Do the job.");
+        assert!(!rendered.contains("projects:"), "{rendered}");
     }
 
     #[test]

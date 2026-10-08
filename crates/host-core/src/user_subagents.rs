@@ -276,7 +276,10 @@ fn render_document(record: &UserSubagentRecord, body: &str) -> String {
     if record.scope.mode == crate::activation::ActivationMode::Projects
         && !record.scope.projects.is_empty()
     {
-        output.push_str(&format!("projects: [{}]\n", record.scope.projects.join(", ")));
+        output.push_str(&format!(
+            "projects: [{}]\n",
+            record.scope.projects.join(", ")
+        ));
     }
     if let Some(level) = &record.thinking_level {
         output.push_str(&format!("thinkingLevel: {level}\n"));
@@ -376,7 +379,10 @@ impl UserSubagentRegistry {
             level: Some("global".into()),
             description,
             enabled: input.enabled.unwrap_or(true),
-            scope: input.scope.map(|scope| scope.normalized()).unwrap_or_default(),
+            scope: input
+                .scope
+                .map(|scope| scope.normalized())
+                .unwrap_or_default(),
             tools,
             model: normalize_model(input.model.as_deref())?,
             fallback_models: model_fallbacks::normalize(
@@ -722,7 +728,10 @@ mod tests {
         .unwrap();
         let state = CapabilityState::new(dir.path(), SUBAGENT_KIND);
         let record = parse_record(&path, &state).expect("scoped document must load");
-        assert_eq!(record.scope.mode, crate::activation::ActivationMode::Projects);
+        assert_eq!(
+            record.scope.mode,
+            crate::activation::ActivationMode::Projects
+        );
         assert!(record.scope.matches(Some("/w/a")));
         assert!(!record.scope.matches(Some("/w/c")));
 
@@ -799,12 +808,10 @@ mod tests {
                 .any(|record| record.id == "worker"));
             let raw = fs::read_to_string(subagents.join("worker.md")).unwrap();
             assert!(!raw.contains("projects:"), "{raw}");
-            assert!(
-                registry
-                    .set_scope("missing", ActivationScope::default())
-                    .unwrap()
-                    .is_none()
-            );
+            assert!(registry
+                .set_scope("missing", ActivationScope::default())
+                .unwrap()
+                .is_none());
         });
     }
 
